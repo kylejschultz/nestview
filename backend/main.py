@@ -1,4 +1,3 @@
-import os
 from contextlib import asynccontextmanager
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -8,8 +7,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from backend.database import create_db_and_tables
 from backend.api import containers, logs, events
 from backend.services.cleanup import run_cleanup
-
-COLLECTOR_KEY = os.getenv("NESTVIEW_COLLECTOR_KEY", "")
 
 
 @asynccontextmanager
@@ -27,10 +24,14 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Nestview", version="0.1.0", lifespan=lifespan)
 
+# The backend is not port-exposed in docker-compose — only nginx (frontend service)
+# reaches it.  CORS is permissive here so local `npm run dev` works without extra
+# config.  If you expose the backend port directly, restrict allow_origins to the
+# specific host(s) that need access.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_methods=["*"],
+    allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
 

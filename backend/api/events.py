@@ -1,25 +1,29 @@
 from datetime import datetime
-from typing import Optional
+from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlmodel import Session, select
 
+from backend.api.auth import verify_collector_key
 from backend.database import get_session
 from backend.models import ContainerEvent
 from backend.services import discord
 
 router = APIRouter(prefix="/api", tags=["events"])
 
+# All event types the collector may report
+_KNOWN_EVENT_TYPES = Literal["start", "stop", "die", "kill", "restart", "oom", "crash"]
+
 ALERT_EVENT_TYPES = {"crash", "die", "oom", "restart"}
 
 
 class EventIn(BaseModel):
-    container_id: str
-    container_name: str
-    event_type: str
-    details: Optional[str] = None
-    timestamp: Optional[str] = None
+    container_id: str = Field(max_length=128)
+    container_name: str = Field(max_length=256)
+    event_type: _KNOWN_EVENT_TYPES
+    details: Optional[str] = Field(None, max_length=512)
+    timestamp: Optional[str] = Field(None, max_length=64)
 
 
 def _parse_dt(s: Optional[str]) -> datetime:
@@ -31,7 +35,7 @@ def _parse_dt(s: Optional[str]) -> datetime:
         return datetime.utcnow()
 
 
-@router.post("/collector/events")
+@router.post("/collector/events", dependencies=[Depends(verify_collector_key)])
 async def ingest_event(event: EventIn, session: Session = Depends(get_session)):
     ts = _parse_dt(event.timestamp)
 

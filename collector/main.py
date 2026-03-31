@@ -8,19 +8,25 @@ everything to the Nestview backend via HTTP.
 
 import json
 import os
+import re
 import threading
 import time
 from collections import defaultdict
 from datetime import datetime, timezone
 from typing import Optional
 
+
+def _safe_name(name: str) -> str:
+    """Strip control characters from container names before printing."""
+    return re.sub(r"[\x00-\x1f\x7f]", "?", name)
+
 import docker
 import requests
 
 BACKEND_URL = os.getenv("BACKEND_URL", "http://backend:8000").rstrip("/")
 COLLECTOR_KEY = os.getenv("NESTVIEW_COLLECTOR_KEY", "")
-POLL_INTERVAL = int(os.getenv("POLL_INTERVAL", "10"))
-LOG_BATCH_INTERVAL = int(os.getenv("LOG_BATCH_INTERVAL", "5"))
+POLL_INTERVAL = max(1, int(os.getenv("POLL_INTERVAL", "10")))
+LOG_BATCH_INTERVAL = max(1, int(os.getenv("LOG_BATCH_INTERVAL", "5")))
 
 _headers = {"X-Collector-Key": COLLECTOR_KEY} if COLLECTOR_KEY else {}
 
@@ -118,8 +124,8 @@ def _collect_one(container) -> Optional[dict]:
             "started_at": container.attrs.get("State", {}).get("StartedAt"),
         }
     except Exception as exc:
-        name = getattr(container, "name", "?")
-        print(f"[collector] Error collecting stats for {name}: {exc}")
+        name = _safe_name(getattr(container, "name", "?"))
+        print(f"[collector] Error collecting stats for {name}: {type(exc).__name__}")
         return None
 
 
@@ -173,7 +179,7 @@ def _stream_logs(container_id: str, container_name: str) -> None:
                     }
                 )
     except Exception as exc:
-        print(f"[collector] Log stream ended for {container_name}: {exc}")
+        print(f"[collector] Log stream ended for {_safe_name(container_name)}: {type(exc).__name__}")
 
 
 def _flush_logs() -> None:

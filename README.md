@@ -22,6 +22,8 @@ docker compose up -d
 
 That's it. Nestview will find all running and stopped containers immediately.
 
+> **Security note:** `.env` is listed in `.gitignore` and must never be committed to version control — it may contain your Discord webhook URL and collector key.
+
 ---
 
 ## Environment variables

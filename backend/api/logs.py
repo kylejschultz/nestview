@@ -1,26 +1,39 @@
 from datetime import datetime
-from typing import List, Optional
+from typing import List, Literal, Optional
 
 from fastapi import APIRouter, Depends, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator
 from sqlmodel import Session, select
 
+from backend.api.auth import verify_collector_key
 from backend.database import get_session
 from backend.models import ContainerLog
 
 router = APIRouter(prefix="/api", tags=["logs"])
 
+_MAX_MESSAGE_LEN = 10_000
+_MAX_BATCH_SIZE = 5_000
+
 
 class LogEntry(BaseModel):
-    container_id: str
-    container_name: str
-    timestamp: str
-    stream: str = "stdout"
-    message: str
+    container_id: str = Field(max_length=128)
+    container_name: str = Field(max_length=256)
+    timestamp: str = Field(max_length=64)
+    stream: Literal["stdout", "stderr"] = "stdout"
+    message: str = Field(max_length=_MAX_MESSAGE_LEN)
 
 
 class LogBatch(BaseModel):
     logs: List[LogEntry]
+
+    @field_validator("logs")
+    @classmethod
+    def limit_batch_size(cls, v: list) -> list:
+        if len(v) > _MAX_BATCH_SIZE:
+            raise ValueError(
+                f"Batch too large: maximum {_MAX_BATCH_SIZE} log entries per request"
+            )
+        return v
 
 
 def _parse_dt(s: str) -> datetime:
@@ -30,7 +43,7 @@ def _parse_dt(s: str) -> datetime:
         return datetime.utcnow()
 
 
-@router.post("/collector/logs")
+@router.post("/collector/logs", dependencies=[Depends(verify_collector_key)])
 def ingest_logs(batch: LogBatch, session: Session = Depends(get_session)):
     for entry in batch.logs:
         log = ContainerLog(
@@ -48,8 +61,8 @@ def ingest_logs(batch: LogBatch, session: Session = Depends(get_session)):
 @router.get("/containers/{docker_id}/logs")
 def get_container_logs(
     docker_id: str,
-    search: Optional[str] = Query(None),
-    stream: Optional[str] = Query(None),
+    search: Optional[str] = Query(None, max_length=256),
+    stream: Optional[Literal["stdout", "stderr"]] = Query(None),
     limit: int = Query(200, ge=1, le=1000),
     offset: int = Query(0, ge=0),
     session: Session = Depends(get_session),
@@ -68,7 +81,7 @@ def get_container_logs(
 
 @router.get("/logs")
 def get_all_logs(
-    search: Optional[str] = Query(None),
+    search: Optional[str] = Query(None, max_length=256),
     limit: int = Query(200, ge=1, le=1000),
     offset: int = Query(0, ge=0),
     session: Session = Depends(get_session),

@@ -59,5 +59,7 @@ async def send_alert(
             resp = await client.post(WEBHOOK_URL, json=payload, timeout=10)
             return resp.status_code in (200, 204)
     except Exception as e:
-        print(f"Discord alert failed: {e}")
+        # Do not log the exception directly — httpx errors can include the full
+        # webhook URL (which is a secret) in the message string.
+        print(f"Discord alert failed: {type(e).__name__}")
         return False

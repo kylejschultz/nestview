@@ -1,11 +1,12 @@
 import json
 from datetime import datetime
-from typing import List, Optional
+from typing import Annotated, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from sqlmodel import Session, select
 
+from backend.api.auth import verify_collector_key
 from backend.database import get_session
 from backend.models import Container
 
@@ -35,6 +36,13 @@ class ContainerIn(BaseModel):
 class ContainerBatch(BaseModel):
     containers: List[ContainerIn]
 
+    @field_validator("containers")
+    @classmethod
+    def limit_batch_size(cls, v: list) -> list:
+        if len(v) > 500:
+            raise ValueError("Batch too large: maximum 500 containers per request")
+        return v
+
 
 def _parse_dt(s: Optional[str]) -> Optional[datetime]:
     if not s:
@@ -45,7 +53,7 @@ def _parse_dt(s: Optional[str]) -> Optional[datetime]:
         return None
 
 
-@router.post("/batch")
+@router.post("/batch", dependencies=[Depends(verify_collector_key)])
 def upsert_containers(batch: ContainerBatch, session: Session = Depends(get_session)):
     seen_ids = set()
     for c in batch.containers:
