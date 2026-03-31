@@ -8,6 +8,7 @@ import MetricBar from "../components/MetricBar";
 import LogViewer from "../components/LogViewer";
 import EventTimeline from "../components/EventTimeline";
 import { formatBytes, formatUptime, formatDateTime } from "../utils";
+import { useTimezone } from "../TimezoneContext";
 
 // ── Confirmation modal ────────────────────────────────────────────────────────
 
@@ -214,6 +215,7 @@ function InfoRow({ label, value }: { label: string; value: React.ReactNode }) {
 
 export default function ContainerDetail() {
   const { id } = useParams<{ id: string }>();
+  const tz = useTimezone();
 
   const { data: container, isLoading, isError } = useQuery<Container>({
     queryKey: ["container", id],
@@ -305,10 +307,10 @@ export default function ContainerDetail() {
           <InfoRow label="Image" value={container.image} />
           <InfoRow label="State" value={<StatusBadge state={container.state} />} />
           {container.created_at && (
-            <InfoRow label="Created" value={formatDateTime(container.created_at)} />
+            <InfoRow label="Created" value={formatDateTime(container.created_at, tz)} />
           )}
           {container.started_at && (
-            <InfoRow label="Started" value={formatDateTime(container.started_at)} />
+            <InfoRow label="Started" value={formatDateTime(container.started_at, tz)} />
           )}
           {container.ports.length > 0 && (
             <InfoRow

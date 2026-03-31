@@ -51,6 +51,7 @@ export interface ContainerEvent {
 export interface GeneralSettings {
   discord_webhook_url: string;
   log_retention_days: number;
+  timezone: string;
 }
 
 export interface WizardStatus {

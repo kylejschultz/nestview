@@ -19,6 +19,7 @@ def _seed_settings_from_env():
     """
     seeds = {
         "log_retention_days": os.getenv("LOG_RETENTION_DAYS", "7"),
+        "timezone": os.getenv("TZ", "UTC"),
     }
     with Session(engine) as session:
         for key, value in seeds.items():

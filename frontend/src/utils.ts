@@ -27,11 +27,13 @@ export function formatUptime(startedAt: string): string {
   ].filter(Boolean).join(" ");
 }
 
-export function formatDateTime(iso: string): string {
-  return new Date(iso).toLocaleString(undefined, {
+export function formatDateTime(iso: string, tz?: string): string {
+  const opts: Intl.DateTimeFormatOptions = {
     month: "short",
     day: "numeric",
     hour: "2-digit",
     minute: "2-digit",
-  });
+    ...(tz ? { timeZone: tz } : {}),
+  };
+  return new Intl.DateTimeFormat(undefined, opts).format(new Date(iso));
 }

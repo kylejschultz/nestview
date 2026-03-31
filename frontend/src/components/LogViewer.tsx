@@ -2,6 +2,8 @@ import { useState, useRef, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../api";
 import type { ContainerLog } from "../types";
+import { formatDateTime } from "../utils";
+import { useTimezone } from "../TimezoneContext";
 
 interface Props {
   dockerId: string;
@@ -37,6 +39,7 @@ const LEGEND = [
 ] as const;
 
 export default function LogViewer({ dockerId }: Props) {
+  const tz = useTimezone();
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [autoScroll, setAutoScroll] = useState(true);
@@ -119,7 +122,7 @@ export default function LogViewer({ dockerId }: Props) {
         {logs.map((log) => (
           <div key={log.id} className="flex gap-3 hover:bg-surface-2 px-1 rounded group">
             <span className="text-slate-600 shrink-0 select-none">
-              {new Date(log.timestamp).toLocaleTimeString()}
+              {formatDateTime(log.timestamp, tz)}
             </span>
             <span className={`break-all ${logLevel(log.message)}`}>
               {highlight(log.message, debouncedSearch)}

@@ -1,6 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../api";
 import type { ContainerEvent } from "../types";
+import { formatDateTime } from "../utils";
+import { useTimezone } from "../TimezoneContext";
 
 interface Props {
   dockerId?: string;
@@ -16,7 +18,7 @@ const EVENT_STYLES: Record<string, { dot: string; label: string }> = {
   restart: { dot: "bg-yellow-500", label: "Restarted" },
 };
 
-function EventRow({ event }: { event: ContainerEvent }) {
+function EventRow({ event, tz }: { event: ContainerEvent; tz: string }) {
   const style = EVENT_STYLES[event.event_type] ?? { dot: "bg-slate-400", label: event.event_type };
   return (
     <div className="flex items-start gap-3 py-2">
@@ -36,7 +38,7 @@ function EventRow({ event }: { event: ContainerEvent }) {
           )}
         </p>
         <p className="text-xs text-slate-600 mt-0.5">
-          {new Date(event.timestamp).toLocaleString()}
+          {formatDateTime(event.timestamp, tz)}
         </p>
       </div>
     </div>
@@ -44,6 +46,7 @@ function EventRow({ event }: { event: ContainerEvent }) {
 }
 
 export default function EventTimeline({ dockerId }: Props) {
+  const tz = useTimezone();
   const { data: events = [] } = useQuery<ContainerEvent[]>({
     queryKey: ["events", dockerId],
     queryFn: () => api.events.list(dockerId, 30),
@@ -61,7 +64,7 @@ export default function EventTimeline({ dockerId }: Props) {
   return (
     <div className="card px-4 divide-y divide-border">
       {events.map((e) => (
-        <EventRow key={e.id} event={e} />
+        <EventRow key={e.id} event={e} tz={tz} />
       ))}
     </div>
   );

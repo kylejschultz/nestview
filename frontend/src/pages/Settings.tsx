@@ -96,14 +96,18 @@ function GeneralTab() {
 
   const [webhookDraft, setWebhookDraft] = useState<string | null>(null);
   const [retentionDraft, setRetentionDraft] = useState<string | null>(null);
+  const [timezoneDraft, setTimezoneDraft] = useState<string | null>(null);
 
   const webhook = webhookDraft ?? general?.discord_webhook_url ?? "";
   const retention = retentionDraft ?? String(general?.log_retention_days ?? 7);
+  const timezone = timezoneDraft ?? general?.timezone ?? "UTC";
 
   const [webhookSaved, setWebhookSaved] = useState(false);
   const [retentionSaved, setRetentionSaved] = useState(false);
+  const [timezoneSaved, setTimezoneSaved] = useState(false);
   const [webhookError, setWebhookError] = useState<string | null>(null);
   const [retentionError, setRetentionError] = useState<string | null>(null);
+  const [timezoneError, setTimezoneError] = useState<string | null>(null);
 
   const { mutate: save, isPending: isSaving } = useMutation({
     mutationFn: (body: Partial<GeneralSettings>) => api.settings.saveGeneral(body),
@@ -121,10 +125,17 @@ function GeneralTab() {
         setRetentionError(null);
         setTimeout(() => setRetentionSaved(false), 3_000);
       }
+      if ("timezone" in variables) {
+        setTimezoneDraft(null);
+        setTimezoneSaved(true);
+        setTimezoneError(null);
+        setTimeout(() => setTimezoneSaved(false), 3_000);
+      }
     },
     onError: (err: Error, variables) => {
       if ("discord_webhook_url" in variables) setWebhookError(err.message);
       if ("log_retention_days" in variables) setRetentionError(err.message);
+      if ("timezone" in variables) setTimezoneError(err.message);
     },
   });
 
@@ -192,6 +203,34 @@ function GeneralTab() {
           </button>
           {retentionSaved && <span className="text-xs text-green-400">Saved.</span>}
           {retentionError && <span className="text-xs text-red-400">{retentionError}</span>}
+        </div>
+      </section>
+
+      {/* Timezone */}
+      <section className="card p-5 space-y-4">
+        <div>
+          <h2 className="text-sm font-semibold text-slate-200">Timezone</h2>
+          <p className="text-xs text-slate-500 mt-1">
+            IANA timezone name — controls all timestamps in the UI.
+          </p>
+        </div>
+        <input
+          type="text"
+          placeholder="e.g. America/New_York"
+          value={timezone}
+          onChange={(e) => setTimezoneDraft(e.target.value)}
+          className="w-64 bg-surface-3 border border-border rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-accent"
+        />
+        <div className="flex items-center gap-3">
+          <button
+            disabled={isSaving || timezoneDraft === null}
+            onClick={() => save({ timezone })}
+            className="px-4 py-2 text-sm rounded-lg bg-accent hover:bg-accent-hover text-white font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            Save
+          </button>
+          {timezoneSaved && <span className="text-xs text-green-400">Saved.</span>}
+          {timezoneError && <span className="text-xs text-red-400">{timezoneError}</span>}
         </div>
       </section>
     </div>

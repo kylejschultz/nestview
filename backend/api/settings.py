@@ -1,4 +1,5 @@
 from typing import List
+from zoneinfo import available_timezones
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field, field_validator
@@ -69,6 +70,16 @@ def patch_alert_setting(
 class GeneralSettingsPatch(BaseModel):
     discord_webhook_url: str | None = None
     log_retention_days: int | None = None
+    timezone: str | None = None
+
+    @field_validator("timezone")
+    @classmethod
+    def validate_timezone(cls, v: str | None) -> str | None:
+        if v is None:
+            return v
+        if v not in available_timezones():
+            raise ValueError(f"'{v}' is not a valid IANA timezone name")
+        return v
 
     @field_validator("discord_webhook_url")
     @classmethod
@@ -98,9 +109,11 @@ def get_general_settings(session: Session = Depends(get_session)) -> dict:
     webhook = get_setting(session, "discord_webhook_url") or ""
     retention_str = get_setting(session, "log_retention_days")
     retention = int(retention_str) if retention_str else _DEFAULT_LOG_RETENTION_DAYS
+    timezone = get_setting(session, "timezone") or "UTC"
     return {
         "discord_webhook_url": webhook,
         "log_retention_days": retention,
+        "timezone": timezone,
     }
 
 
@@ -113,15 +126,19 @@ def patch_general_settings(
         set_setting(session, "discord_webhook_url", payload.discord_webhook_url)
     if payload.log_retention_days is not None:
         set_setting(session, "log_retention_days", str(payload.log_retention_days))
+    if payload.timezone is not None:
+        set_setting(session, "timezone", payload.timezone)
     session.commit()
 
     # Return updated values
     webhook = get_setting(session, "discord_webhook_url") or ""
     retention_str = get_setting(session, "log_retention_days")
     retention = int(retention_str) if retention_str else _DEFAULT_LOG_RETENTION_DAYS
+    timezone = get_setting(session, "timezone") or "UTC"
     return {
         "discord_webhook_url": webhook,
         "log_retention_days": retention,
+        "timezone": timezone,
     }
 
 
