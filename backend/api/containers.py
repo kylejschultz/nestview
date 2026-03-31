@@ -1,10 +1,10 @@
 import json
 from datetime import datetime
-from typing import Annotated, List, Optional
+from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, field_validator
-from sqlmodel import Session, select
+from sqlmodel import Session, delete, select
 
 from api.auth import verify_collector_key
 from database import get_session
@@ -35,6 +35,11 @@ class ContainerIn(BaseModel):
 
 class ContainerBatch(BaseModel):
     containers: List[ContainerIn]
+    # When True (the default), any container row in the DB whose docker_id is
+    # NOT present in this batch is deleted.  The collector always sends a
+    # complete `docker ps -a` snapshot, so this is safe and keeps the DB in
+    # sync with Docker reality.
+    reconcile: bool = True
 
     @field_validator("containers")
     @classmethod
@@ -102,8 +107,18 @@ def upsert_containers(batch: ContainerBatch, session: Session = Depends(get_sess
             )
             session.add(new_container)
 
+    # Reconcile: purge any DB row whose docker_id was not in this snapshot.
+    # Guard: skip when the batch is empty to avoid accidentally wiping the
+    # table if the Docker daemon is temporarily unreachable.
+    purged = 0
+    if batch.reconcile and seen_ids:
+        result = session.exec(
+            delete(Container).where(Container.docker_id.notin_(seen_ids))
+        )
+        purged = result.rowcount
+
     session.commit()
-    return {"updated": len(batch.containers)}
+    return {"updated": len(batch.containers), "purged": purged}
 
 
 @router.get("")

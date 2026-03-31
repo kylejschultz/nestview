@@ -310,7 +310,11 @@ def main() -> None:
                 try:
                     requests.post(
                         f"{BACKEND_URL}/api/containers/batch",
-                        json={"containers": container_data},
+                        # reconcile=True tells the backend to delete any DB row
+                        # whose docker_id is not present in this snapshot.
+                        # The list() call above uses all=True, so container_data
+                        # is always the complete set known to Docker.
+                        json={"containers": container_data, "reconcile": True},
                         headers=_headers,
                         timeout=15,
                     )

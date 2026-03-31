@@ -36,6 +36,7 @@ All configuration lives in `.env` (copy from `.env.example`).
 | `NESTVIEW_COLLECTOR_KEY` | _(empty)_ | Optional shared secret to authenticate the collector |
 | `DISCORD_WEBHOOK_URL` | _(empty)_ | Discord webhook for crash/restart/stop alerts. Leave blank to disable. |
 | `LOG_RETENTION_DAYS` | `7` | Days of container logs and events to keep in SQLite |
+| `EXITED_CONTAINER_TTL_HOURS` | `1` | Hours before exited/dead container records are purged from the DB (set to `0` to disable) |
 | `POLL_INTERVAL` | `10` | Seconds between Docker stats polls |
 | `LOG_BATCH_INTERVAL` | `5` | Seconds between log flushes to the backend |
 
