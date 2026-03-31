@@ -1,4 +1,4 @@
-import type { AlertEventType, AlertSetting, Container, ContainerLog, ContainerEvent } from "./types";
+import type { AlertEventType, AlertSetting, Container, ContainerLog, ContainerEvent, GeneralSettings, WizardStatus } from "./types";
 
 const BASE = "/api";
 
@@ -60,5 +60,11 @@ export const api = {
     alerts: () => get<AlertSetting[]>("/settings/alerts"),
     setAlert: (container_name: string, event_type: AlertEventType, enabled: boolean) =>
       patch<AlertSetting>("/settings/alerts", { container_name, event_type, enabled }),
+    general: () => get<GeneralSettings>("/settings/general"),
+    saveGeneral: (body: Partial<GeneralSettings>) =>
+      patch<GeneralSettings>("/settings/general", body),
+    testWebhook: () => post<{ ok: boolean; error?: string }>("/settings/test-webhook"),
+    wizard: () => get<WizardStatus>("/settings/wizard"),
+    dismissWizard: () => post<{ ok: boolean }>("/settings/wizard/dismiss"),
   },
 };

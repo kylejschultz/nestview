@@ -47,3 +47,12 @@ export interface ContainerEvent {
   details: string | null;
   alerted: boolean;
 }
+
+export interface GeneralSettings {
+  discord_webhook_url: string;
+  log_retention_days: number;
+}
+
+export interface WizardStatus {
+  completed: boolean;
+}
