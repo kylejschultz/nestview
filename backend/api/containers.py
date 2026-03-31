@@ -117,6 +117,35 @@ def upsert_containers(batch: ContainerBatch, session: Session = Depends(get_sess
         )
         purged = result.rowcount
 
+    # Ghost-detection pass: remove exited/dead rows that are superseded by a
+    # live container with the same name and compose_project.
+    #
+    # This handles the recreate pattern: `docker compose up --force-recreate`
+    # leaves the old container in Docker as "exited" (so reconciliation above
+    # doesn't touch it), but a new container with the same service name is now
+    # running.  The old row is a ghost and should be dropped.
+    _TERMINAL = {"exited", "dead"}
+    _LIVE = {"running", "restarting", "paused"}
+
+    all_rows = session.exec(select(Container)).all()
+
+    # Build a lookup of (name, compose_project) → True for every live container.
+    live_keys: set[tuple] = {
+        (r.name, r.compose_project) for r in all_rows if r.state in _LIVE
+    }
+
+    ghost_ids = [
+        r.id
+        for r in all_rows
+        if r.state in _TERMINAL and (r.name, r.compose_project) in live_keys
+    ]
+
+    for gid in ghost_ids:
+        ghost = session.get(Container, gid)
+        if ghost:
+            session.delete(ghost)
+    purged += len(ghost_ids)
+
     session.commit()
     return {"updated": len(batch.containers), "purged": purged}
 

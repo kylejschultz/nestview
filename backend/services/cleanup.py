@@ -8,9 +8,10 @@ from models import Container, ContainerLog, ContainerEvent
 
 LOG_RETENTION_DAYS = int(os.getenv("LOG_RETENTION_DAYS", "7"))
 # Exited/dead containers are removed from the DB after this many hours if
-# the reconciliation pass hasn't already deleted them (e.g. collector
-# downtime).  Set to 0 to disable.
-EXITED_CONTAINER_TTL_HOURS = int(os.getenv("EXITED_CONTAINER_TTL_HOURS", "1"))
+# the ghost-detection and reconciliation passes haven't already deleted them
+# (e.g. standalone containers, or collector downtime).  Fractional hours are
+# supported (e.g. "0.083" ≈ 5 minutes).  Set to 0 to disable.
+EXITED_CONTAINER_TTL_HOURS = float(os.getenv("EXITED_CONTAINER_TTL_HOURS", "0.083"))
 
 _TERMINAL_STATES = ("exited", "dead")
 
