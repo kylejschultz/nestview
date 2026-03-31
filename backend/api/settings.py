@@ -128,9 +128,12 @@ def patch_general_settings(
 
 @router.get("/wizard")
 def get_wizard_status(session: Session = Depends(get_session)) -> dict:
-    dismissed = get_setting(session, "wizard_dismissed")
-    webhook = get_setting(session, "discord_webhook_url") or ""
-    completed = bool(dismissed) or bool(webhook)
+    try:
+        dismissed = get_setting(session, "wizard_dismissed")
+        webhook = get_setting(session, "discord_webhook_url") or ""
+        completed = bool(dismissed) or bool(webhook)
+    except Exception:
+        completed = False
     return {"completed": completed}
 
 
