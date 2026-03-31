@@ -1,5 +1,5 @@
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -53,7 +53,13 @@ def _parse_dt(s: Optional[str]) -> Optional[datetime]:
     if not s:
         return None
     try:
-        return datetime.fromisoformat(s.replace("Z", "+00:00").split("+")[0])
+        # Replace trailing Z with +00:00 so fromisoformat can parse the offset.
+        # Do NOT strip the offset — we need it to correctly convert to UTC.
+        normalized = s.replace("Z", "+00:00") if s.endswith("Z") else s
+        dt = datetime.fromisoformat(normalized)
+        # Convert to UTC then strip tzinfo: SQLite/SQLModel stores naive datetimes
+        # and we treat all stored values as UTC.
+        return dt.astimezone(timezone.utc).replace(tzinfo=None)
     except Exception:
         return None
 
