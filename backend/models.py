@@ -5,6 +5,14 @@ from sqlalchemy import UniqueConstraint
 from sqlmodel import SQLModel, Field
 
 
+class AppSetting(SQLModel, table=True):
+    __tablename__ = "app_setting"
+
+    key: str = Field(primary_key=True, max_length=128)
+    value: str = Field(default="")
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
 class Container(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     docker_id: str = Field(index=True, unique=True)
