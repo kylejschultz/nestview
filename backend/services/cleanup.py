@@ -5,8 +5,11 @@ from sqlmodel import Session, delete
 
 from database import engine
 from models import Container, ContainerLog, ContainerEvent
+from services.app_settings import get_setting
 
-LOG_RETENTION_DAYS = int(os.getenv("LOG_RETENTION_DAYS", "7"))
+# Env-var bootstrap default; the DB value (set via Settings UI) takes precedence
+# at runtime once the service has started for the first time.
+_DEFAULT_LOG_RETENTION_DAYS = int(os.getenv("LOG_RETENTION_DAYS", "7"))
 # Exited/dead containers are removed from the DB after this many hours if
 # the ghost-detection and reconciliation passes haven't already deleted them
 # (e.g. standalone containers, or collector downtime).  Fractional hours are
@@ -17,9 +20,10 @@ _TERMINAL_STATES = ("exited", "dead")
 
 
 def run_cleanup():
-    log_cutoff = datetime.utcnow() - timedelta(days=LOG_RETENTION_DAYS)
-
     with Session(engine) as session:
+        retention_str = get_setting(session, "log_retention_days")
+        log_retention = int(retention_str) if retention_str else _DEFAULT_LOG_RETENTION_DAYS
+        log_cutoff = datetime.utcnow() - timedelta(days=log_retention)
         log_result = session.exec(
             delete(ContainerLog).where(ContainerLog.timestamp < log_cutoff)
         )
@@ -50,7 +54,7 @@ def run_cleanup():
     if deleted_logs or deleted_events:
         print(
             f"[cleanup] Removed {deleted_logs} logs and {deleted_events} events "
-            f"older than {LOG_RETENTION_DAYS} days"
+            f"older than {log_retention} days"
         )
     if purged_containers:
         print(
