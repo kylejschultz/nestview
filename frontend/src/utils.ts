@@ -27,13 +27,15 @@ export function formatUptime(startedAt: string): string {
   ].filter(Boolean).join(" ");
 }
 
-export function formatDateTime(iso: string, tz?: string): string {
-  const opts: Intl.DateTimeFormatOptions = {
+export function formatDateTime(iso: string, tz = "UTC"): string {
+  // Naive UTC strings from the backend have no Z suffix; append one so the
+  // browser parses them as UTC rather than local time.
+  const normalized = /[Z+]/.test(iso) ? iso : iso + "Z";
+  return new Intl.DateTimeFormat(undefined, {
+    timeZone: tz,
     month: "short",
     day: "numeric",
     hour: "2-digit",
     minute: "2-digit",
-    ...(tz ? { timeZone: tz } : {}),
-  };
-  return new Intl.DateTimeFormat(undefined, opts).format(new Date(iso));
+  }).format(new Date(normalized));
 }
