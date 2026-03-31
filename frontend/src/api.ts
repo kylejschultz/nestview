@@ -18,10 +18,22 @@ async function patch<T>(path: string, body: unknown): Promise<T> {
   return res.json();
 }
 
+async function post<T>(path: string): Promise<T> {
+  const res = await fetch(`${BASE}${path}`, { method: "POST" });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error((body as { detail?: string }).detail ?? `${res.status} ${res.statusText}`);
+  }
+  return res.json();
+}
+
 export const api = {
   containers: {
     list: () => get<Container[]>("/containers"),
     get: (id: string) => get<Container>(`/containers/${id}`),
+    stop:    (dockerId: string) => post<{ ok: boolean; action: string; container: string }>(`/containers/${dockerId}/stop`),
+    restart: (dockerId: string) => post<{ ok: boolean; action: string; container: string }>(`/containers/${dockerId}/restart`),
+    start:   (dockerId: string) => post<{ ok: boolean; action: string; container: string }>(`/containers/${dockerId}/start`),
   },
   logs: {
     forContainer: (

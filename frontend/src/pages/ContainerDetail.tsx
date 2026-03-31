@@ -1,5 +1,6 @@
+import { useEffect, useRef, useState } from "react";
 import { useParams, Link } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
 import type { Container } from "../types";
 import StatusBadge from "../components/StatusBadge";
@@ -7,6 +8,198 @@ import MetricBar from "../components/MetricBar";
 import LogViewer from "../components/LogViewer";
 import EventTimeline from "../components/EventTimeline";
 import { formatBytes, formatUptime, formatDateTime } from "../utils";
+
+// ── Confirmation modal ────────────────────────────────────────────────────────
+
+interface ConfirmModalProps {
+  message: string;
+  onConfirm: () => void;
+  onCancel: () => void;
+}
+
+function ConfirmModal({ message, onConfirm, onCancel }: ConfirmModalProps) {
+  // Close on Escape
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onCancel(); };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [onCancel]);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+      onClick={onCancel}
+    >
+      <div
+        className="bg-surface-2 border border-border rounded-xl p-6 w-full max-w-sm mx-4 space-y-5 shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <p className="text-sm text-slate-200 leading-relaxed">{message}</p>
+        <div className="flex justify-end gap-3">
+          <button
+            onClick={onCancel}
+            className="px-4 py-2 text-sm rounded-lg border border-border text-slate-400 hover:text-slate-200 hover:border-slate-500 transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={onConfirm}
+            className="px-4 py-2 text-sm rounded-lg bg-accent hover:bg-accent-hover text-white font-medium transition-colors"
+          >
+            Confirm
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Spinner ───────────────────────────────────────────────────────────────────
+
+function Spinner() {
+  return (
+    <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+    </svg>
+  );
+}
+
+// ── Action buttons ────────────────────────────────────────────────────────────
+
+type ActionType = "stop" | "restart" | "start";
+
+interface ActionButtonsProps {
+  container: Container;
+}
+
+function ActionButtons({ container }: ActionButtonsProps) {
+  const queryClient = useQueryClient();
+  const [pendingAction, setPendingAction] = useState<ActionType | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const errorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function scheduleErrorDismiss(msg: string) {
+    setError(msg);
+    if (errorTimerRef.current) clearTimeout(errorTimerRef.current);
+    errorTimerRef.current = setTimeout(() => setError(null), 5_000);
+  }
+
+  const { mutate, isPending } = useMutation({
+    mutationFn: (action: ActionType) => api.containers[action](container.docker_id),
+    onSuccess: (_data, action) => {
+      // After restart, Docker may take a moment to register the new container ID,
+      // so delay the re-fetch slightly to give the collector time to post fresh data.
+      const delay = action === "restart" ? 1_500 : 0;
+      setTimeout(() => {
+        queryClient.invalidateQueries({ queryKey: ["container", container.docker_id] });
+        queryClient.invalidateQueries({ queryKey: ["containers"] });
+      }, delay);
+      setPendingAction(null);
+    },
+    onError: (err: Error) => {
+      scheduleErrorDismiss(`Failed to ${pendingAction}: ${err.message}`);
+      setPendingAction(null);
+    },
+  });
+
+  function requestAction(action: ActionType) {
+    setPendingAction(action);
+  }
+
+  function confirmAction() {
+    if (!pendingAction) return;
+    mutate(pendingAction);
+    // pendingAction cleared in onSuccess/onError
+  }
+
+  // Determine which buttons to show
+  const state = container.state;
+  const showStop    = state === "running" || state === "restarting" || state === "paused";
+  const showRestart = showStop;
+  const showStart   = state === "exited" || state === "created" || state === "dead";
+
+  if (!showStop && !showStart) return null;
+
+  const BUTTON_STYLES: Record<ActionType, string> = {
+    stop:    "border-red-500/50 text-red-400 hover:bg-red-500/10 hover:border-red-400",
+    restart: "border-yellow-500/50 text-yellow-400 hover:bg-yellow-500/10 hover:border-yellow-400",
+    start:   "border-green-500/50 text-green-400 hover:bg-green-500/10 hover:border-green-400",
+  };
+
+  const modalMessages: Record<ActionType, string> = {
+    stop:    `Are you sure you want to stop ${container.name}?`,
+    restart: `Are you sure you want to restart ${container.name}?`,
+    start:   `Are you sure you want to start ${container.name}?`,
+  };
+
+  return (
+    <>
+      {pendingAction && (
+        <ConfirmModal
+          message={modalMessages[pendingAction]}
+          onConfirm={confirmAction}
+          onCancel={() => setPendingAction(null)}
+        />
+      )}
+
+      <div className="space-y-2">
+        <div className="flex flex-wrap gap-2">
+          {showRestart && (
+            <button
+              disabled={isPending}
+              onClick={() => requestAction("restart")}
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg border transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${BUTTON_STYLES.restart}`}
+            >
+              {isPending && pendingAction === "restart" ? <Spinner /> : (
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+              )}
+              Restart
+            </button>
+          )}
+          {showStop && (
+            <button
+              disabled={isPending}
+              onClick={() => requestAction("stop")}
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg border transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${BUTTON_STYLES.stop}`}
+            >
+              {isPending && pendingAction === "stop" ? <Spinner /> : (
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 10h6v4H9z" />
+                </svg>
+              )}
+              Stop
+            </button>
+          )}
+          {showStart && (
+            <button
+              disabled={isPending}
+              onClick={() => requestAction("start")}
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg border transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${BUTTON_STYLES.start}`}
+            >
+              {isPending && pendingAction === "start" ? <Spinner /> : (
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              )}
+              Start
+            </button>
+          )}
+        </div>
+
+        {error && (
+          <p className="text-xs text-red-400">{error}</p>
+        )}
+      </div>
+    </>
+  );
+}
+
+// ── Info row ──────────────────────────────────────────────────────────────────
 
 function InfoRow({ label, value }: { label: string; value: React.ReactNode }) {
   return (
@@ -16,6 +209,8 @@ function InfoRow({ label, value }: { label: string; value: React.ReactNode }) {
     </div>
   );
 }
+
+// ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function ContainerDetail() {
   const { id } = useParams<{ id: string }>();
@@ -63,6 +258,9 @@ export default function ContainerDetail() {
         </div>
         <p className="text-sm text-slate-500 font-mono">{container.image}</p>
       </div>
+
+      {/* Action buttons */}
+      <ActionButtons container={container} />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Stats */}
