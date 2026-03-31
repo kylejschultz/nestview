@@ -1,8 +1,5 @@
-import os
 import httpx
 from datetime import datetime
-
-WEBHOOK_URL = os.getenv("DISCORD_WEBHOOK_URL", "")
 
 EVENT_COLORS = {
     "crash": 0xEF4444,
@@ -26,12 +23,13 @@ EVENT_TITLES = {
 
 
 async def send_alert(
+    webhook_url: str,
     container_name: str,
     event_type: str,
     details: str | None = None,
     timestamp: datetime | None = None,
 ) -> bool:
-    if not WEBHOOK_URL:
+    if not webhook_url:
         return False
 
     ts = timestamp or datetime.utcnow()
@@ -56,10 +54,35 @@ async def send_alert(
 
     try:
         async with httpx.AsyncClient() as client:
-            resp = await client.post(WEBHOOK_URL, json=payload, timeout=10)
+            resp = await client.post(webhook_url, json=payload, timeout=10)
             return resp.status_code in (200, 204)
     except Exception as e:
         # Do not log the exception directly — httpx errors can include the full
         # webhook URL (which is a secret) in the message string.
         print(f"Discord alert failed: {type(e).__name__}")
+        return False
+
+
+async def send_test_embed(webhook_url: str) -> bool:
+    if not webhook_url:
+        return False
+
+    payload = {
+        "embeds": [
+            {
+                "title": "Nestview test",
+                "description": "Your Discord alerts are configured correctly.",
+                "color": 0x22C55E,
+                "footer": {"text": "Nestview"},
+                "timestamp": datetime.utcnow().isoformat(),
+            }
+        ]
+    }
+
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(webhook_url, json=payload, timeout=10)
+            return resp.status_code in (200, 204)
+    except Exception as e:
+        print(f"Discord test alert failed: {type(e).__name__}")
         return False

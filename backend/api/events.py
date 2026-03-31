@@ -9,6 +9,7 @@ from api.auth import verify_collector_key
 from database import get_session
 from models import ContainerAlertSetting, ContainerEvent
 from services import discord
+from services.app_settings import get_setting
 
 router = APIRouter(prefix="/api", tags=["events"])
 
@@ -78,7 +79,9 @@ async def ingest_event(event: EventIn, session: Session = Depends(get_session)):
         if _alert_suppressed(event.container_name, event.event_type, session):
             return {"id": db_event.id}
 
+        webhook_url = get_setting(session, "discord_webhook_url") or ""
         alerted = await discord.send_alert(
+            webhook_url=webhook_url,
             container_name=event.container_name,
             event_type=event.event_type,
             details=event.details,
