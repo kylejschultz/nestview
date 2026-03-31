@@ -7,14 +7,24 @@ export function formatBytes(bytes: number): string {
 }
 
 export function formatUptime(startedAt: string): string {
-  const start = new Date(startedAt).getTime();
-  const now = Date.now();
-  const diff = Math.floor((now - start) / 1000);
+  // Naive UTC strings from the backend have no Z suffix; append one so the
+  // browser parses them as UTC rather than local time.
+  const normalized = /[Z+]/.test(startedAt) ? startedAt : startedAt + "Z";
+  const diff = Math.floor((Date.now() - new Date(normalized).getTime()) / 1000);
 
-  if (diff < 60) return `${diff}s`;
-  if (diff < 3600) return `${Math.floor(diff / 60)}m`;
-  if (diff < 86400) return `${Math.floor(diff / 3600)}h ${Math.floor((diff % 3600) / 60)}m`;
-  return `${Math.floor(diff / 86400)}d ${Math.floor((diff % 86400) / 3600)}h`;
+  if (!Number.isFinite(diff) || diff < 0) return "—";
+
+  const d = Math.floor(diff / 86400);
+  const h = Math.floor((diff % 86400) / 3600);
+  const m = Math.floor((diff % 3600) / 60);
+  const s = diff % 60;
+
+  return [
+    d > 0 ? `${d}d` : "",
+    h > 0 ? `${h}h` : "",
+    m > 0 ? `${m}m` : "",
+    `${s}s`,
+  ].filter(Boolean).join(" ");
 }
 
 export function formatDateTime(iso: string): string {
