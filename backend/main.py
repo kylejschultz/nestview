@@ -5,7 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from database import create_db_and_tables
-from api import containers, logs, events
+from api import containers, logs, events, settings
 from services.cleanup import run_cleanup
 
 
@@ -31,13 +31,14 @@ app = FastAPI(title="Nestview", version="0.1.0", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_methods=["GET", "POST"],
+    allow_methods=["GET", "POST", "PATCH"],
     allow_headers=["*"],
 )
 
 app.include_router(containers.router)
 app.include_router(logs.router)
 app.include_router(events.router)
+app.include_router(settings.router)
 
 
 @app.get("/api/health")

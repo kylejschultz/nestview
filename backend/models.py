@@ -1,6 +1,7 @@
 from datetime import datetime
 from typing import Optional
 
+from sqlalchemy import UniqueConstraint
 from sqlmodel import SQLModel, Field
 
 
@@ -43,3 +44,14 @@ class ContainerEvent(SQLModel, table=True):
     timestamp: datetime = Field(default_factory=datetime.utcnow, index=True)
     details: Optional[str] = None
     alerted: bool = False
+
+
+class ContainerAlertSetting(SQLModel, table=True):
+    __tablename__ = "container_alert_setting"
+    __table_args__ = (UniqueConstraint("container_name", "event_type"),)
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    container_name: str = Field(index=True, max_length=256)
+    # One of: crash, restart, oom
+    event_type: str = Field(max_length=32)
+    enabled: bool = Field(default=True)
