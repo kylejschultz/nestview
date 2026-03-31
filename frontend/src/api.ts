@@ -1,9 +1,19 @@
-import type { Container, ContainerLog, ContainerEvent } from "./types";
+import type { AlertEventType, AlertSetting, Container, ContainerLog, ContainerEvent } from "./types";
 
 const BASE = "/api";
 
 async function get<T>(path: string): Promise<T> {
   const res = await fetch(`${BASE}${path}`);
+  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+  return res.json();
+}
+
+async function patch<T>(path: string, body: unknown): Promise<T> {
+  const res = await fetch(`${BASE}${path}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
   if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
   return res.json();
 }
@@ -33,5 +43,10 @@ export const api = {
       if (containerId) qs.set("container_id", containerId);
       return get<ContainerEvent[]>(`/events?${qs}`);
     },
+  },
+  settings: {
+    alerts: () => get<AlertSetting[]>("/settings/alerts"),
+    setAlert: (container_name: string, event_type: AlertEventType, enabled: boolean) =>
+      patch<AlertSetting>("/settings/alerts", { container_name, event_type, enabled }),
   },
 };

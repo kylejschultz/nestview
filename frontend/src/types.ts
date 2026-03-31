@@ -29,6 +29,15 @@ export interface ContainerLog {
   message: string;
 }
 
+export type AlertEventType = "crash" | "restart" | "oom";
+
+export interface AlertSetting {
+  id: number;
+  container_name: string;
+  event_type: AlertEventType;
+  enabled: boolean;
+}
+
 export interface ContainerEvent {
   id: number;
   container_id: string;

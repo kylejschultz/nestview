@@ -7,6 +7,89 @@ import EventTimeline from "../components/EventTimeline";
 
 type Filter = "all" | "running" | "stopped";
 
+const STORAGE_KEY = "nestview:stack_collapsed";
+
+function loadCollapsed(): Record<string, boolean> {
+  try {
+    return JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "{}");
+  } catch {
+    return {};
+  }
+}
+
+function ChevronRight({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+    </svg>
+  );
+}
+
+interface ComposeGroupProps {
+  project: string;
+  members: Container[];
+}
+
+function ComposeGroup({ project, members }: ComposeGroupProps) {
+  const [collapsed, setCollapsed] = useState<boolean>(() => !!loadCollapsed()[project]);
+
+  function toggle() {
+    setCollapsed((prev) => {
+      const next = !prev;
+      try {
+        const all = loadCollapsed();
+        if (next) {
+          all[project] = true;
+        } else {
+          delete all[project];
+        }
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(all));
+      } catch {}
+      return next;
+    });
+  }
+
+  return (
+    <section>
+      <button
+        onClick={toggle}
+        className="w-full flex items-center gap-2 mb-3 group cursor-pointer"
+        aria-expanded={!collapsed}
+      >
+        <ChevronRight
+          className={`w-3.5 h-3.5 text-slate-500 transition-transform duration-200 ${collapsed ? "" : "rotate-90"}`}
+        />
+        <svg className="w-3.5 h-3.5 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+        </svg>
+        <span className="text-xs font-semibold uppercase tracking-widest text-slate-500 group-hover:text-slate-400 transition-colors">
+          {project}
+        </span>
+        {collapsed && (
+          <span className="text-xs text-slate-600 font-normal normal-case tracking-normal">
+            — {members.length} container{members.length !== 1 ? "s" : ""}
+          </span>
+        )}
+      </button>
+
+      {/* CSS grid-rows trick: animates height without JS measurement */}
+      <div
+        className={`grid transition-[grid-template-rows] duration-200 ease-in-out ${
+          collapsed ? "grid-rows-[0fr]" : "grid-rows-[1fr]"
+        }`}
+      >
+        <div className="overflow-hidden">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 pb-1">
+            {members.map((c) => (
+              <ContainerCard key={c.docker_id} container={c} />
+            ))}
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 export default function Dashboard() {
   const [filter, setFilter] = useState<Filter>("all");
   const [search, setSearch] = useState("");
@@ -92,21 +175,9 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* Compose groups */}
+        {/* Compose groups — each manages its own collapsed state + localStorage */}
         {Object.entries(groups).map(([project, members]) => (
-          <section key={project}>
-            <h2 className="text-xs font-semibold uppercase tracking-widest text-slate-500 mb-3 flex items-center gap-2">
-              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-              </svg>
-              {project}
-            </h2>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              {members.map((c) => (
-                <ContainerCard key={c.docker_id} container={c} />
-              ))}
-            </div>
-          </section>
+          <ComposeGroup key={project} project={project} members={members} />
         ))}
 
         {/* Ungrouped containers */}

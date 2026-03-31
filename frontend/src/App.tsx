@@ -1,6 +1,7 @@
 import { Routes, Route } from "react-router-dom";
 import Dashboard from "./pages/Dashboard";
 import ContainerDetail from "./pages/ContainerDetail";
+import Settings from "./pages/Settings";
 import Header from "./components/Header";
 
 export default function App() {
@@ -11,6 +12,7 @@ export default function App() {
         <Routes>
           <Route path="/" element={<Dashboard />} />
           <Route path="/containers/:id" element={<ContainerDetail />} />
+          <Route path="/settings" element={<Settings />} />
         </Routes>
       </main>
     </div>
