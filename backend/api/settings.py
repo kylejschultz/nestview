@@ -78,8 +78,9 @@ class GeneralSettingsPatch(BaseModel):
         # Allow empty string to clear the webhook
         if v == "":
             return v
-        if not v.startswith("https://discord.com/webhooks/"):
-            raise ValueError("Webhook URL must start with https://discord.com/webhooks/")
+        if not (v.startswith("https://discord.com/webhooks/") or
+                v.startswith("https://discord.com/api/webhooks/")):
+            raise ValueError("Webhook URL must start with https://discord.com/webhooks/ or https://discord.com/api/webhooks/")
         return v
 
     @field_validator("log_retention_days")
@@ -146,9 +147,16 @@ def dismiss_wizard(session: Session = Depends(get_session)) -> dict:
 
 # ── Test webhook ───────────────────────────────────────────────────────────────
 
+class TestWebhookBody(BaseModel):
+    url: str | None = None
+
+
 @router.post("/test-webhook")
-async def test_webhook(session: Session = Depends(get_session)) -> dict:
-    webhook_url = get_setting(session, "discord_webhook_url") or ""
+async def test_webhook(
+    body: TestWebhookBody = TestWebhookBody(),
+    session: Session = Depends(get_session),
+) -> dict:
+    webhook_url = body.url or get_setting(session, "discord_webhook_url") or ""
     if not webhook_url:
         raise HTTPException(status_code=400, detail="No webhook URL configured")
 

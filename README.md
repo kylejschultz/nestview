@@ -12,12 +12,10 @@ Nestview gives you a live health dashboard, searchable log history, and Discord 
 # 1. Copy the example env file
 cp .env.example .env
 
-# 2. (Optional) add your Discord webhook URL to .env
-
-# 3. Start everything
+# 2. Start everything
 docker compose up -d
 
-# 4. Open http://localhost:8080
+# 3. Open http://localhost:8080 — the setup wizard will guide you through Discord alerts
 ```
 
 That's it. Nestview will find all running and stopped containers immediately.
@@ -34,7 +32,6 @@ All configuration lives in `.env` (copy from `.env.example`).
 |---|---|---|
 | `NESTVIEW_PORT` | `8080` | Host port Nestview is exposed on |
 | `NESTVIEW_COLLECTOR_KEY` | _(empty)_ | Optional shared secret to authenticate the collector |
-| `DISCORD_WEBHOOK_URL` | _(empty)_ | Discord webhook for crash/restart/stop alerts. Leave blank to disable. |
 | `LOG_RETENTION_DAYS` | `7` | Days of container logs and events to keep in SQLite |
 | `EXITED_CONTAINER_TTL_HOURS` | `1` | Hours before exited/dead container records are purged from the DB (set to `0` to disable) |
 | `POLL_INTERVAL` | `10` | Seconds between Docker stats polls |
@@ -101,8 +98,7 @@ volumes:
 
 1. In your Discord server, go to **Server Settings → Integrations → Webhooks → New Webhook**
 2. Copy the webhook URL
-3. Add it to `.env`: `DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/...`
-4. Restart: `docker compose up -d`
+3. Open Nestview and paste the URL into the setup wizard (shown on first launch) or **Settings → General**
 
 Nestview sends a formatted embed when a container crashes (non-zero exit), is OOM-killed, or restarts unexpectedly.
 

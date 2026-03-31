@@ -18,7 +18,6 @@ def _seed_settings_from_env():
     Values are only written if the key does not yet exist in the DB.
     """
     seeds = {
-        "discord_webhook_url": os.getenv("DISCORD_WEBHOOK_URL", ""),
         "log_retention_days": os.getenv("LOG_RETENTION_DAYS", "7"),
     }
     with Session(engine) as session:

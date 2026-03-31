@@ -19,7 +19,7 @@ export default function WebhookField({ value, onChange, disabled }: WebhookField
   }
 
   const { mutate: runTest, isPending: isTesting } = useMutation({
-    mutationFn: api.settings.testWebhook,
+    mutationFn: () => api.settings.testWebhook(value),
     onSuccess: (data) => {
       if (data.ok) {
         setTestStatus("ok");

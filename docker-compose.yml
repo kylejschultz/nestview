@@ -7,7 +7,6 @@ services:
     environment:
       - DATABASE_PATH=/data/nestview.db
       - LOG_RETENTION_DAYS=${LOG_RETENTION_DAYS:-7}
-      - DISCORD_WEBHOOK_URL=${DISCORD_WEBHOOK_URL:-}
       - NESTVIEW_COLLECTOR_KEY=${NESTVIEW_COLLECTOR_KEY:-}
     volumes:
       - nestview_data:/data

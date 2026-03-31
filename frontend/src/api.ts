@@ -18,11 +18,14 @@ async function patch<T>(path: string, body: unknown): Promise<T> {
   return res.json();
 }
 
-async function post<T>(path: string): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, { method: "POST" });
+async function post<T>(path: string, body?: unknown): Promise<T> {
+  const res = await fetch(`${BASE}${path}`, {
+    method: "POST",
+    ...(body !== undefined ? { headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) } : {}),
+  });
   if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    throw new Error((body as { detail?: string }).detail ?? `${res.status} ${res.statusText}`);
+    const resBody = await res.json().catch(() => ({}));
+    throw new Error((resBody as { detail?: string }).detail ?? `${res.status} ${res.statusText}`);
   }
   return res.json();
 }
@@ -63,7 +66,7 @@ export const api = {
     general: () => get<GeneralSettings>("/settings/general"),
     saveGeneral: (body: Partial<GeneralSettings>) =>
       patch<GeneralSettings>("/settings/general", body),
-    testWebhook: () => post<{ ok: boolean; error?: string }>("/settings/test-webhook"),
+    testWebhook: (url?: string) => post<{ ok: boolean; error?: string }>("/settings/test-webhook", url !== undefined ? { url } : undefined),
     wizard: () => get<WizardStatus>("/settings/wizard"),
     dismissWizard: () => post<{ ok: boolean }>("/settings/wizard/dismiss"),
   },
