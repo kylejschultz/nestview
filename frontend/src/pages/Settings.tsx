@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
 import type { AlertEventType, AlertSetting, Container, GeneralSettings } from "../types";
 import WebhookField from "../components/WebhookField";
+import TimezoneSelect from "../components/TimezoneSelect";
 
 // ── Toggle ────────────────────────────────────────────────────────────────────
 
@@ -214,12 +215,10 @@ function GeneralTab() {
             IANA timezone name — controls all timestamps in the UI.
           </p>
         </div>
-        <input
-          type="text"
-          placeholder="e.g. America/New_York"
+        <TimezoneSelect
           value={timezone}
-          onChange={(e) => setTimezoneDraft(e.target.value)}
-          className="w-64 bg-surface-3 border border-border rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-accent"
+          onChange={setTimezoneDraft}
+          disabled={isSaving}
         />
         <div className="flex items-center gap-3">
           <button
