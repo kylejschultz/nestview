@@ -1,0 +1,46 @@
+version: "3.9"
+
+services:
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    environment:
+      - DATABASE_PATH=/data/nestview.db
+      - LOG_RETENTION_DAYS=${LOG_RETENTION_DAYS:-7}
+      - DISCORD_WEBHOOK_URL=${DISCORD_WEBHOOK_URL:-}
+      - NESTVIEW_COLLECTOR_KEY=${NESTVIEW_COLLECTOR_KEY:-}
+    volumes:
+      - nestview_data:/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+
+  collector:
+    build: ./collector
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    environment:
+      - BACKEND_URL=http://backend:8000
+      - POLL_INTERVAL=${POLL_INTERVAL:-10}
+      - LOG_BATCH_INTERVAL=${LOG_BATCH_INTERVAL:-5}
+      - NESTVIEW_COLLECTOR_KEY=${NESTVIEW_COLLECTOR_KEY:-}
+    volumes:
+      # Read-only access to the Docker socket
+      # macOS: Docker Desktop exposes /var/run/docker.sock via the VM — this works as-is.
+      # If using Colima or OrbStack, socket path is the same.
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+
+  frontend:
+    build: ./frontend
+    restart: unless-stopped
+    ports:
+      - "${NESTVIEW_PORT:-8080}:80"
+    depends_on:
+      - backend
+
+volumes:
+  nestview_data:
