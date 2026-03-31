@@ -24,9 +24,17 @@ function logLevel(msg: string): string {
   const lower = msg.toLowerCase();
   if (lower.includes("error") || lower.includes("fatal") || lower.includes("critical")) return "text-red-400";
   if (lower.includes("warn")) return "text-yellow-400";
+  if (lower.includes("info")) return "text-sky-400";
   if (lower.includes("debug") || lower.includes("trace")) return "text-slate-500";
   return "text-slate-300";
 }
+
+const LEGEND = [
+  { color: "bg-red-400",    label: "ERROR" },
+  { color: "bg-yellow-400", label: "WARN" },
+  { color: "bg-sky-400",    label: "INFO" },
+  { color: "bg-slate-500",  label: "DEBUG" },
+] as const;
 
 export default function LogViewer({ dockerId }: Props) {
   const [search, setSearch] = useState("");
@@ -57,9 +65,9 @@ export default function LogViewer({ dockerId }: Props) {
 
   return (
     <div className="card flex flex-col h-[520px]">
-      <div className="flex items-center gap-3 px-4 py-3 border-b border-border">
+      <div className="flex flex-wrap items-center gap-3 px-4 py-3 border-b border-border">
         <span className="text-sm font-medium text-slate-300">Logs</span>
-        <div className="flex-1 relative">
+        <div className="flex-1 relative min-w-[140px]">
           <input
             type="text"
             value={search}
@@ -76,9 +84,20 @@ export default function LogViewer({ dockerId }: Props) {
             </button>
           )}
         </div>
+
+        {/* Severity legend */}
+        <div className="flex items-center gap-2.5" aria-label="Log severity legend">
+          {LEGEND.map(({ color, label }) => (
+            <span key={label} className="flex items-center gap-1">
+              <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${color}`} />
+              <span className="text-xs text-slate-600">{label}</span>
+            </span>
+          ))}
+        </div>
+
         <button
           onClick={() => setAutoScroll((v) => !v)}
-          className={`text-xs px-2 py-1 rounded border transition-colors ${
+          className={`text-xs px-2 py-1 rounded border transition-colors shrink-0 ${
             autoScroll
               ? "border-accent text-accent"
               : "border-border text-slate-500 hover:border-slate-500"
