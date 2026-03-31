@@ -3,8 +3,8 @@ from datetime import datetime, timedelta
 
 from sqlmodel import Session, select, delete
 
-from backend.database import engine
-from backend.models import ContainerLog, ContainerEvent
+from database import engine
+from models import ContainerLog, ContainerEvent
 
 LOG_RETENTION_DAYS = int(os.getenv("LOG_RETENTION_DAYS", "7"))
 

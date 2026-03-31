@@ -5,10 +5,10 @@ from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
 from sqlmodel import Session, select
 
-from backend.api.auth import verify_collector_key
-from backend.database import get_session
-from backend.models import ContainerEvent
-from backend.services import discord
+from api.auth import verify_collector_key
+from database import get_session
+from models import ContainerEvent
+from services import discord
 
 router = APIRouter(prefix="/api", tags=["events"])
 

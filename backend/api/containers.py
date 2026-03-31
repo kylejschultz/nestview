@@ -6,9 +6,9 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, field_validator
 from sqlmodel import Session, select
 
-from backend.api.auth import verify_collector_key
-from backend.database import get_session
-from backend.models import Container
+from api.auth import verify_collector_key
+from database import get_session
+from models import Container
 
 router = APIRouter(prefix="/api/containers", tags=["containers"])
 

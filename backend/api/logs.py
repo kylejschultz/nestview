@@ -5,9 +5,9 @@ from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field, field_validator
 from sqlmodel import Session, select
 
-from backend.api.auth import verify_collector_key
-from backend.database import get_session
-from backend.models import ContainerLog
+from api.auth import verify_collector_key
+from database import get_session
+from models import ContainerLog
 
 router = APIRouter(prefix="/api", tags=["logs"])
 

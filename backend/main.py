@@ -4,9 +4,9 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from backend.database import create_db_and_tables
-from backend.api import containers, logs, events
-from backend.services.cleanup import run_cleanup
+from database import create_db_and_tables
+from api import containers, logs, events
+from services.cleanup import run_cleanup
 
 
 @asynccontextmanager
