@@ -9,6 +9,8 @@ interface Props {
   dockerId: string;
 }
 
+type LogLevel = "error" | "warn" | "info" | "debug" | "default";
+
 function highlight(text: string, search: string): React.ReactNode {
   if (!search) return text;
   const idx = text.toLowerCase().indexOf(search.toLowerCase());
@@ -22,27 +24,47 @@ function highlight(text: string, search: string): React.ReactNode {
   );
 }
 
-function logLevel(msg: string): string {
+function logLevel(msg: string): LogLevel {
   const lower = msg.toLowerCase();
-  if (lower.includes("error") || lower.includes("fatal") || lower.includes("critical")) return "text-red-400";
-  if (lower.includes("warn")) return "text-yellow-400";
-  if (lower.includes("info")) return "text-sky-400";
-  if (lower.includes("debug") || lower.includes("trace")) return "text-slate-500";
-  return "text-slate-300";
+  if (lower.includes("error") || lower.includes("fatal") || lower.includes("critical")) return "error";
+  if (lower.includes("warn")) return "warn";
+  if (lower.includes("info")) return "info";
+  if (lower.includes("debug") || lower.includes("trace")) return "debug";
+  return "default";
 }
 
-const LEGEND = [
-  { color: "bg-red-400",    label: "ERROR" },
-  { color: "bg-yellow-400", label: "WARN" },
-  { color: "bg-sky-400",    label: "INFO" },
-  { color: "bg-slate-500",  label: "DEBUG" },
-] as const;
+const LEVEL_ROW_CLASSES: Record<LogLevel, string> = {
+  error:   "bg-red-950/40 border-l-2 border-red-500",
+  warn:    "bg-yellow-950/40 border-l-2 border-yellow-500",
+  info:    "bg-sky-950/30 border-l-2 border-sky-500",
+  debug:   "bg-slate-800/30 border-l-2 border-slate-600",
+  default: "",
+};
+
+const LEVEL_TEXT_CLASSES: Record<LogLevel, string> = {
+  error:   "text-red-400",
+  warn:    "text-yellow-400",
+  info:    "text-sky-400",
+  debug:   "text-slate-500",
+  default: "text-slate-300",
+};
+
+type FilterLevel = "ALL" | "ERROR" | "WARN" | "INFO" | "DEBUG";
+
+const FILTER_BUTTONS: { label: FilterLevel; level: LogLevel | null; activeClasses: string }[] = [
+  { label: "ALL",   level: null,    activeClasses: "border-slate-400 text-slate-200 bg-slate-700/50" },
+  { label: "ERROR", level: "error", activeClasses: "border-red-500 text-red-400 bg-red-950/50" },
+  { label: "WARN",  level: "warn",  activeClasses: "border-yellow-500 text-yellow-400 bg-yellow-950/50" },
+  { label: "INFO",  level: "info",  activeClasses: "border-sky-500 text-sky-400 bg-sky-950/50" },
+  { label: "DEBUG", level: "debug", activeClasses: "border-slate-500 text-slate-400 bg-slate-800/50" },
+];
 
 export default function LogViewer({ dockerId }: Props) {
   const tz = useTimezone();
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [autoScroll, setAutoScroll] = useState(true);
+  const [levelFilter, setLevelFilter] = useState<FilterLevel>("ALL");
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -66,6 +88,10 @@ export default function LogViewer({ dockerId }: Props) {
     }
   }, [logs, autoScroll]);
 
+  const visibleLogs = levelFilter === "ALL"
+    ? logs
+    : logs.filter((log) => logLevel(log.message) === levelFilter.toLowerCase());
+
   return (
     <div className="card flex flex-col h-[520px]">
       <div className="flex flex-wrap items-center gap-3 px-4 py-3 border-b border-border">
@@ -88,13 +114,20 @@ export default function LogViewer({ dockerId }: Props) {
           )}
         </div>
 
-        {/* Severity legend */}
-        <div className="flex items-center gap-2.5" aria-label="Log severity legend">
-          {LEGEND.map(({ color, label }) => (
-            <span key={label} className="flex items-center gap-1">
-              <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${color}`} />
-              <span className="text-xs text-slate-600">{label}</span>
-            </span>
+        {/* Level filter buttons */}
+        <div className="flex items-center gap-1.5">
+          {FILTER_BUTTONS.map(({ label, activeClasses }) => (
+            <button
+              key={label}
+              onClick={() => setLevelFilter(label)}
+              className={`text-xs px-2 py-1 rounded border transition-colors shrink-0 ${
+                levelFilter === label
+                  ? activeClasses
+                  : "border-border text-slate-600 hover:border-slate-500 hover:text-slate-400"
+              }`}
+            >
+              {label}
+            </button>
           ))}
         </div>
 
@@ -114,21 +147,27 @@ export default function LogViewer({ dockerId }: Props) {
         {isLoading && (
           <p className="text-slate-500 text-center py-8">Loading logs…</p>
         )}
-        {!isLoading && logs.length === 0 && (
+        {!isLoading && visibleLogs.length === 0 && (
           <p className="text-slate-500 text-center py-8">
-            {search ? "No logs match your search." : "No logs collected yet."}
+            {search || levelFilter !== "ALL" ? "No logs match your filter." : "No logs collected yet."}
           </p>
         )}
-        {logs.map((log) => (
-          <div key={log.id} className="flex gap-3 hover:bg-surface-2 px-1 rounded group">
-            <span className="text-slate-600 shrink-0 select-none">
-              {formatDateTime(log.timestamp, tz)}
-            </span>
-            <span className={`break-all ${logLevel(log.message)}`}>
-              {highlight(log.message, debouncedSearch)}
-            </span>
-          </div>
-        ))}
+        {visibleLogs.map((log) => {
+          const level = logLevel(log.message);
+          return (
+            <div
+              key={log.id}
+              className={`flex gap-3 hover:brightness-125 px-1 rounded group ${LEVEL_ROW_CLASSES[level]}`}
+            >
+              <span className="text-slate-600 shrink-0 select-none">
+                {formatDateTime(log.timestamp, tz)}
+              </span>
+              <span className={`break-all ${LEVEL_TEXT_CLASSES[level]}`}>
+                {highlight(log.message, debouncedSearch)}
+              </span>
+            </div>
+          );
+        })}
         <div ref={bottomRef} />
       </div>
     </div>
