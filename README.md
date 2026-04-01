@@ -1,4 +1,8 @@
-# Nestview
+<p align="center">
+  <img src="landing/assets/nestview-wordmark.svg" alt="Nestview" height="60">
+</p>
+
+<br>
 
 **Lightweight, self-hosted Docker visibility for homelabbers.**
 
