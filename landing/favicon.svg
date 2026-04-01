@@ -1,0 +1,9 @@
+<svg viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <g id="rings" fill="none">
+    <circle cx="256" cy="256" r="158" stroke="#252a3a" stroke-width="20"/>
+    <circle cx="256" cy="256" r="118" stroke="#2e3347" stroke-width="18"/>
+    <circle cx="256" cy="256" r="82"  stroke="#4b4f6e" stroke-width="14"/>
+    <circle cx="256" cy="256" r="50"  stroke="#6366f1" stroke-width="12"/>
+  </g>
+  <circle cx="256" cy="256" r="22" fill="#6366f1"/>
+</svg>
