@@ -324,18 +324,6 @@ export default function ContainerDetail() {
               }
             />
           )}
-          {container.ports.length > 0 && (
-            <InfoRow
-              label="Ports"
-              value={
-                <div className="flex flex-wrap gap-1">
-                  {container.ports.map((p) => (
-                    <span key={p} className="badge bg-surface-3 text-slate-300 border border-border">{p}</span>
-                  ))}
-                </div>
-              }
-            />
-          )}
           {container.networks.length > 0 && (
             <InfoRow
               label="Networks"
