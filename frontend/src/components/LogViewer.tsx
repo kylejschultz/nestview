@@ -63,7 +63,8 @@ export default function LogViewer({ dockerId }: Props) {
   const tz = useTimezone();
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
-  const [autoScroll, setAutoScroll] = useState(true);
+  const [sortOrder, setSortOrder] = useState<"desc" | "asc">("desc");
+  const [autoScroll, setAutoScroll] = useState(false);
   const [levelFilter, setLevelFilter] = useState<FilterLevel>("ALL");
   const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -88,9 +89,13 @@ export default function LogViewer({ dockerId }: Props) {
     }
   }, [logs, autoScroll]);
 
-  const visibleLogs = levelFilter === "ALL"
+  const visibleLogs = (levelFilter === "ALL"
     ? logs
-    : logs.filter((log) => logLevel(log.message) === levelFilter.toLowerCase());
+    : logs.filter((log) => logLevel(log.message) === levelFilter.toLowerCase())
+  ).slice().sort((a, b) => {
+    const cmp = a.timestamp < b.timestamp ? -1 : a.timestamp > b.timestamp ? 1 : 0;
+    return sortOrder === "desc" ? -cmp : cmp;
+  });
 
   return (
     <div className="card flex flex-col h-[520px]">
@@ -132,15 +137,28 @@ export default function LogViewer({ dockerId }: Props) {
         </div>
 
         <button
-          onClick={() => setAutoScroll((v) => !v)}
-          className={`text-xs px-2 py-1 rounded border transition-colors shrink-0 ${
-            autoScroll
-              ? "border-accent text-accent"
-              : "border-border text-slate-500 hover:border-slate-500"
-          }`}
+          onClick={() => {
+            const next = sortOrder === "desc" ? "asc" : "desc";
+            setSortOrder(next);
+            setAutoScroll(next === "asc");
+          }}
+          className="text-xs px-2 py-1 rounded border border-border text-slate-400 hover:border-slate-500 hover:text-slate-200 transition-colors shrink-0"
         >
-          Auto-scroll
+          {sortOrder === "desc" ? "↓ Newest first" : "↑ Oldest first"}
         </button>
+
+        {sortOrder === "asc" && (
+          <button
+            onClick={() => setAutoScroll((v) => !v)}
+            className={`text-xs px-2 py-1 rounded border transition-colors shrink-0 ${
+              autoScroll
+                ? "border-accent text-accent"
+                : "border-border text-slate-500 hover:border-slate-500"
+            }`}
+          >
+            Auto-scroll
+          </button>
+        )}
       </div>
 
       <div className="flex-1 overflow-y-auto px-4 py-3 font-mono text-xs space-y-0.5">
