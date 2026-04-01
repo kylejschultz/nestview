@@ -42,7 +42,7 @@
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding: 1rem 2rem;
+      padding: 1rem 3rem;
       border-bottom: 1px solid var(--border);
       position: sticky;
       top: 0;
@@ -75,25 +75,11 @@
 
     /* ── Hero ── */
     .hero {
-      max-width: 780px;
+      max-width: 960px;
       margin: 0 auto;
-      padding: 7rem 2rem 5rem;
+      padding: 5rem 2rem 3rem;
       text-align: center;
     }
-
-    .hero-badge {
-      display: inline-flex;
-      align-items: center;
-      gap: .4rem;
-      border: 1px solid var(--border);
-      background: var(--surface);
-      padding: .3rem .9rem;
-      border-radius: 999px;
-      font-size: .78rem;
-      color: var(--muted);
-      margin-bottom: 1.8rem;
-    }
-    .hero-badge span { color: var(--green); font-size: .6rem; }
 
     h1 {
       font-size: clamp(2.2rem, 5vw, 3.4rem);
@@ -154,7 +140,7 @@
     /* ── Terminal mockup ── */
     .terminal-wrap {
       max-width: 680px;
-      margin: 4rem auto 0;
+      margin: 1.5rem auto 0;
       padding: 0 2rem;
     }
 
@@ -191,7 +177,7 @@
 
     /* ── Features ── */
     .section {
-      max-width: 1080px;
+      max-width: 1200px;
       margin: 0 auto;
       padding: 5rem 2rem;
     }
@@ -265,7 +251,7 @@
 
     /* ── Comparison ── */
     .comparison {
-      max-width: 860px;
+      max-width: 1100px;
       margin: 0 auto;
       padding: 5rem 2rem;
     }
@@ -298,7 +284,7 @@
 
     /* ── CTA section ── */
     .cta-section {
-      max-width: 640px;
+      max-width: 760px;
       margin: 0 auto;
       padding: 6rem 2rem 8rem;
       text-align: center;
@@ -371,22 +357,19 @@
     </svg>
     Nestview
   </div>
-  <a href="https://schultzkyle.gumroad.com/l/nestview?wanted=true" class="cta-small">Buy Nestview — $12</a>
+  <a href="https://schultzkyle.gumroad.com/l/nestview?wanted=true" class="cta-small">Get Nestview</a>
 </nav>
 
 <!-- Hero -->
 <section class="hero">
-  <div class="hero-badge">
-    <span>●</span> Self-hosted · No cloud required
-  </div>
-  <h1>Docker visibility for your homelab.</h1>
+  <h1>Docker visibility for your homelab.<br><em>Everything you need, nothing you don't.</em></h1>
   <p>See every container, get alerted when things break, and search your logs.</p>
   <div class="hero-actions">
     <a href="https://schultzkyle.gumroad.com/l/nestview?wanted=true" class="btn-primary">
       <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
         <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
       </svg>
-      Buy Nestview — $12
+      Get Nestview
     </a>
 
   </div>
@@ -534,10 +517,10 @@
         <td>InfluxDB / Loki</td>
       </tr>
       <tr>
-        <td>Price</td>
-        <td class="nestview-col">$12 one-time</td>
-        <td>Free / $</td>
-        <td>Free (complex)</td>
+        <td>Deploy method</td>
+        <td class="chk nestview-col"><code>docker compose up</code></td>
+        <td>installer / agent</td>
+        <td>multi-service stack</td>
       </tr>
     </tbody>
   </table>
