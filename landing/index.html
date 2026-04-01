@@ -597,14 +597,24 @@ a.gumroad-button::after {
 </footer>
 
 <script>
-  function removeGumroadLogo() {
-    document.querySelectorAll('.gumroad-button-logo').forEach(el => el.remove());
+  function stripGumroad() {
+    document.querySelectorAll('.gumroad-button-logo, .gumroad-button img, a.gumroad-button span').forEach(el => el.remove());
+    document.querySelectorAll('a.gumroad-button').forEach(el => {
+      el.childNodes.forEach(node => {
+        if (node.nodeType === Node.ELEMENT_NODE && node.tagName !== 'SPAN') node.remove();
+        if (node.nodeType === Node.TEXT_NODE) return;
+      });
+    });
   }
-  // Run on load and after a short delay to catch late injection
-  document.addEventListener('DOMContentLoaded', removeGumroadLogo);
-  window.addEventListener('load', removeGumroadLogo);
-  setTimeout(removeGumroadLogo, 500);
-  setTimeout(removeGumroadLogo, 1500);
+
+  const observer = new MutationObserver(stripGumroad);
+  observer.observe(document.body, { childList: true, subtree: true });
+
+  document.addEventListener('DOMContentLoaded', stripGumroad);
+  window.addEventListener('load', stripGumroad);
+  setTimeout(stripGumroad, 500);
+  setTimeout(stripGumroad, 1500);
+  setTimeout(stripGumroad, 3000);
 </script>
 </body>
 </html>
