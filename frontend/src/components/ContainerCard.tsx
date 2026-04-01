@@ -51,9 +51,6 @@ export default function ContainerCard({ container: c }: Props) {
             {c.compose_project}
           </span>
         )}
-        {c.ports.length > 0 && (
-          <span className="font-mono">{c.ports[0]}{c.ports.length > 1 ? ` +${c.ports.length - 1}` : ""}</span>
-        )}
       </div>
     </Link>
   );
