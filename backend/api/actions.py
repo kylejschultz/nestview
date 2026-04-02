@@ -5,6 +5,7 @@ import docker.errors
 from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import Session, select
 
+from api.auth import verify_api_key
 from database import get_session
 from models import Container
 
@@ -29,17 +30,17 @@ def _get_db_container(docker_id: str, session: Session) -> Container:
     return container
 
 
-@router.post("/{docker_id}/stop")
+@router.post("/{docker_id}/stop", dependencies=[Depends(verify_api_key)])
 def stop_container(docker_id: str, session: Session = Depends(get_session)):
     return _run_action(docker_id, "stop", session)
 
 
-@router.post("/{docker_id}/restart")
+@router.post("/{docker_id}/restart", dependencies=[Depends(verify_api_key)])
 def restart_container(docker_id: str, session: Session = Depends(get_session)):
     return _run_action(docker_id, "restart", session)
 
 
-@router.post("/{docker_id}/start")
+@router.post("/{docker_id}/start", dependencies=[Depends(verify_api_key)])
 def start_container(docker_id: str, session: Session = Depends(get_session)):
     return _run_action(docker_id, "start", session)
 
