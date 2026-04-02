@@ -167,7 +167,7 @@ BACKEND_URL=http://localhost:8000 python main.py
 
 ## License
 
-[Don't Be a Dick Public License](./LICENSE) — free to use, modify, and self-host. Just don't be a dick about it.
+[GNU General Public License v3.0](./LICENSE) — free to use, modify, and self-host. If you distribute modified versions, you must release them under the same license.
 
 ## Community & support
 
