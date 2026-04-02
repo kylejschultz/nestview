@@ -1,4 +1,4 @@
-from typing import List
+from typing import Dict, List
 from zoneinfo import available_timezones
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field, field_validator
 from sqlmodel import Session, select
 
 from database import get_session
-from models import ContainerAlertSetting
+from models import AppSetting, ContainerAlertSetting
 from services.app_settings import get_setting, set_setting
 from services import discord
 
@@ -17,6 +17,9 @@ router = APIRouter(prefix="/api/settings", tags=["settings"])
 ALERT_EVENT_TYPES = ("crash", "restart", "oom")
 
 _DEFAULT_LOG_RETENTION_DAYS = 7
+_DEFAULT_EXITED_CONTAINER_TTL_HOURS = 0.083
+
+_NUMERIC_SETTING_KEYS = {"log_retention_days", "exited_container_ttl_hours"}
 
 
 # ── Alert settings ─────────────────────────────────────────────────────────────
@@ -65,11 +68,37 @@ def patch_alert_setting(
     return existing.dict()
 
 
+# ── Generic key-value settings ────────────────────────────────────────────────
+
+@router.get("")
+def get_all_settings(session: Session = Depends(get_session)) -> Dict[str, str]:
+    rows = session.exec(select(AppSetting)).all()
+    return {row.key: row.value for row in rows}
+
+
+@router.patch("")
+def patch_settings(
+    payload: Dict[str, str],
+    session: Session = Depends(get_session),
+) -> Dict[str, str]:
+    for key, value in payload.items():
+        if key in _NUMERIC_SETTING_KEYS:
+            try:
+                float(value)
+            except (ValueError, TypeError):
+                raise HTTPException(status_code=422, detail=f"'{key}' must be a valid number")
+        set_setting(session, key, value)
+    session.commit()
+    rows = session.exec(select(AppSetting)).all()
+    return {row.key: row.value for row in rows}
+
+
 # ── General settings ───────────────────────────────────────────────────────────
 
 class GeneralSettingsPatch(BaseModel):
     discord_webhook_url: str | None = None
     log_retention_days: int | None = None
+    exited_container_ttl_hours: float | None = None
     timezone: str | None = None
 
     @field_validator("timezone")
@@ -103,16 +132,28 @@ class GeneralSettingsPatch(BaseModel):
             raise ValueError("log_retention_days must be between 1 and 365")
         return v
 
+    @field_validator("exited_container_ttl_hours")
+    @classmethod
+    def validate_ttl(cls, v: float | None) -> float | None:
+        if v is None:
+            return v
+        if v < 0:
+            raise ValueError("exited_container_ttl_hours must be >= 0")
+        return v
+
 
 @router.get("/general")
 def get_general_settings(session: Session = Depends(get_session)) -> dict:
     webhook = get_setting(session, "discord_webhook_url") or ""
     retention_str = get_setting(session, "log_retention_days")
     retention = int(retention_str) if retention_str else _DEFAULT_LOG_RETENTION_DAYS
+    ttl_str = get_setting(session, "exited_container_ttl_hours")
+    ttl = float(ttl_str) if ttl_str else _DEFAULT_EXITED_CONTAINER_TTL_HOURS
     timezone = get_setting(session, "timezone") or "UTC"
     return {
         "discord_webhook_url": webhook,
         "log_retention_days": retention,
+        "exited_container_ttl_hours": ttl,
         "timezone": timezone,
     }
 
@@ -126,6 +167,8 @@ def patch_general_settings(
         set_setting(session, "discord_webhook_url", payload.discord_webhook_url)
     if payload.log_retention_days is not None:
         set_setting(session, "log_retention_days", str(payload.log_retention_days))
+    if payload.exited_container_ttl_hours is not None:
+        set_setting(session, "exited_container_ttl_hours", str(payload.exited_container_ttl_hours))
     if payload.timezone is not None:
         set_setting(session, "timezone", payload.timezone)
     session.commit()
@@ -134,10 +177,13 @@ def patch_general_settings(
     webhook = get_setting(session, "discord_webhook_url") or ""
     retention_str = get_setting(session, "log_retention_days")
     retention = int(retention_str) if retention_str else _DEFAULT_LOG_RETENTION_DAYS
+    ttl_str = get_setting(session, "exited_container_ttl_hours")
+    ttl = float(ttl_str) if ttl_str else _DEFAULT_EXITED_CONTAINER_TTL_HOURS
     timezone = get_setting(session, "timezone") or "UTC"
     return {
         "discord_webhook_url": webhook,
         "log_retention_days": retention,
+        "exited_container_ttl_hours": ttl,
         "timezone": timezone,
     }
 
