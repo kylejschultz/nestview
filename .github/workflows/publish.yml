@@ -40,7 +40,8 @@ jobs:
         run: |
           docker build --platform ${{ matrix.platform }} \
             -t ghcr.io/kylejschultz/nestview-backend:sha-${{ steps.sha.outputs.short }}-${{ matrix.suffix }} \
-            ./backend
+            -f backend/Dockerfile \
+            .
           docker push ghcr.io/kylejschultz/nestview-backend:sha-${{ steps.sha.outputs.short }}-${{ matrix.suffix }}
 
       - name: Build and push frontend
