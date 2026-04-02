@@ -208,6 +208,20 @@ Common types: `feat`, `fix`, `chore`, `docs`, `refactor`, `test`, `style`.
 
 ---
 
+## Workflow
+
+After completing any task:
+1. Commit all changes using conventional commit format (see Git Conventions above)
+2. Push to `dev`
+3. Open a PR from `dev` to `main` using the GitHub CLI:
+   ```
+   gh pr create --base main --title "<descriptive title>" --body "<brief summary of what was done>"
+   ```
+
+Never push directly to `main`. All work happens on `dev` and goes to `main` via PR.
+
+---
+
 ## Common Pitfalls
 
 - **Schema changes** are not auto-migrated. Drop the volume and restart, or write raw SQL.

@@ -1,0 +1,41 @@
+name: Publish (dev)
+
+on:
+  push:
+    branches: [dev]
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-24.04-arm
+    strategy:
+      matrix:
+        include:
+          - service: backend
+            image: ghcr.io/kylejschultz/nestview-backend
+            context: ./backend
+          - service: frontend
+            image: ghcr.io/kylejschultz/nestview-frontend
+            context: ./frontend
+          - service: collector
+            image: ghcr.io/kylejschultz/nestview-collector
+            context: ./collector
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        run: |
+          docker build --platform linux/arm64 -t ${{ matrix.image }}:dev ${{ matrix.context }}
+          docker push ${{ matrix.image }}:dev
