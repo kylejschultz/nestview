@@ -97,10 +97,12 @@ function GeneralTab() {
 
   const [webhookDraft, setWebhookDraft] = useState<string | null>(null);
   const [retentionDraft, setRetentionDraft] = useState<string | null>(null);
+  const [ttlDraft, setTtlDraft] = useState<string | null>(null);
   const [timezoneDraft, setTimezoneDraft] = useState<string | null>(null);
 
   const webhook = webhookDraft ?? general?.discord_webhook_url ?? "";
   const retention = retentionDraft ?? String(general?.log_retention_days ?? 7);
+  const ttl = ttlDraft ?? String(general?.exited_container_ttl_hours ?? 0.083);
   const timezone = timezoneDraft ?? general?.timezone ?? "UTC";
 
   const [webhookSaved, setWebhookSaved] = useState(false);
@@ -120,8 +122,9 @@ function GeneralTab() {
         setWebhookError(null);
         setTimeout(() => setWebhookSaved(false), 3_000);
       }
-      if ("log_retention_days" in variables) {
+      if ("log_retention_days" in variables || "exited_container_ttl_hours" in variables) {
         setRetentionDraft(null);
+        setTtlDraft(null);
         setRetentionSaved(true);
         setRetentionError(null);
         setTimeout(() => setRetentionSaved(false), 3_000);
@@ -135,7 +138,7 @@ function GeneralTab() {
     },
     onError: (err: Error, variables) => {
       if ("discord_webhook_url" in variables) setWebhookError(err.message);
-      if ("log_retention_days" in variables) setRetentionError(err.message);
+      if ("log_retention_days" in variables || "exited_container_ttl_hours" in variables) setRetentionError(err.message);
       if ("timezone" in variables) setTimezoneError(err.message);
     },
   });
@@ -146,6 +149,8 @@ function GeneralTab() {
 
   const retentionNum = parseInt(retention, 10);
   const retentionValid = !isNaN(retentionNum) && retentionNum >= 1 && retentionNum <= 365;
+  const ttlNum = parseFloat(ttl);
+  const ttlValid = !isNaN(ttlNum) && ttlNum >= 0;
 
   return (
     <div className="space-y-8">
@@ -175,29 +180,52 @@ function GeneralTab() {
         </div>
       </section>
 
-      {/* Log retention */}
+      {/* Data & Retention */}
       <section className="card p-5 space-y-4">
         <div>
-          <h2 className="text-sm font-semibold text-slate-200">Log Retention</h2>
+          <h2 className="text-sm font-semibold text-slate-200">Data & Retention</h2>
           <p className="text-xs text-slate-500 mt-1">
-            Logs and events older than this are deleted during the hourly cleanup job.
+            Logs and events older than the retention period are deleted during the hourly cleanup job.
           </p>
         </div>
-        <div className="flex items-center gap-3">
-          <input
-            type="number"
-            min={1}
-            max={365}
-            value={retention}
-            onChange={(e) => setRetentionDraft(e.target.value)}
-            className="w-24 bg-surface-3 border border-border rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-accent"
-          />
-          <span className="text-sm text-slate-500">days</span>
+        <div className="space-y-4">
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-slate-400">Log retention (days)</label>
+            <div className="flex items-center gap-3">
+              <input
+                type="number"
+                min={1}
+                max={365}
+                value={retention}
+                onChange={(e) => setRetentionDraft(e.target.value)}
+                className="w-24 bg-surface-3 border border-border rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-accent"
+              />
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-slate-400">Exited container TTL (hours)</label>
+            <div className="flex items-center gap-3">
+              <input
+                type="number"
+                min={0}
+                step={0.001}
+                value={ttl}
+                onChange={(e) => setTtlDraft(e.target.value)}
+                className="w-24 bg-surface-3 border border-border rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-accent"
+              />
+              <span className="text-xs text-slate-500">Set to 0 to disable</span>
+            </div>
+          </div>
         </div>
         <div className="flex items-center gap-3">
           <button
-            disabled={isSaving || retentionDraft === null || !retentionValid}
-            onClick={() => save({ log_retention_days: retentionNum })}
+            disabled={isSaving || (retentionDraft === null && ttlDraft === null) || !retentionValid || !ttlValid}
+            onClick={() => {
+              const body: Partial<GeneralSettings> = {};
+              if (retentionDraft !== null) body.log_retention_days = retentionNum;
+              if (ttlDraft !== null) body.exited_container_ttl_hours = ttlNum;
+              save(body);
+            }}
             className="px-4 py-2 text-sm rounded-lg bg-accent hover:bg-accent-hover text-white font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
           >
             Save
