@@ -21,6 +21,12 @@ export default function Header() {
     queryKey: ["containers"],
     queryFn: api.containers.list,
   });
+  const { data: versionData } = useQuery({
+    queryKey: ["version"],
+    queryFn: api.version,
+    staleTime: Infinity,
+    retry: false,
+  });
 
   const total = data?.length ?? 0;
   const running = data?.filter((c) => c.state === "running").length ?? 0;
@@ -48,6 +54,11 @@ export default function Header() {
 
         <div className="flex items-center gap-4">
           <StatusDot running={running} total={total} />
+          {versionData && (
+            <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-accent/10 text-accent border border-accent/30">
+              v{versionData.version}
+            </span>
+          )}
 
           <Link
             to="/settings"

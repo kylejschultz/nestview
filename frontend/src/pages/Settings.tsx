@@ -85,6 +85,70 @@ function ContainerRow({ container: c, disabledSet, onToggle, isPending }: Contai
   );
 }
 
+// ── About & Support ───────────────────────────────────────────────────────────
+
+function AboutSection({ version }: { version?: string }) {
+  return (
+    <section className="card p-5 space-y-4">
+      <div className="flex items-center justify-between">
+        <h2 className="text-sm font-semibold text-slate-200">About &amp; Support</h2>
+        {version && (
+          <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-accent/10 text-accent border border-accent/30">
+            Nestview v{version}
+          </span>
+        )}
+      </div>
+      <div className="space-y-3">
+        {/* Discord — most prominent */}
+        <a
+          href="https://discord.gg/TfQ8QX3Ptr"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex items-center gap-3 p-3 rounded-lg bg-accent/10 border border-accent/30 text-accent hover:bg-accent/20 transition-colors group"
+        >
+          <svg className="w-5 h-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+          </svg>
+          <div>
+            <p className="text-sm font-medium">Discord</p>
+            <p className="text-xs text-accent/70">Get support &amp; chat with the community</p>
+          </div>
+        </a>
+        {/* GitHub */}
+        <a
+          href="https://github.com/kylejschultz/nestview"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex items-center gap-3 p-3 rounded-lg bg-surface-3 border border-border text-slate-400 hover:text-slate-200 hover:border-slate-500 transition-colors group"
+        >
+          <svg className="w-5 h-5 shrink-0" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M12 0C5.374 0 0 5.373 0 12c0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23A11.509 11.509 0 0 1 12 5.803c1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.929.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576C20.566 21.797 24 17.3 24 12c0-6.627-5.373-12-12-12z" />
+          </svg>
+          <div>
+            <p className="text-sm font-medium">GitHub</p>
+            <p className="text-xs text-slate-500">View source &amp; report issues</p>
+          </div>
+        </a>
+        {/* Ko-fi */}
+        <a
+          href="https://ko-fi.com/kylejschultz"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex items-center gap-3 p-3 rounded-lg bg-surface-3 border border-border text-slate-400 hover:text-slate-200 hover:border-slate-500 transition-colors group"
+        >
+          <svg className="w-5 h-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+            <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
+          </svg>
+          <div>
+            <p className="text-sm font-medium">Ko-fi</p>
+            <p className="text-xs text-slate-500">Support the project</p>
+          </div>
+        </a>
+      </div>
+    </section>
+  );
+}
+
 // ── General tab ───────────────────────────────────────────────────────────────
 
 function GeneralTab() {
@@ -93,6 +157,13 @@ function GeneralTab() {
   const { data: general, isLoading } = useQuery<GeneralSettings>({
     queryKey: ["settings-general"],
     queryFn: api.settings.general,
+  });
+
+  const { data: versionData } = useQuery({
+    queryKey: ["version"],
+    queryFn: api.version,
+    staleTime: Infinity,
+    retry: false,
   });
 
   const [webhookDraft, setWebhookDraft] = useState<string | null>(null);
@@ -260,6 +331,10 @@ function GeneralTab() {
           {timezoneError && <span className="text-xs text-red-400">{timezoneError}</span>}
         </div>
       </section>
+
+      <hr className="border-border" />
+
+      <AboutSection version={versionData?.version} />
     </div>
   );
 }
@@ -386,10 +461,23 @@ type Tab = "general" | "notifications";
 
 export default function Settings() {
   const [activeTab, setActiveTab] = useState<Tab>("general");
+  const { data: versionData } = useQuery({
+    queryKey: ["version"],
+    queryFn: api.version,
+    staleTime: Infinity,
+    retry: false,
+  });
 
   return (
     <div className="max-w-3xl space-y-6">
-      <h1 className="text-xl font-semibold text-slate-100">Settings</h1>
+      <div className="flex items-center gap-3">
+        <h1 className="text-xl font-semibold text-slate-100">Settings</h1>
+        {versionData && (
+          <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-accent/10 text-accent border border-accent/30">
+            Nestview v{versionData.version}
+          </span>
+        )}
+      </div>
 
       {/* Tab bar */}
       <div className="flex gap-1 border-b border-border">

@@ -16,13 +16,16 @@ jobs:
         include:
           - service: backend
             image: ghcr.io/kylejschultz/nestview-backend
-            context: ./backend
+            context: .
+            dockerfile: backend/Dockerfile
           - service: frontend
             image: ghcr.io/kylejschultz/nestview-frontend
             context: ./frontend
+            dockerfile: frontend/Dockerfile
           - service: collector
             image: ghcr.io/kylejschultz/nestview-collector
             context: ./collector
+            dockerfile: collector/Dockerfile
 
     steps:
       - name: Checkout
@@ -37,5 +40,7 @@ jobs:
 
       - name: Build and push
         run: |
-          docker build --platform linux/arm64 -t ${{ matrix.image }}:dev ${{ matrix.context }}
+          docker build --platform linux/arm64 -t ${{ matrix.image }}:dev \
+            -f ${{ matrix.dockerfile }} \
+            ${{ matrix.context }}
           docker push ${{ matrix.image }}:dev

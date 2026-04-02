@@ -2,7 +2,9 @@ version: "3.9"
 
 services:
   backend:
-    build: ./backend
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
     image: ghcr.io/kylejschultz/nestview-backend:latest
     restart: unless-stopped
     environment:

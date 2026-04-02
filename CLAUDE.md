@@ -188,6 +188,17 @@ All endpoints are prefixed `/api/`.
 
 ---
 
+## Versioning
+
+The `VERSION` file at the repo root is the single source of truth for the app version. It contains a plain semver string (e.g. `1.0.0`) with no prefix.
+
+- The backend reads it at startup (`/app/VERSION` inside the container) and exposes it via `GET /api/version`.
+- The frontend fetches `/api/version` on load and displays it in the footer.
+- **Never hardcode the version string** in backend or frontend source files.
+- **Bump `VERSION` manually** before cutting a GitHub release, then tag the commit (e.g. `git tag v1.1.0`).
+
+---
+
 ## Git Conventions
 
 **Commit style:** Use [Conventional Commits](https://www.conventionalcommits.org/).
@@ -213,10 +224,15 @@ Common types: `feat`, `fix`, `chore`, `docs`, `refactor`, `test`, `style`.
 After completing any task:
 1. Commit all changes using conventional commit format (see Git Conventions above)
 2. Push to `dev`
-3. Open a PR from `dev` to `main` using the GitHub CLI:
+3. Before opening a PR, check if one already exists:
    ```
-   gh pr create --base main --title "<descriptive title>" --body "<brief summary of what was done>"
+   gh pr list --base main --head dev --state open
    ```
+   - If an open PR already exists, do not create a new one. Note the existing PR URL and confirm the latest commits have been pushed to `dev` — the PR will update automatically.
+   - If no open PR exists, create one:
+     ```
+     gh pr create --base main --title "<descriptive title>" --body "<brief summary of what was done>"
+     ```
 
 Never push directly to `main`. All work happens on `dev` and goes to `main` via PR.
 
