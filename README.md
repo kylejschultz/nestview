@@ -89,9 +89,7 @@ For an extra layer of protection, set `NESTVIEW_API_KEY` in your `.env` file:
 NESTVIEW_API_KEY=your-strong-random-key
 ```
 
-When set, all write operations (container start/stop/restart, settings changes) require the key. The frontend will prompt for it on first load and store it in `sessionStorage` for the session. Read-only endpoints (the dashboard, logs, events) do not require the key — this is an accepted tradeoff for a homelab tool.
-
-**CORS:** The backend allows all origins (`*`) so `npm run dev` works without extra config. If you expose the backend port (8000) directly, restrict `allow_origins` in `backend/main.py` to your specific host.
+When set, all write operations (container start/stop/restart, settings changes) require the key. The frontend will prompt for it on first load. Viewing the dashboard, logs, and events does not require the key.
 
 ---
 
@@ -128,39 +126,6 @@ Log retention and exited container TTL are configured in the Settings UI.
 3. Open Nestview and paste the URL into the setup wizard (shown on first launch) or **Settings → General**
 
 Nestview sends a formatted embed when a container crashes (non-zero exit), is OOM-killed, or restarts unexpectedly.
-
----
-
-## Development
-
-<details>
-<summary>Running services locally</summary>
-
-> These instructions are for contributors building from source. To run Nestview as a user, see Quick start above.
-
-**Backend:**
-```bash
-cd backend
-python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-DATABASE_PATH=./dev.db uvicorn backend.main:app --reload
-```
-
-**Frontend:**
-```bash
-cd frontend
-npm install
-npm run dev   # proxies /api to localhost:8000
-```
-
-**Collector** (requires Docker socket access):
-```bash
-cd collector
-pip install -r requirements.txt
-BACKEND_URL=http://localhost:8000 python main.py
-```
-
-</details>
 
 ---
 
