@@ -4,6 +4,11 @@
 
 <br>
 
+[![License: DBAD](https://img.shields.io/badge/license-DBAD-green.svg)](./LICENSE)
+[![GitHub Sponsors](https://img.shields.io/github/sponsors/kylejschultz?label=Sponsor&logo=githubsponsors&color=ea4aaa)](https://github.com/sponsors/kylejschultz)
+[![Ko-fi](https://img.shields.io/badge/Ko--fi-support%20the%20project-FF5E5B?logo=ko-fi&logoColor=white)](https://ko-fi.com/kylejschultz)
+[![Discord](https://img.shields.io/badge/Discord-join%20the%20community-5865F2?logo=discord&logoColor=white)](https://discord.gg/TfQ8QX3Ptr)
+
 **Lightweight, self-hosted Docker visibility for homelabbers.**
 
 Nestview gives you a live health dashboard, searchable log history, and Discord alerts for all your containers — no manual configuration, no Grafana stack required. Point it at your Docker socket and it discovers everything automatically.
@@ -162,4 +167,14 @@ BACKEND_URL=http://localhost:8000 python main.py
 
 ## License
 
-One-time purchase on Gumroad. See the landing page for details.
+[Don't Be a Dick Public License](./LICENSE) — free to use, modify, and self-host. Just don't be a dick about it.
+
+## Community & support
+
+- [Discord](https://discord.gg/TfQ8QX3Ptr) — bug reports, general chat, release announcements
+- [GitHub Issues](https://github.com/kylejschultz/nestview/issues) — bugs and feature requests
+- [GitHub Sponsors](https://github.com/sponsors/kylejschultz) / [Ko-fi](https://ko-fi.com/kylejschultz) — if Nestview saves you time, a coffee is always appreciated
+
+## Contributing
+
+See [CONTRIBUTING.md](./CONTRIBUTING.md). TL;DR: open an issue before big changes, follow conventional commits, don't be a dick.
