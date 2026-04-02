@@ -32,8 +32,6 @@ services:
       - NESTVIEW_COLLECTOR_KEY=${NESTVIEW_COLLECTOR_KEY:-}
     volumes:
       # Read-only access to the Docker socket
-      # macOS: Docker Desktop exposes /var/run/docker.sock via the VM — this works as-is.
-      # If using Colima or OrbStack, socket path is the same.
       - /var/run/docker.sock:/var/run/docker.sock:ro
 
   frontend:

@@ -9,7 +9,7 @@ Thanks for your interest in contributing. Nestview is a small project — contri
 
 ## Dev setup
 
-See the **Local development** section in the README for how to run the backend, frontend, and collector locally.
+See the **Development** section in the README for how to run the backend, frontend, and collector locally.
 
 ## Conventions
 
