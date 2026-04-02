@@ -15,6 +15,7 @@ services:
       # Writable socket required for container stop/start/restart actions.
       # The collector socket mount (below) remains read-only.
       - /var/run/docker.sock:/var/run/docker.sock
+      - ./VERSION:/app/VERSION:ro
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"]
       interval: 15s

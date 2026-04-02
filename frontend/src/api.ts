@@ -68,6 +68,7 @@ async function post<T>(path: string, body?: unknown): Promise<T> {
 
 export const api = {
   config: () => fetch(`${BASE}/config`).then((r) => r.json()) as Promise<{ api_key_required: boolean }>,
+  version: () => fetch(`${BASE}/version`).then((r) => r.json()) as Promise<{ version: string }>,
   containers: {
     list: () => get<Container[]>("/containers"),
     get: (id: string) => get<Container>(`/containers/${id}`),

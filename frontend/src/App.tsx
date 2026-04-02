@@ -48,6 +48,13 @@ export default function App() {
     enabled: configChecked && !showApiKeyPrompt,
   });
 
+  const { data: versionData } = useQuery({
+    queryKey: ["version"],
+    queryFn: api.version,
+    staleTime: Infinity,
+    retry: false,
+  });
+
   const showWizard = !wizardDismissed && wizardStatus !== undefined && !wizardStatus.completed;
 
   if (!configChecked) {
@@ -68,6 +75,11 @@ export default function App() {
         {showWizard && <SetupWizard onDone={() => setWizardDismissed(true)} />}
         {showApiKeyPrompt && (
           <ApiKeyPrompt onUnlocked={() => setShowApiKeyPrompt(false)} />
+        )}
+        {versionData && (
+          <footer className="px-4 py-2 text-right">
+            <span className="text-xs text-slate-500">v{versionData.version}</span>
+          </footer>
         )}
       </div>
     </TimezoneProvider>

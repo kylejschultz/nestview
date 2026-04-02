@@ -1,10 +1,14 @@
 import os
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlmodel import Session
+
+_version_file = Path("/app/VERSION")
+APP_VERSION = _version_file.read_text().strip() if _version_file.exists() else "dev"
 
 from database import create_db_and_tables, engine
 from api import containers, logs, events, settings, actions
@@ -44,7 +48,7 @@ async def lifespan(app: FastAPI):
     scheduler.shutdown()
 
 
-app = FastAPI(title="Nestview", version="0.1.0", lifespan=lifespan)
+app = FastAPI(title="Nestview", version=APP_VERSION, lifespan=lifespan)
 
 # The backend is not port-exposed in docker-compose — only nginx (frontend service)
 # reaches it.  CORS is permissive here so local `npm run dev` works without extra
@@ -64,9 +68,14 @@ app.include_router(settings.router)
 app.include_router(actions.router)
 
 
+@app.get("/api/version")
+def version():
+    return {"version": APP_VERSION}
+
+
 @app.get("/api/health")
 def health():
-    return {"status": "ok", "version": "0.1.0"}
+    return {"status": "ok", "version": APP_VERSION}
 
 
 @app.get("/api/config")

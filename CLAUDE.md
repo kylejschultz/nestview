@@ -188,6 +188,17 @@ All endpoints are prefixed `/api/`.
 
 ---
 
+## Versioning
+
+The `VERSION` file at the repo root is the single source of truth for the app version. It contains a plain semver string (e.g. `1.0.0`) with no prefix.
+
+- The backend reads it at startup (`/app/VERSION` inside the container) and exposes it via `GET /api/version`.
+- The frontend fetches `/api/version` on load and displays it in the footer.
+- **Never hardcode the version string** in backend or frontend source files.
+- **Bump `VERSION` manually** before cutting a GitHub release, then tag the commit (e.g. `git tag v1.1.0`).
+
+---
+
 ## Git Conventions
 
 **Commit style:** Use [Conventional Commits](https://www.conventionalcommits.org/).
