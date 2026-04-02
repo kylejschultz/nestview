@@ -51,8 +51,6 @@ Log retention and exited container TTL are configured in the Settings UI.
 
 ---
 
----
-
 ## Discord alerts
 
 1. In your Discord server, go to **Server Settings → Integrations → Webhooks → New Webhook**
@@ -60,8 +58,6 @@ Log retention and exited container TTL are configured in the Settings UI.
 3. Open Nestview and paste the URL into the setup wizard (shown on first launch) or **Settings → General**
 
 Nestview sends a formatted embed when a container crashes (non-zero exit), is OOM-killed, or restarts unexpectedly.
-
----
 
 ---
 
