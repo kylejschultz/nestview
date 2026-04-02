@@ -17,12 +17,61 @@ Nestview gives you a live health dashboard, searchable log history, and Discord 
 
 ## Quick start
 
+Create a `docker-compose.yml` with the following contents:
+```yaml
+services:
+  backend:
+    image: ghcr.io/kylejschultz/nestview-backend:latest
+    restart: unless-stopped
+    environment:
+      - DATABASE_PATH=/data/nestview.db
+      - NESTVIEW_COLLECTOR_KEY=${NESTVIEW_COLLECTOR_KEY:-}
+    volumes:
+      - nestview_data:/data
+      - /var/run/docker.sock:/var/run/docker.sock
+
+  collector:
+    image: ghcr.io/kylejschultz/nestview-collector:latest
+    restart: unless-stopped
+    depends_on:
+      - backend
+    environment:
+      - BACKEND_URL=http://backend:8000
+      - POLL_INTERVAL=${POLL_INTERVAL:-10}
+      - LOG_BATCH_INTERVAL=${LOG_BATCH_INTERVAL:-5}
+      - NESTVIEW_COLLECTOR_KEY=${NESTVIEW_COLLECTOR_KEY:-}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+
+  frontend:
+    image: ghcr.io/kylejschultz/nestview-frontend:latest
+    restart: unless-stopped
+    ports:
+      - "${NESTVIEW_PORT:-8080}:80"
+    depends_on:
+      - backend
+
+volumes:
+  nestview_data:
+```
+
+Then run:
 ```bash
 docker compose up -d
 # Open http://localhost:8080 — the setup wizard will guide you through Discord alerts
 ```
 
 That's it. Nestview will find all running and stopped containers immediately.
+
+---
+
+## Updates
+
+To pull the latest images and restart:
+```bash
+docker compose pull
+docker compose up -d
+```
 
 ---
 
@@ -61,20 +110,12 @@ Nestview sends a formatted embed when a container crashes (non-zero exit), is OO
 
 ---
 
-## Updating
-
-```bash
-docker compose pull   # if using published images
-docker compose build --no-cache
-docker compose up -d
-```
-
----
-
 ## Development
 
 <details>
 <summary>Running services locally</summary>
+
+> These instructions are for contributors building from source. To run Nestview as a user, see Quick start above.
 
 **Backend:**
 ```bash
