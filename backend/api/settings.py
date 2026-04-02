@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field, field_validator
 from sqlmodel import Session, select
 
+from api.auth import verify_api_key
 from database import get_session
 from models import AppSetting, ContainerAlertSetting
 from services.app_settings import get_setting, set_setting
@@ -20,6 +21,16 @@ _DEFAULT_LOG_RETENTION_DAYS = 7
 _DEFAULT_EXITED_CONTAINER_TTL_HOURS = 0.083
 
 _NUMERIC_SETTING_KEYS = {"log_retention_days", "exited_container_ttl_hours"}
+
+# Allowlist of keys that may be written via the generic PATCH /api/settings endpoint.
+# Prevents arbitrary key injection into the AppSetting table.
+_ALLOWED_SETTING_KEYS = {
+    "discord_webhook_url",
+    "log_retention_days",
+    "exited_container_ttl_hours",
+    "timezone",
+    "wizard_dismissed",
+}
 
 
 # ── Alert settings ─────────────────────────────────────────────────────────────
@@ -38,7 +49,7 @@ def get_alert_settings(session: Session = Depends(get_session)) -> List[dict]:
     return [r.dict() for r in rows]
 
 
-@router.patch("/alerts")
+@router.patch("/alerts", dependencies=[Depends(verify_api_key)])
 def patch_alert_setting(
     payload: AlertSettingPatch,
     session: Session = Depends(get_session),
@@ -76,11 +87,14 @@ def get_all_settings(session: Session = Depends(get_session)) -> Dict[str, str]:
     return {row.key: row.value for row in rows}
 
 
-@router.patch("")
+@router.patch("", dependencies=[Depends(verify_api_key)])
 def patch_settings(
     payload: Dict[str, str],
     session: Session = Depends(get_session),
 ) -> Dict[str, str]:
+    unknown = set(payload.keys()) - _ALLOWED_SETTING_KEYS
+    if unknown:
+        raise HTTPException(status_code=422, detail=f"Unknown setting key(s): {', '.join(sorted(unknown))}")
     for key, value in payload.items():
         if key in _NUMERIC_SETTING_KEYS:
             try:
@@ -158,7 +172,7 @@ def get_general_settings(session: Session = Depends(get_session)) -> dict:
     }
 
 
-@router.patch("/general")
+@router.patch("/general", dependencies=[Depends(verify_api_key)])
 def patch_general_settings(
     payload: GeneralSettingsPatch,
     session: Session = Depends(get_session),
@@ -201,7 +215,7 @@ def get_wizard_status(session: Session = Depends(get_session)) -> dict:
     return {"completed": completed}
 
 
-@router.post("/wizard/dismiss")
+@router.post("/wizard/dismiss", dependencies=[Depends(verify_api_key)])
 def dismiss_wizard(session: Session = Depends(get_session)) -> dict:
     set_setting(session, "wizard_dismissed", "true")
     session.commit()
@@ -213,8 +227,22 @@ def dismiss_wizard(session: Session = Depends(get_session)) -> dict:
 class TestWebhookBody(BaseModel):
     url: str | None = None
 
+    @field_validator("url")
+    @classmethod
+    def validate_webhook_url(cls, v: str | None) -> str | None:
+        # Prevent SSRF: only allow Discord webhook URLs, never arbitrary URLs.
+        if v is None or v == "":
+            return v
+        if not (v.startswith("https://discord.com/webhooks/") or
+                v.startswith("https://discord.com/api/webhooks/")):
+            raise ValueError(
+                "url must be a Discord webhook URL "
+                "(https://discord.com/webhooks/... or https://discord.com/api/webhooks/...)"
+            )
+        return v
 
-@router.post("/test-webhook")
+
+@router.post("/test-webhook", dependencies=[Depends(verify_api_key)])
 async def test_webhook(
     body: TestWebhookBody = TestWebhookBody(),
     session: Session = Depends(get_session),

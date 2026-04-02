@@ -8,6 +8,7 @@ from sqlmodel import Session
 
 from database import create_db_and_tables, engine
 from api import containers, logs, events, settings, actions
+from api.auth import api_key_required
 from services.cleanup import run_cleanup
 from services.app_settings import get_setting, set_setting
 
@@ -66,3 +67,12 @@ app.include_router(actions.router)
 @app.get("/api/health")
 def health():
     return {"status": "ok", "version": "0.1.0"}
+
+
+@app.get("/api/config")
+def config():
+    """
+    Returns public configuration the frontend needs before auth is established.
+    Never exposes secret values — only boolean flags derived from them.
+    """
+    return {"api_key_required": api_key_required()}
