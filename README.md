@@ -1,13 +1,13 @@
-<p align="center">
-  <img src="landing/assets/nestview-wordmark.svg" alt="Nestview" height="60">
-</p>
+<div align="center">
 
-<br>
+<img src="landing/assets/nestview-wordmark.svg" alt="Nestview" width="320"><br><br>
 
-[![License: DBAD](https://img.shields.io/badge/license-DBAD-green.svg)](./LICENSE)
+[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 [![GitHub Sponsors](https://img.shields.io/github/sponsors/kylejschultz?label=Sponsor&logo=githubsponsors&color=ea4aaa)](https://github.com/sponsors/kylejschultz)
 [![Ko-fi](https://img.shields.io/badge/Ko--fi-support%20the%20project-FF5E5B?logo=ko-fi&logoColor=white)](https://ko-fi.com/kylejschultz)
 [![Discord](https://img.shields.io/badge/Discord-join%20the%20community-5865F2?logo=discord&logoColor=white)](https://discord.gg/TfQ8QX3Ptr)
+
+</div>
 
 **Lightweight, self-hosted Docker visibility for homelabbers.**
 
