@@ -75,6 +75,26 @@ docker compose up -d
 
 ---
 
+## Security
+
+> **Do not expose port 8080 directly to the internet.** Nestview is designed for home networks and trusted LANs. The dashboard has no login by default — anyone who can reach port 8080 can view your container names, logs, and metrics.
+
+**If you need to access Nestview remotely**, put it behind a VPN (Tailscale, WireGuard) or a reverse proxy with authentication (Authelia, Authentik, nginx basic auth). Do not port-forward 8080 through your router.
+
+### Optional API key (NESTVIEW_API_KEY)
+
+For an extra layer of protection, set `NESTVIEW_API_KEY` in your `.env` file:
+
+```bash
+NESTVIEW_API_KEY=your-strong-random-key
+```
+
+When set, all write operations (container start/stop/restart, settings changes) require the key. The frontend will prompt for it on first load and store it in `sessionStorage` for the session. Read-only endpoints (the dashboard, logs, events) do not require the key — this is an accepted tradeoff for a homelab tool.
+
+**CORS:** The backend allows all origins (`*`) so `npm run dev` works without extra config. If you expose the backend port (8000) directly, restrict `allow_origins` in `backend/main.py` to your specific host.
+
+---
+
 ## Environment variables
 
 > The defaults work out of the box. Copy `.env.example` to `.env` only if you want to change the port or add a collector key.
@@ -83,6 +103,7 @@ docker compose up -d
 |---|---|---|
 | `NESTVIEW_PORT` | `8080` | Host port Nestview is exposed on |
 | `NESTVIEW_COLLECTOR_KEY` | _(empty)_ | Optional shared secret to authenticate the collector |
+| `NESTVIEW_API_KEY` | _(empty)_ | Optional key to protect write endpoints; frontend prompts for it when set |
 | `POLL_INTERVAL` | `10` | Seconds between Docker stats polls |
 | `LOG_BATCH_INTERVAL` | `5` | Seconds between log flushes to the backend |
 
