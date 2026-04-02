@@ -224,10 +224,15 @@ Common types: `feat`, `fix`, `chore`, `docs`, `refactor`, `test`, `style`.
 After completing any task:
 1. Commit all changes using conventional commit format (see Git Conventions above)
 2. Push to `dev`
-3. Open a PR from `dev` to `main` using the GitHub CLI:
+3. Before opening a PR, check if one already exists:
    ```
-   gh pr create --base main --title "<descriptive title>" --body "<brief summary of what was done>"
+   gh pr list --base main --head dev --state open
    ```
+   - If an open PR already exists, do not create a new one. Note the existing PR URL and confirm the latest commits have been pushed to `dev` — the PR will update automatically.
+   - If no open PR exists, create one:
+     ```
+     gh pr create --base main --title "<descriptive title>" --body "<brief summary of what was done>"
+     ```
 
 Never push directly to `main`. All work happens on `dev` and goes to `main` via PR.
 
