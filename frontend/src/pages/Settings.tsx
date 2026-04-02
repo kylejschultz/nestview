@@ -386,10 +386,23 @@ type Tab = "general" | "notifications";
 
 export default function Settings() {
   const [activeTab, setActiveTab] = useState<Tab>("general");
+  const { data: versionData } = useQuery({
+    queryKey: ["version"],
+    queryFn: api.version,
+    staleTime: Infinity,
+    retry: false,
+  });
 
   return (
     <div className="max-w-3xl space-y-6">
-      <h1 className="text-xl font-semibold text-slate-100">Settings</h1>
+      <div className="flex items-center gap-3">
+        <h1 className="text-xl font-semibold text-slate-100">Settings</h1>
+        {versionData && (
+          <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-accent/10 text-accent border border-accent/30">
+            Nestview v{versionData.version}
+          </span>
+        )}
+      </div>
 
       {/* Tab bar */}
       <div className="flex gap-1 border-b border-border">
