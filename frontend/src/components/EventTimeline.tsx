@@ -49,7 +49,7 @@ export default function EventTimeline({ dockerId }: Props) {
   const tz = useTimezone();
   const { data: events = [] } = useQuery<ContainerEvent[]>({
     queryKey: ["events", dockerId],
-    queryFn: () => api.events.list(dockerId, 30),
+    queryFn: () => api.events.list(dockerId, dockerId ? 30 : 5),
     refetchInterval: 15_000,
   });
 
