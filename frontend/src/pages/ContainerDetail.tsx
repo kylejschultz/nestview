@@ -296,6 +296,18 @@ export default function ContainerDetail() {
                   {container.restart_count}
                 </span>
               </div>
+              {container.created_at && (
+                <div className="flex justify-between text-slate-400">
+                  <span>Created</span>
+                  <span className="font-mono text-xs">{formatDateTime(container.created_at, tz)}</span>
+                </div>
+              )}
+              {container.started_at && (
+                <div className="flex justify-between text-slate-400">
+                  <span>Started</span>
+                  <span className="font-mono text-xs">{formatDateTime(container.started_at, tz)}</span>
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -304,14 +316,11 @@ export default function ContainerDetail() {
         <div className={`card px-4 ${container.state === "running" ? "lg:col-span-2" : "lg:col-span-3"}`}>
           <h2 className="text-sm font-medium text-slate-300 py-3">Details</h2>
           <InfoRow label="ID" value={container.short_id} />
-          <InfoRow label="Image" value={container.image} />
+          <InfoRow label="Image" value={container.image.includes(":") ? container.image.slice(0, container.image.lastIndexOf(":")) : container.image} />
+          {container.image.includes(":") && (
+            <InfoRow label="Tag" value={container.image.split(":").pop()!} />
+          )}
           <InfoRow label="State" value={<StatusBadge state={container.state} />} />
-          {container.created_at && (
-            <InfoRow label="Created" value={formatDateTime(container.created_at, tz)} />
-          )}
-          {container.started_at && (
-            <InfoRow label="Started" value={formatDateTime(container.started_at, tz)} />
-          )}
           {container.ports.length > 0 && (
             <InfoRow
               label="Ports"
