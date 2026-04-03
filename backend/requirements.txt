@@ -3,7 +3,7 @@ fastapi==0.135.3
 # fastapi 0.128.8 allows starlette>=0.40.0,<1.0.0 so this is within range.
 starlette>=0.47.2
 uvicorn[standard]==0.30.6
-sqlmodel==0.0.21
+sqlmodel==0.0.38
 apscheduler==3.11.2
 httpx==0.27.2
 pydantic==2.12.5
