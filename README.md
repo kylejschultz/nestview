@@ -123,6 +123,17 @@ Log retention and exited container TTL are configured in the Settings UI.
 
 ---
 
+## What's next
+
+- **Log intelligence** — regex pattern alerting, severity coloring, log export, and bookmarks
+- **Image and update awareness** — detect outdated images, track pull history, show image size
+- **Multi-host support** — connect collectors from multiple Docker hosts to a single dashboard
+- **Network traffic visibility** — per-container bytes in/out, I/O history, and unexpected port detection
+
+→ See [ROADMAP.md](./ROADMAP.md) for the full list.
+
+---
+
 ## Discord alerts
 
 1. In your Discord server, go to **Server Settings → Integrations → Webhooks → New Webhook**
