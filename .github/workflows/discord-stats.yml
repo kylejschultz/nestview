@@ -64,24 +64,16 @@ jobs:
                       (STARS_CHANNEL_ID, f"⭐ Stars: {stars}"),
                       (WATCHERS_CHANNEL_ID, f"👁️ Watchers: {watchers}"),
                   ]
+                  guild = self.guilds[0]
+                  print(f"Channels in guild:")
+                  for ch in guild.channels:
+                      print(f"  {ch.id} — {ch.name} ({ch.type})")
                   for channel_id, name in updates:
-                      try:
-                          channel = await self.fetch_channel(int(channel_id))
-                      except discord.NotFound:
-                          print(f"Channel {channel_id} not found")
-                          await self.close()
-                          sys.exit(1)
-                      except discord.Forbidden:
-                          print(f"Missing permissions to fetch channel {channel_id}")
-                          await self.close()
-                          sys.exit(1)
-                      try:
-                          await channel.edit(name=name)
-                          print(f"Updated channel {channel_id} to '{name}'")
-                      except Exception as e:
-                          print(f"Failed to update channel {channel_id}: {e}")
-                          await self.close()
-                          sys.exit(1)
+                      channel = guild.get_channel(int(channel_id))
+                      if channel is None:
+                          print(f"Channel {channel_id} is None")
+                      else:
+                          print(f"Channel {channel_id} found: {channel.name} ({channel.type})")
                   await self.close()
 
           intents = discord.Intents.default()
