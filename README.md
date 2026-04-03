@@ -25,7 +25,11 @@ services:
     restart: unless-stopped
     environment:
       - DATABASE_PATH=/data/nestview.db
+      - LOG_RETENTION_DAYS=${LOG_RETENTION_DAYS:-7}
       - NESTVIEW_COLLECTOR_KEY=${NESTVIEW_COLLECTOR_KEY:-}
+      # Optional: protect write endpoints (start/stop/restart, settings).
+      # The frontend will prompt for this key on first load if set.
+      - NESTVIEW_API_KEY=${NESTVIEW_API_KEY:-}
     volumes:
       - nestview_data:/data
       - /var/run/docker.sock:/var/run/docker.sock
