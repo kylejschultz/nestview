@@ -9,40 +9,71 @@ jobs:
   update-channels:
     runs-on: ubuntu-latest
     steps:
+      - name: Install discord.py
+        run: pip install discord.py
+
       - name: Update Discord voice channels with repo stats
         env:
           DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          STARS_CHANNEL_ID: "1489728864384188536"
+          WATCHERS_CHANNEL_ID: "1489728833232834760"
         run: |
-          # Fetch GitHub repo stats
-          REPO_JSON=$(curl -s \
-            -H "Authorization: Bearer $GITHUB_TOKEN" \
-            -H "Accept: application/vnd.github+json" \
-            -H "X-GitHub-Api-Version: 2022-11-28" \
-            "https://api.github.com/repos/kylejschultz/nestview")
+          python3 << 'EOF'
+          import asyncio
+          import json
+          import os
+          import sys
+          import urllib.request
 
-          STARS=$(python3 -c "import sys,json; print(json.loads(sys.stdin.read())['stargazers_count'])" <<< "$REPO_JSON")
-          WATCHERS=$(python3 -c "import sys,json; print(json.loads(sys.stdin.read())['subscribers_count'])" <<< "$REPO_JSON")
-          echo "Stars: $STARS, Watchers: $WATCHERS"
+          import discord
 
-          update_channel() {
-            local channel_id="$1"
-            local name="$2"
-            local response
-            local http_status
-            response=$(curl -s -w "\n%{http_code}" -X PATCH \
-              -H "Authorization: Bot $DISCORD_BOT_TOKEN" \
-              -H "Content-Type: application/json" \
-              -d "{\"name\": \"$name\"}" \
-              "https://discord.com/api/v10/channels/${channel_id}")
-            http_status=$(tail -n1 <<< "$response")
-            body=$(head -n -1 <<< "$response")
-            if [[ "$http_status" != "200" && "$http_status" != "204" ]]; then
-              echo "Failed to update channel ${channel_id} (HTTP ${http_status}): $body"
-              exit 1
-            fi
-            echo "Updated channel ${channel_id} to '${name}' (status ${http_status})"
-          }
+          TOKEN = os.environ["DISCORD_BOT_TOKEN"]
+          GITHUB_TOKEN = os.environ["GITHUB_TOKEN"]
+          STARS_CHANNEL_ID = os.environ["STARS_CHANNEL_ID"]
+          WATCHERS_CHANNEL_ID = os.environ["WATCHERS_CHANNEL_ID"]
 
-          update_channel "1489707035372032180" "⭐ Stars: ${STARS}"
-          update_channel "1489707085896749229" "👁️ Watchers: ${WATCHERS}"
+          req = urllib.request.Request(
+              "https://api.github.com/repos/kylejschultz/nestview",
+              headers={
+                  "Authorization": f"Bearer {GITHUB_TOKEN}",
+                  "Accept": "application/vnd.github+json",
+                  "X-GitHub-Api-Version": "2022-11-28",
+              },
+          )
+          with urllib.request.urlopen(req) as resp:
+              data = json.loads(resp.read())
+
+          stars = data["stargazers_count"]
+          watchers = data["subscribers_count"]
+          print(f"Stars: {stars}, Watchers: {watchers}")
+
+          class StatsBot(discord.Client):
+              async def setup_hook(self):
+                  self.loop.create_task(self.update_channels())
+
+              async def update_channels(self):
+                  await self.wait_until_ready()
+                  updates = [
+                      (STARS_CHANNEL_ID, f"⭐ Stars: {stars}"),
+                      (WATCHERS_CHANNEL_ID, f"👁️ Watchers: {watchers}"),
+                  ]
+                  for channel_id, name in updates:
+                      channel = self.get_channel(int(channel_id))
+                      if channel is None:
+                          print(f"Channel {channel_id} not found")
+                          await self.close()
+                          sys.exit(1)
+                      try:
+                          await channel.edit(name=name)
+                          print(f"Updated channel {channel_id} to '{name}'")
+                      except Exception as e:
+                          print(f"Failed to update channel {channel_id}: {e}")
+                          await self.close()
+                          sys.exit(1)
+                  await self.close()
+
+          intents = discord.Intents.default()
+          bot = StatsBot(intents=intents)
+          bot.run(TOKEN)
+          EOF
