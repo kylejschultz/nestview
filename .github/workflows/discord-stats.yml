@@ -14,52 +14,35 @@ jobs:
           DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          python3 - <<'EOF'
-          import json
-          import os
-          import sys
-          import urllib.request
-
           # Fetch GitHub repo stats
-          github_token = os.environ["GITHUB_TOKEN"]
-          req = urllib.request.Request(
-              "https://api.github.com/repos/kylejschultz/nestview",
-              headers={
-                  "Authorization": f"Bearer {github_token}",
-                  "Accept": "application/vnd.github+json",
-                  "X-GitHub-Api-Version": "2022-11-28",
-              },
-          )
-          with urllib.request.urlopen(req) as resp:
-              repo = json.loads(resp.read())
+          REPO_JSON=$(curl -s \
+            -H "Authorization: Bearer $GITHUB_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/kylejschultz/nestview")
 
-          stars = repo["stargazers_count"]
-          watchers = repo["subscribers_count"]
-          print(f"Stars: {stars}, Watchers: {watchers}")
+          STARS=$(python3 -c "import sys,json; print(json.loads(sys.stdin.read())['stargazers_count'])" <<< "$REPO_JSON")
+          WATCHERS=$(python3 -c "import sys,json; print(json.loads(sys.stdin.read())['subscribers_count'])" <<< "$REPO_JSON")
+          echo "Stars: $STARS, Watchers: $WATCHERS"
 
-          channels = [
-              ("1489707035372032180", f"stars: {stars}"),
-              ("1489707085896749229", f"watchers: {watchers}"),
-          ]
+          update_channel() {
+            local channel_id="$1"
+            local name="$2"
+            local response
+            local http_status
+            response=$(curl -s -w "\n%{http_code}" -X PATCH \
+              -H "Authorization: Bot $DISCORD_BOT_TOKEN" \
+              -H "Content-Type: application/json" \
+              -d "{\"name\": \"$name\"}" \
+              "https://discord.com/api/v10/channels/${channel_id}")
+            http_status=$(tail -n1 <<< "$response")
+            body=$(head -n -1 <<< "$response")
+            if [[ "$http_status" != "200" && "$http_status" != "204" ]]; then
+              echo "Failed to update channel ${channel_id} (HTTP ${http_status}): $body"
+              exit 1
+            fi
+            echo "Updated channel ${channel_id} to '${name}' (status ${http_status})"
+          }
 
-          discord_token = os.environ["DISCORD_BOT_TOKEN"]
-
-          for channel_id, name in channels:
-              data = json.dumps({"name": name}).encode()
-              req = urllib.request.Request(
-                  f"https://discord.com/api/v10/channels/{channel_id}",
-                  data=data,
-                  headers={
-                      "Authorization": f"Bot {discord_token}",
-                      "Content-Type": "application/json",
-                  },
-                  method="PATCH",
-              )
-              try:
-                  with urllib.request.urlopen(req) as resp:
-                      print(f"Updated channel {channel_id} to '{name}' (status {resp.status})")
-              except urllib.error.HTTPError as e:
-                  body = e.read().decode()
-                  print(f"Failed to update channel {channel_id}: HTTP {e.code}\n{body}")
-                  sys.exit(1)
-          EOF
+          update_channel "1489707035372032180" "⭐ Stars: ${STARS}"
+          update_channel "1489707085896749229" "👁️ Watchers: ${WATCHERS}"
