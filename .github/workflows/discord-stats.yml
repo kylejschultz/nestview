@@ -54,29 +54,26 @@ jobs:
 
               async def update_channels(self):
                   await self.wait_until_ready()
-                  print(f"Guilds visible: {len(self.guilds)}")
-                  for guild in self.guilds:
-                      print(f"  {guild.name}: {len(guild.channels)} channels")
+                  guild = self.guilds[0]
                   updates = [
                       (STARS_CHANNEL_ID, f"⭐ Stars: {stars}"),
                       (WATCHERS_CHANNEL_ID, f"👁️ Watchers: {watchers}"),
                   ]
                   for channel_id, name in updates:
-                      try:
-                          channel = await self.fetch_channel(int(channel_id))
-                      except discord.NotFound:
+                      channel = guild.get_channel(int(channel_id))
+                      if channel is None:
                           print(f"Channel {channel_id} not found")
-                          await self.close()
-                          sys.exit(1)
-                      except discord.Forbidden:
-                          print(f"Missing permissions to fetch channel {channel_id}")
                           await self.close()
                           sys.exit(1)
                       try:
                           await channel.edit(name=name)
                           print(f"Updated channel {channel_id} to '{name}'")
-                      except Exception as e:
-                          print(f"Failed to update channel {channel_id}: {e}")
+                      except discord.Forbidden as e:
+                          print(f"Missing permissions to edit channel {channel_id}: {e}")
+                          await self.close()
+                          sys.exit(1)
+                      except discord.HTTPException as e:
+                          print(f"Failed to edit channel {channel_id}: {e}")
                           await self.close()
                           sys.exit(1)
                   await self.close()
