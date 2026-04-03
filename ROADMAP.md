@@ -1,6 +1,6 @@
 # Nestview Roadmap
 
-## v1.0 — Current release
+## v0.1.0 — Current release
 
 Core visibility and alerting for self-hosted Docker environments.
 
@@ -15,7 +15,7 @@ Core visibility and alerting for self-hosted Docker environments.
 
 ---
 
-## v1.1 — Log intelligence
+## Log intelligence
 
 Make logs more useful without adding infrastructure complexity.
 
@@ -26,7 +26,7 @@ Make logs more useful without adding infrastructure complexity.
 
 ---
 
-## v1.2 — Image and update awareness
+## Image and update awareness
 
 Know when your containers are running outdated images.
 
@@ -36,7 +36,7 @@ Know when your containers are running outdated images.
 
 ---
 
-## v1.3 — Multi-host support
+## Multi-host support
 
 For homelabs with more than one machine.
 
@@ -46,7 +46,7 @@ For homelabs with more than one machine.
 
 ---
 
-## v1.4 — Network traffic visibility
+## Network traffic visibility
 
 Understand what your containers are actually talking to.
 
