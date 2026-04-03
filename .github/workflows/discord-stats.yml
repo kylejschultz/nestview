@@ -38,8 +38,8 @@ jobs:
           print(f"Stars: {stars}, Watchers: {watchers}")
 
           channels = [
-              ("1489707035372032180", f"⭐ Stars: {stars}"),
-              ("1489707085896749229", f"👁️ Watchers: {watchers}"),
+              ("1489707035372032180", f"stars: {stars}"),
+              ("1489707085896749229", f"watchers: {watchers}"),
           ]
 
           discord_token = os.environ["DISCORD_BOT_TOKEN"]
