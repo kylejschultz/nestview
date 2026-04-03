@@ -59,9 +59,14 @@ jobs:
                       (WATCHERS_CHANNEL_ID, f"👁️ Watchers: {watchers}"),
                   ]
                   for channel_id, name in updates:
-                      channel = self.get_channel(int(channel_id))
-                      if channel is None:
+                      try:
+                          channel = await self.fetch_channel(int(channel_id))
+                      except discord.NotFound:
                           print(f"Channel {channel_id} not found")
+                          await self.close()
+                          sys.exit(1)
+                      except discord.Forbidden:
+                          print(f"Missing permissions to fetch channel {channel_id}")
                           await self.close()
                           sys.exit(1)
                       try:
