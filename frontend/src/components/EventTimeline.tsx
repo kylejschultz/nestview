@@ -6,6 +6,7 @@ import { useTimezone } from "../TimezoneContext";
 
 interface Props {
   dockerId?: string;
+  limit?: number;
 }
 
 const EVENT_STYLES: Record<string, { dot: string; label: string }> = {
@@ -45,11 +46,11 @@ function EventRow({ event, tz }: { event: ContainerEvent; tz: string }) {
   );
 }
 
-export default function EventTimeline({ dockerId }: Props) {
+export default function EventTimeline({ dockerId, limit = 30 }: Props) {
   const tz = useTimezone();
   const { data: events = [] } = useQuery<ContainerEvent[]>({
-    queryKey: ["events", dockerId],
-    queryFn: () => api.events.list(dockerId, dockerId ? 30 : 5),
+    queryKey: ["events", dockerId, limit],
+    queryFn: () => api.events.list(dockerId, limit),
     refetchInterval: 15_000,
   });
 

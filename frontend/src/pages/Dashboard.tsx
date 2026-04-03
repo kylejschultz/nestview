@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../api";
 import type { Container } from "../types";
@@ -90,9 +90,29 @@ function ComposeGroup({ project, members }: ComposeGroupProps) {
   );
 }
 
+const LIMIT_OPTIONS = [5, 10, 20];
+const EVENT_LIMIT_KEY = "nestview.eventLimit";
+
 export default function Dashboard() {
   const [filter, setFilter] = useState<Filter>("all");
   const [search, setSearch] = useState("");
+  const [eventLimit, setEventLimit] = useState<number>(() => {
+    const stored = localStorage.getItem(EVENT_LIMIT_KEY);
+    return stored ? Number(stored) : 5;
+  });
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const pickerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!pickerOpen) return;
+    function handleClick(e: MouseEvent) {
+      if (pickerRef.current && !pickerRef.current.contains(e.target as Node)) {
+        setPickerOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [pickerOpen]);
 
   const { data: containers = [], isLoading, isError } = useQuery<Container[]>({
     queryKey: ["containers"],
@@ -197,8 +217,45 @@ export default function Dashboard() {
 
       {/* Sidebar — recent events */}
       <aside className="space-y-3">
-        <h2 className="text-xs font-semibold uppercase tracking-widest text-slate-500">Recent Events</h2>
-        <EventTimeline />
+        <div className="flex items-center justify-between">
+          <h2 className="text-xs font-semibold uppercase tracking-widest text-slate-500">Recent Events</h2>
+          <div className="relative" ref={pickerRef}>
+            <button
+              onClick={() => setPickerOpen((o) => !o)}
+              className="text-slate-600 hover:text-slate-400 transition-colors"
+              title="Configure event count"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+            </button>
+
+            {pickerOpen && (
+              <div className="absolute right-0 top-6 z-20 bg-surface-2 border border-border rounded-lg shadow-xl p-2 flex flex-col gap-0.5 min-w-[100px]">
+                <p className="text-xs text-slate-500 px-2 py-1">Show events</p>
+                {LIMIT_OPTIONS.map((n) => (
+                  <button
+                    key={n}
+                    onClick={() => {
+                      setEventLimit(n);
+                      localStorage.setItem(EVENT_LIMIT_KEY, String(n));
+                      setPickerOpen(false);
+                    }}
+                    className={`text-left text-sm px-2 py-1.5 rounded-md transition-colors ${
+                      eventLimit === n
+                        ? "bg-accent/20 text-accent"
+                        : "text-slate-300 hover:bg-surface-3"
+                    }`}
+                  >
+                    {n} events
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+        <EventTimeline limit={eventLimit} />
       </aside>
     </div>
   );
