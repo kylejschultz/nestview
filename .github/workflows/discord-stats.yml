@@ -54,6 +54,9 @@ jobs:
 
               async def update_channels(self):
                   await self.wait_until_ready()
+                  print(f"Guilds visible: {len(self.guilds)}")
+                  for guild in self.guilds:
+                      print(f"  {guild.name}: {len(guild.channels)} channels")
                   updates = [
                       (STARS_CHANNEL_ID, f"⭐ Stars: {stars}"),
                       (WATCHERS_CHANNEL_ID, f"👁️ Watchers: {watchers}"),
@@ -79,6 +82,7 @@ jobs:
                   await self.close()
 
           intents = discord.Intents.default()
+          intents.guilds = True
           bot = StatsBot(intents=intents)
           bot.run(TOKEN)
           EOF
