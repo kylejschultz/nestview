@@ -44,7 +44,6 @@ _NEW_CONTAINER_COLUMNS = [
     ("update_available",        "INTEGER NOT NULL DEFAULT 0"),
     ("last_digest_check",       "TEXT"),
     ("image_size",              "INTEGER"),
-    ("last_pulled",             "TEXT"),
     ("update_alert_sent_digest","TEXT"),
 ]
 

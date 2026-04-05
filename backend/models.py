@@ -38,7 +38,6 @@ class Container(SQLModel, table=True):
     update_available: bool = False
     last_digest_check: Optional[datetime] = None
     image_size: Optional[int] = None
-    last_pulled: Optional[datetime] = None
     update_alert_sent_digest: Optional[str] = None
 
 
