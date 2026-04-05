@@ -44,6 +44,7 @@ const ALERT_TYPES: { key: AlertEventType; label: string }[] = [
   { key: "crash", label: "Crash" },
   { key: "restart", label: "Restart" },
   { key: "oom", label: "OOM Kill" },
+  { key: "update_available", label: "Update" },
 ];
 
 function buildDisabledSet(settings: AlertSetting[]): Set<string> {
@@ -144,6 +145,94 @@ function AboutSection({ version }: { version?: string }) {
             <p className="text-xs text-slate-500">Support the project</p>
           </div>
         </a>
+      </div>
+    </section>
+  );
+}
+
+// ── Image Updates section ─────────────────────────────────────────────────────
+
+function ImageUpdatesSection() {
+  const queryClient = useQueryClient();
+
+  const { data: allSettings, isLoading } = useQuery<Record<string, string>>({
+    queryKey: ["settings-all"],
+    queryFn: api.settings.getAll,
+  });
+
+  const serverEnabled = (allSettings?.image_check_enabled ?? "true") !== "false";
+  const serverTime = allSettings?.image_check_time ?? "03:00";
+
+  const [enabledDraft, setEnabledDraft] = useState<boolean | null>(null);
+  const [timeDraft, setTimeDraft] = useState<string | null>(null);
+
+  const enabled = enabledDraft ?? serverEnabled;
+  const time = timeDraft ?? serverTime;
+
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const { mutate: save, isPending } = useMutation({
+    mutationFn: (body: Record<string, string>) => api.settings.save(body),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["settings-all"] });
+      setEnabledDraft(null);
+      setTimeDraft(null);
+      setSaved(true);
+      setError(null);
+      setTimeout(() => setSaved(false), 3_000);
+    },
+    onError: (err: Error) => setError(err.message),
+  });
+
+  const hasDraft = enabledDraft !== null || timeDraft !== null;
+
+  if (isLoading) return null;
+
+  return (
+    <section className="card p-5 space-y-4">
+      <div>
+        <h2 className="text-sm font-semibold text-slate-200">Image Updates</h2>
+        <p className="text-xs text-slate-500 mt-1">
+          Automatically check for newer container images on a daily schedule.
+        </p>
+      </div>
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <p className="text-xs font-medium text-slate-400">Enable automatic image update checks</p>
+          <Toggle
+            checked={enabled}
+            onChange={(v) => setEnabledDraft(v)}
+            disabled={isPending}
+            label={enabled ? "On" : "Off"}
+          />
+        </div>
+        <div className="space-y-1.5">
+          <label className="text-xs font-medium text-slate-400">Daily check time (24h)</label>
+          <input
+            type="time"
+            value={time}
+            onChange={(e) => setTimeDraft(e.target.value)}
+            disabled={isPending || !enabled}
+            className="bg-surface-3 border border-border rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-accent disabled:opacity-40 disabled:cursor-not-allowed"
+          />
+        </div>
+      </div>
+      <div className="flex items-center gap-3">
+        <button
+          disabled={isPending || !hasDraft}
+          onClick={() => {
+            const body: Record<string, string> = {};
+            if (enabledDraft !== null) body.image_check_enabled = enabledDraft ? "true" : "false";
+            if (timeDraft !== null) body.image_check_time = timeDraft;
+            save(body);
+          }}
+          className="px-4 py-2 text-sm rounded-lg bg-accent hover:bg-accent-hover text-white font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          Save
+        </button>
+        {saved && <span className="text-xs text-green-400">Saved.</span>}
+        {error && <span className="text-xs text-red-400">{error}</span>}
       </div>
     </section>
   );
@@ -331,6 +420,8 @@ function GeneralTab() {
           {timezoneError && <span className="text-xs text-red-400">{timezoneError}</span>}
         </div>
       </section>
+
+      <ImageUpdatesSection />
 
       <hr className="border-border" />
 

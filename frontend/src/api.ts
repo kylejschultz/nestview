@@ -104,6 +104,8 @@ export const api = {
     general: () => get<GeneralSettings>("/settings/general"),
     saveGeneral: (body: Partial<GeneralSettings>) =>
       patch<GeneralSettings>("/settings/general", body),
+    getAll: () => get<Record<string, string>>("/settings"),
+    save: (body: Record<string, string>) => patch<Record<string, string>>("/settings", body),
     testWebhook: (url?: string) => post<{ ok: boolean; error?: string }>("/settings/test-webhook", url !== undefined ? { url } : undefined),
     wizard: () => get<WizardStatus>("/settings/wizard"),
     dismissWizard: () => post<{ ok: boolean }>("/settings/wizard/dismiss"),
