@@ -18,6 +18,8 @@ from models import Container
 
 logger = logging.getLogger(__name__)
 
+_SELF_IMAGES_PREFIX = "ghcr.io/kylejschultz/nestview-"
+
 
 # ---------------------------------------------------------------------------
 # Image reference parsing
@@ -93,7 +95,7 @@ def _fetch_registry_digest(registry: str, namespace: str, repo: str, tag: str) -
         return _fetch_dockerhub_digest(namespace, repo, tag)
     if registry == "ghcr.io":
         return _fetch_ghcr_digest(namespace, repo, tag)
-    logger.warning("image_checker: unsupported registry %r — skipping", registry)
+    logger.debug("image_checker: unsupported registry %r — skipping", registry)
     return None
 
 
@@ -166,6 +168,10 @@ def run_image_check() -> None:
 
 def _check_container(session: Session, container: Container) -> None:
     image_ref = container.image
+
+    if image_ref.startswith(_SELF_IMAGES_PREFIX):
+        logger.debug("image_checker: skipping self-image %r", image_ref)
+        return
 
     # Local image attrs
     local_digest, image_size, last_pulled = _get_local_image_attrs(image_ref)
