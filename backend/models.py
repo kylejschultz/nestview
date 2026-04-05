@@ -33,6 +33,12 @@ class Container(SQLModel, table=True):
     created_at: Optional[datetime] = None
     started_at: Optional[datetime] = None
     last_seen: datetime = Field(default_factory=datetime.utcnow)
+    image_digest: Optional[str] = None
+    registry_digest: Optional[str] = None
+    update_available: bool = False
+    last_digest_check: Optional[datetime] = None
+    image_size: Optional[int] = None
+    last_pulled: Optional[datetime] = None
 
 
 class ContainerLog(SQLModel, table=True):

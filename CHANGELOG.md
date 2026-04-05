@@ -7,6 +7,19 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.2.0] — 2026-04-03
+
+### Added
+
+- Image update checker — detects when a newer digest is available on Docker Hub or GHCR and sets `update_available` flag per container
+- Discord alerts for available image updates (dispatched by the image check cron)
+- Update available badge on the dashboard container cards
+- Image size and pull history displayed on the per-container detail page
+- Per-container pull + restart action (pulls latest image then restarts the container)
+- Stack-level actions: pull & restart all, stop all, start all containers in a Compose project
+
+---
+
 ## [0.1.0] — 2026-03-31
 
 Initial release.
