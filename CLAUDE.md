@@ -222,14 +222,17 @@ Common types: `feat`, `fix`, `chore`, `docs`, `refactor`, `test`, `style`.
 ## Workflow
 
 After completing any task:
-1. Commit all changes using conventional commit format
+1. Commit all changes using conventional commit format (see Git Conventions above)
 2. Push to `dev`
-3. Handle the PR:
-   - Check for any open PRs from dev to main: `gh pr list --base main --head dev --state open`
-   - If an open PR exists, read its current commit list and evaluate whether the new commit(s) are part of the same logical effort (same feature, same bug, same area of the app). Use commit messages and scopes (e.g. `feat(frontend):`, `fix(collector):`) as the primary signal.
-     - If yes: regenerate the full PR body to reflect all commits currently in the PR. Use a `## Summary` section grouping changes by conventional commit type, and a `## Commits` section with short SHA + message per commit. Apply with `gh pr edit <number> --body "..."`.
-     - If no: open a new PR for the new commit(s) with `gh pr create --base main --title "<descriptive title>" --body "<summary>"`
-   - If no open PR exists: create one with `gh pr create --base main --title "<descriptive title>" --body "<summary>"`
+3. Before opening a PR, check if one already exists:
+   ```
+   gh pr list --base main --head dev --state open
+   ```
+   - If an open PR already exists, do not create a new one. Note the existing PR URL and confirm the latest commits have been pushed to `dev` — the PR will update automatically.
+   - If no open PR exists, create one:
+     ```
+     gh pr create --base main --title "<descriptive title>" --body "<brief summary of what was done>"
+     ```
 
 Never push directly to `main`. All work happens on `dev` and goes to `main` via PR.
 

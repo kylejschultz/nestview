@@ -5,18 +5,16 @@ from pathlib import Path
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy import text
 from sqlmodel import Session
 
 _version_file = Path("/app/VERSION")
 APP_VERSION = _version_file.read_text().strip() if _version_file.exists() else "dev"
 
 from database import create_db_and_tables, engine
-from api import containers, logs, events, settings, actions, admin
+from api import containers, logs, events, settings, actions
 from api.auth import api_key_required
 from services.cleanup import run_cleanup
 from services.app_settings import get_setting, set_setting
-from services.image_checker import run_image_check
 
 
 def _seed_settings_from_env():
@@ -28,7 +26,6 @@ def _seed_settings_from_env():
         "log_retention_days": os.getenv("LOG_RETENTION_DAYS", "7"),
         "exited_container_ttl_hours": os.getenv("EXITED_CONTAINER_TTL_HOURS", "0.083"),
         "timezone": os.getenv("TZ", "UTC"),
-        "image_check_time": "03:00",
     }
     with Session(engine) as session:
         for key, value in seeds.items():
@@ -37,40 +34,13 @@ def _seed_settings_from_env():
         session.commit()
 
 
-_NEW_CONTAINER_COLUMNS = [
-    ("image_digest",      "TEXT"),
-    ("registry_digest",   "TEXT"),
-    ("update_available",  "INTEGER NOT NULL DEFAULT 0"),
-    ("last_digest_check", "TEXT"),
-    ("image_size",        "INTEGER"),
-    ("last_pulled",       "TEXT"),
-]
-
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     create_db_and_tables()
-
-    with Session(engine) as _s:
-        for col_name, col_type in _NEW_CONTAINER_COLUMNS:
-            try:
-                _s.exec(text(f"ALTER TABLE container ADD COLUMN {col_name} {col_type}"))
-                _s.commit()
-            except Exception:
-                pass  # column already exists
-
     _seed_settings_from_env()
-
-    with Session(engine) as _s:
-        raw_time = get_setting(_s, "image_check_time") or "03:00"
-    try:
-        h, m = (int(x) for x in raw_time.split(":"))
-    except Exception:
-        h, m = 3, 0
 
     scheduler = AsyncIOScheduler()
     scheduler.add_job(run_cleanup, "interval", hours=1, id="cleanup")
-    scheduler.add_job(run_image_check, "cron", hour=h, minute=m, id="image_check")
     scheduler.start()
 
     yield
@@ -96,7 +66,6 @@ app.include_router(logs.router)
 app.include_router(events.router)
 app.include_router(settings.router)
 app.include_router(actions.router)
-app.include_router(admin.router)
 
 
 @app.get("/api/version")
