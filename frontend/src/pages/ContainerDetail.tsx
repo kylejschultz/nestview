@@ -24,7 +24,7 @@ function Spinner() {
 
 // ── Action buttons ────────────────────────────────────────────────────────────
 
-type ActionType = "stop" | "restart" | "start";
+type ActionType = "stop" | "restart" | "start" | "pull-restart";
 
 interface ActionButtonsProps {
   container: Container;
@@ -43,11 +43,12 @@ function ActionButtons({ container }: ActionButtonsProps) {
   }
 
   const { mutate, isPending } = useMutation({
-    mutationFn: (action: ActionType) => api.containers[action](container.docker_id),
+    mutationFn: (action: ActionType) => {
+      if (action === "pull-restart") return api.containers.pullRestart(container.docker_id);
+      return api.containers[action](container.docker_id);
+    },
     onSuccess: (_data, action) => {
-      // After restart, Docker may take a moment to register the new container ID,
-      // so delay the re-fetch slightly to give the collector time to post fresh data.
-      const delay = action === "restart" ? 1_500 : 0;
+      const delay = action === "restart" || action === "pull-restart" ? 1_500 : 0;
       setTimeout(() => {
         queryClient.invalidateQueries({ queryKey: ["container", container.docker_id] });
         queryClient.invalidateQueries({ queryKey: ["containers"] });
@@ -67,7 +68,6 @@ function ActionButtons({ container }: ActionButtonsProps) {
   function confirmAction() {
     if (!pendingAction) return;
     mutate(pendingAction);
-    // pendingAction cleared in onSuccess/onError
   }
 
   // Determine which buttons to show
@@ -79,15 +79,19 @@ function ActionButtons({ container }: ActionButtonsProps) {
   if (!showStop && !showStart) return null;
 
   const BUTTON_STYLES: Record<ActionType, string> = {
-    stop:    "border-red-500/50 text-red-400 hover:bg-red-500/10 hover:border-red-400",
-    restart: "border-yellow-500/50 text-yellow-400 hover:bg-yellow-500/10 hover:border-yellow-400",
-    start:   "border-green-500/50 text-green-400 hover:bg-green-500/10 hover:border-green-400",
+    stop:           "border-red-500/50 text-red-400 hover:bg-red-500/10 hover:border-red-400",
+    restart:        "border-yellow-500/50 text-yellow-400 hover:bg-yellow-500/10 hover:border-yellow-400",
+    start:          "border-green-500/50 text-green-400 hover:bg-green-500/10 hover:border-green-400",
+    "pull-restart": container.update_available
+      ? "border-blue-400 text-blue-400 hover:bg-blue-500/10"
+      : "border-blue-500/50 text-blue-400 hover:bg-blue-500/10 hover:border-blue-400",
   };
 
   const modalMessages: Record<ActionType, string> = {
-    stop:    `Are you sure you want to stop ${container.name}?`,
-    restart: `Are you sure you want to restart ${container.name}?`,
-    start:   `Are you sure you want to start ${container.name}?`,
+    stop:           `Are you sure you want to stop ${container.name}?`,
+    restart:        `Are you sure you want to restart ${container.name}?`,
+    start:          `Are you sure you want to start ${container.name}?`,
+    "pull-restart": `Pull the latest image and restart ${container.name}? This may take a moment.`,
   };
 
   return (
@@ -114,6 +118,20 @@ function ActionButtons({ container }: ActionButtonsProps) {
                 </svg>
               )}
               Restart
+            </button>
+          )}
+          {showRestart && (
+            <button
+              disabled={isPending}
+              onClick={() => requestAction("pull-restart")}
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg border transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${BUTTON_STYLES["pull-restart"]}`}
+            >
+              {isPending && pendingAction === "pull-restart" ? <Spinner /> : (
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                </svg>
+              )}
+              Pull &amp; Restart
             </button>
           )}
           {showStop && (

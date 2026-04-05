@@ -72,9 +72,10 @@ export const api = {
   containers: {
     list: () => get<Container[]>("/containers"),
     get: (id: string) => get<Container>(`/containers/${id}`),
-    stop:    (dockerId: string) => post<{ ok: boolean; action: string; container: string }>(`/containers/${dockerId}/stop`),
-    restart: (dockerId: string) => post<{ ok: boolean; action: string; container: string }>(`/containers/${dockerId}/restart`),
-    start:   (dockerId: string) => post<{ ok: boolean; action: string; container: string }>(`/containers/${dockerId}/start`),
+    stop:        (dockerId: string) => post<{ ok: boolean; action: string; container: string }>(`/containers/${dockerId}/stop`),
+    restart:     (dockerId: string) => post<{ ok: boolean; action: string; container: string }>(`/containers/${dockerId}/restart`),
+    start:       (dockerId: string) => post<{ ok: boolean; action: string; container: string }>(`/containers/${dockerId}/start`),
+    pullRestart: (dockerId: string) => post<{ ok: boolean; action: string; container: string }>(`/containers/${dockerId}/pull-restart`),
   },
   stacks: {
     stop:        (project: string) => post<{ ok: boolean; project: string; action: string; affected: number }>(`/stacks/${encodeURIComponent(project)}/stop`),
