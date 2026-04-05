@@ -34,12 +34,20 @@ function ActionButtons({ container }: ActionButtonsProps) {
   const queryClient = useQueryClient();
   const [pendingAction, setPendingAction] = useState<ActionType | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [toast, setToast] = useState(false);
   const errorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   function scheduleErrorDismiss(msg: string) {
     setError(msg);
     if (errorTimerRef.current) clearTimeout(errorTimerRef.current);
     errorTimerRef.current = setTimeout(() => setError(null), 5_000);
+  }
+
+  function showToast() {
+    setToast(true);
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    toastTimerRef.current = setTimeout(() => setToast(false), 3_000);
   }
 
   const { mutate, isPending } = useMutation({
@@ -53,6 +61,7 @@ function ActionButtons({ container }: ActionButtonsProps) {
         queryClient.invalidateQueries({ queryKey: ["container", container.docker_id] });
         queryClient.invalidateQueries({ queryKey: ["containers"] });
       }, delay);
+      if (action === "pull-restart") showToast();
       setPendingAction(null);
     },
     onError: (err: Error) => {
@@ -96,6 +105,12 @@ function ActionButtons({ container }: ActionButtonsProps) {
 
   return (
     <>
+      {toast && (
+        <div className="fixed bottom-6 right-6 z-50 px-4 py-2.5 rounded-lg bg-surface-3 border border-border text-sm text-slate-200 shadow-lg transition-opacity duration-300">
+          Pull &amp; Restart complete
+        </div>
+      )}
+
       {pendingAction && (
         <ConfirmModal
           message={modalMessages[pendingAction]}
