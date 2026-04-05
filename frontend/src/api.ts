@@ -97,6 +97,9 @@ export const api = {
       return get<ContainerEvent[]>(`/events?${qs}`);
     },
   },
+  admin: {
+    checkImages: () => post<{ ok: boolean }>("/admin/check-images"),
+  },
   settings: {
     alerts: () => get<AlertSetting[]>("/settings/alerts"),
     setAlert: (container_name: string, event_type: AlertEventType, enabled: boolean) =>

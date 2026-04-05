@@ -185,6 +185,19 @@ function ImageUpdatesSection() {
     onError: (err: Error) => setError(err.message),
   });
 
+  const [checkDone, setCheckDone] = useState(false);
+  const [checkError, setCheckError] = useState<string | null>(null);
+
+  const { mutate: checkNow, isPending: isChecking } = useMutation({
+    mutationFn: api.admin.checkImages,
+    onSuccess: () => {
+      setCheckDone(true);
+      setCheckError(null);
+      setTimeout(() => setCheckDone(false), 3_000);
+    },
+    onError: (err: Error) => setCheckError(err.message),
+  });
+
   const hasDraft = enabledDraft !== null || timeDraft !== null;
 
   if (isLoading) return null;
@@ -233,6 +246,17 @@ function ImageUpdatesSection() {
         </button>
         {saved && <span className="text-xs text-green-400">Saved.</span>}
         {error && <span className="text-xs text-red-400">{error}</span>}
+      </div>
+      <div className="flex items-center gap-3 pt-1 border-t border-border">
+        <button
+          disabled={isChecking}
+          onClick={() => checkNow()}
+          className="px-3 py-1.5 text-xs rounded-lg border border-border text-slate-400 hover:text-slate-200 hover:border-slate-500 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          {isChecking ? "Checking…" : "Check now"}
+        </button>
+        {checkDone && <span className="text-xs text-green-400">Check complete</span>}
+        {checkError && <span className="text-xs text-red-400">{checkError}</span>}
       </div>
     </section>
   );
