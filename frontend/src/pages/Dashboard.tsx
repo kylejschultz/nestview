@@ -1,9 +1,10 @@
 import { useState, useRef, useEffect } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
 import type { Container } from "../types";
 import ContainerCard from "../components/ContainerCard";
 import EventTimeline from "../components/EventTimeline";
+import ConfirmModal from "../components/ConfirmModal";
 
 type Filter = "all" | "running" | "stopped";
 
@@ -25,13 +26,42 @@ function ChevronRight({ className }: { className?: string }) {
   );
 }
 
+type StackAction = "stop" | "start" | "restart" | "pull-restart";
+
+function StackActionSpinner() {
+  return (
+    <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
+      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+    </svg>
+  );
+}
+
 interface ComposeGroupProps {
   project: string;
   members: Container[];
 }
 
 function ComposeGroup({ project, members }: ComposeGroupProps) {
+  const queryClient = useQueryClient();
   const [collapsed, setCollapsed] = useState<boolean>(() => !!loadCollapsed()[project]);
+  const [pendingAction, setPendingAction] = useState<StackAction | null>(null);
+
+  const { mutate, isPending, variables: activeAction } = useMutation({
+    mutationFn: (action: StackAction) => {
+      if (action === "stop") return api.stacks.stop(project);
+      if (action === "start") return api.stacks.start(project);
+      if (action === "restart") return api.stacks.restart(project);
+      return api.stacks.pullRestart(project);
+    },
+    onSuccess: () => {
+      setTimeout(() => queryClient.invalidateQueries({ queryKey: ["containers"] }), 1_500);
+      setPendingAction(null);
+    },
+    onError: () => {
+      setPendingAction(null);
+    },
+  });
 
   function toggle() {
     setCollapsed((prev) => {
@@ -49,39 +79,88 @@ function ComposeGroup({ project, members }: ComposeGroupProps) {
     });
   }
 
+  const STACK_BUTTON_STYLES: Record<StackAction, string> = {
+    stop:           "border-red-500/50 text-red-400 hover:bg-red-500/10 hover:border-red-400",
+    start:          "border-green-500/50 text-green-400 hover:bg-green-500/10 hover:border-green-400",
+    restart:        "border-yellow-500/50 text-yellow-400 hover:bg-yellow-500/10 hover:border-yellow-400",
+    "pull-restart": "border-blue-500/50 text-blue-400 hover:bg-blue-500/10 hover:border-blue-400",
+  };
+
+  const MODAL_MESSAGES: Record<StackAction, string> = {
+    stop:           `Stop all containers in ${project}?`,
+    start:          `Start all containers in ${project}?`,
+    restart:        `Restart all containers in ${project}?`,
+    "pull-restart": `Pull latest images and restart all containers in ${project}?`,
+  };
+
+  const updateCount = members.filter((m) => m.update_available).length;
+
   return (
     <section>
-      <button
-        onClick={toggle}
-        className="w-full flex items-center gap-2 mb-3 group cursor-pointer"
-        aria-expanded={!collapsed}
-      >
-        <ChevronRight
-          className={`w-3.5 h-3.5 text-slate-500 transition-transform duration-200 ${collapsed ? "" : "rotate-90"}`}
+      {pendingAction && (
+        <ConfirmModal
+          message={MODAL_MESSAGES[pendingAction]}
+          onConfirm={() => { mutate(pendingAction); }}
+          onCancel={() => setPendingAction(null)}
         />
-        <svg className="w-3.5 h-3.5 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-        </svg>
-        <span className="text-xs font-semibold uppercase tracking-widest text-slate-500 group-hover:text-slate-400 transition-colors">
-          {project}
-        </span>
-        {(() => {
-          const updateCount = members.filter((m) => m.update_available).length;
-          return updateCount > 0 ? (
-            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium bg-blue-500/15 text-blue-400 border border-blue-500/30 normal-case tracking-normal">
+      )}
+
+      <div className="w-full flex items-center gap-2 mb-3">
+        {/* Collapse toggle — fills remaining space */}
+        <button
+          onClick={toggle}
+          className="flex items-center gap-2 group cursor-pointer flex-1 min-w-0"
+          aria-expanded={!collapsed}
+        >
+          <ChevronRight
+            className={`w-3.5 h-3.5 text-slate-500 shrink-0 transition-transform duration-200 ${collapsed ? "" : "rotate-90"}`}
+          />
+          <svg className="w-3.5 h-3.5 text-slate-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+          </svg>
+          <span className="text-xs font-semibold uppercase tracking-widest text-slate-500 group-hover:text-slate-400 transition-colors truncate">
+            {project}
+          </span>
+          {updateCount > 0 && (
+            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium bg-blue-500/15 text-blue-400 border border-blue-500/30 normal-case tracking-normal shrink-0">
               <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M5 10l7-7m0 0l7 7m-7-7v18" />
               </svg>
               {updateCount === 1 ? "1 update" : `${updateCount} updates`}
             </span>
-          ) : null;
-        })()}
-        {collapsed && (
-          <span className="text-xs text-slate-600 font-normal normal-case tracking-normal">
-            — {members.length} container{members.length !== 1 ? "s" : ""}
-          </span>
-        )}
-      </button>
+          )}
+          {collapsed && (
+            <span className="text-xs text-slate-600 font-normal normal-case tracking-normal shrink-0">
+              — {members.length} container{members.length !== 1 ? "s" : ""}
+            </span>
+          )}
+        </button>
+
+        {/* Stack action buttons */}
+        <div className="flex items-center gap-1 shrink-0">
+          {(["restart", "stop", "start", "pull-restart"] as StackAction[]).map((action) => {
+            const isActive = isPending && activeAction === action;
+            const labels: Record<StackAction, string> = {
+              stop: "Stop all",
+              start: "Start all",
+              restart: "Restart all",
+              "pull-restart": "Pull & Restart",
+            };
+            return (
+              <button
+                key={action}
+                disabled={isPending}
+                onClick={() => setPendingAction(action)}
+                title={labels[action]}
+                className={`inline-flex items-center gap-1 px-2 py-1 text-xs rounded-md border transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${STACK_BUTTON_STYLES[action]}`}
+              >
+                {isActive ? <StackActionSpinner /> : null}
+                {labels[action]}
+              </button>
+            );
+          })}
+        </div>
+      </div>
 
       {/* CSS grid-rows trick: animates height without JS measurement */}
       <div

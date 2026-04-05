@@ -76,6 +76,12 @@ export const api = {
     restart: (dockerId: string) => post<{ ok: boolean; action: string; container: string }>(`/containers/${dockerId}/restart`),
     start:   (dockerId: string) => post<{ ok: boolean; action: string; container: string }>(`/containers/${dockerId}/start`),
   },
+  stacks: {
+    stop:        (project: string) => post<{ ok: boolean; project: string; action: string; affected: number }>(`/stacks/${encodeURIComponent(project)}/stop`),
+    start:       (project: string) => post<{ ok: boolean; project: string; action: string; affected: number }>(`/stacks/${encodeURIComponent(project)}/start`),
+    restart:     (project: string) => post<{ ok: boolean; project: string; action: string; affected: number }>(`/stacks/${encodeURIComponent(project)}/restart`),
+    pullRestart: (project: string) => post<{ ok: boolean; project: string; action: string; pulled: number; restarted: number }>(`/stacks/${encodeURIComponent(project)}/pull-restart`),
+  },
   logs: {
     forContainer: (
       id: string,
