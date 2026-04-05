@@ -100,16 +100,18 @@ function ComposeGroup({ project, members }: ComposeGroupProps) {
   const updateCount = members.filter((m) => m.update_available).length;
 
   return (
-    <section>
+    <div className="bg-surface-2 border border-border rounded-xl overflow-hidden">
       {pendingAction && (
         <ConfirmModal
           message={MODAL_MESSAGES[pendingAction]}
           onConfirm={() => { mutate(pendingAction); }}
           onCancel={() => setPendingAction(null)}
+          isPending={isPending}
         />
       )}
 
-      <div className="w-full flex items-center gap-2 mb-3">
+      {/* Card header */}
+      <div className={`flex items-center gap-2 px-4 py-3 ${collapsed ? "" : "border-b border-border"}`}>
         {/* Collapse toggle — fills remaining space */}
         <button
           onClick={toggle}
@@ -173,14 +175,14 @@ function ComposeGroup({ project, members }: ComposeGroupProps) {
         }`}
       >
         <div className="overflow-hidden">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 pb-1">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 p-4">
             {members.map((c) => (
               <ContainerCard key={c.docker_id} container={c} />
             ))}
           </div>
         </div>
       </div>
-    </section>
+    </div>
   );
 }
 
