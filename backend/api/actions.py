@@ -1,3 +1,4 @@
+import logging
 from typing import Literal
 
 import docker
@@ -8,6 +9,9 @@ from sqlmodel import Session, select
 from api.auth import verify_api_key
 from database import get_session
 from models import Container
+from services.image_checker import check_single_container
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/containers", tags=["actions"])
 
@@ -79,6 +83,11 @@ def pull_restart_container(docker_id: str, session: Session = Depends(get_sessio
         )
     except docker.errors.APIError as exc:
         raise HTTPException(status_code=500, detail=str(exc))
+
+    try:
+        check_single_container(db_container)
+    except Exception as exc:
+        logger.warning("pull-restart: digest re-check failed for %r: %s", db_container.name, exc)
 
     return {"ok": True, "action": "pull-restart", "container": db_container.name}
 

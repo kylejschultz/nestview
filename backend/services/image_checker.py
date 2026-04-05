@@ -169,6 +169,26 @@ def run_image_check() -> None:
     logger.info("image_checker: digest check run complete")
 
 
+def check_single_container(container: Container) -> None:
+    """
+    Run the registry digest check for a single container and persist the result.
+
+    Opens its own DB session so callers (e.g. pull-restart endpoint) don't need
+    to manage the session lifecycle.
+    """
+    with Session(engine) as session:
+        # Re-fetch by docker_id so the object is bound to this session.
+        db_container = session.exec(
+            select(Container).where(Container.docker_id == container.docker_id)
+        ).first()
+        if db_container is None:
+            logger.warning("check_single_container: container %r not found in DB", container.docker_id)
+            return
+        _check_container(session, db_container)
+        session.commit()
+        logger.info("check_single_container: digest refreshed for %r", db_container.name)
+
+
 def _update_alert_suppressed(container_name: str, session: Session) -> bool:
     """Return True if the user has disabled update_available alerts for this container."""
     setting = session.exec(

@@ -8,6 +8,7 @@ from sqlmodel import Session, select
 from api.auth import verify_api_key
 from database import get_session
 from models import Container
+from services.image_checker import check_single_container
 
 logger = logging.getLogger(__name__)
 
@@ -73,6 +74,15 @@ def pull_restart_stack(compose_project: str, session: Session = Depends(get_sess
             logger.warning("pull-restart: container '%s' not found in Docker", db_container.name)
         except docker.errors.APIError as exc:
             logger.warning("pull-restart: failed to restart container '%s': %s", db_container.name, exc)
+
+    for db_container in containers:
+        try:
+            check_single_container(db_container)
+        except Exception as exc:
+            logger.warning(
+                "pull-restart: digest re-check failed for '%s': %s",
+                db_container.name, exc,
+            )
 
     return {
         "ok": True,
