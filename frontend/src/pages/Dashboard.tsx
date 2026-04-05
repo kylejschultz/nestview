@@ -65,6 +65,17 @@ function ComposeGroup({ project, members }: ComposeGroupProps) {
         <span className="text-xs font-semibold uppercase tracking-widest text-slate-500 group-hover:text-slate-400 transition-colors">
           {project}
         </span>
+        {(() => {
+          const updateCount = members.filter((m) => m.update_available).length;
+          return updateCount > 0 ? (
+            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium bg-blue-500/15 text-blue-400 border border-blue-500/30 normal-case tracking-normal">
+              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5 10l7-7m0 0l7 7m-7-7v18" />
+              </svg>
+              {updateCount === 1 ? "1 update" : `${updateCount} updates`}
+            </span>
+          ) : null;
+        })()}
         {collapsed && (
           <span className="text-xs text-slate-600 font-normal normal-case tracking-normal">
             — {members.length} container{members.length !== 1 ? "s" : ""}

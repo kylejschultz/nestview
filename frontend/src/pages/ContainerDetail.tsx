@@ -357,6 +357,30 @@ export default function ContainerDetail() {
               }
             />
           )}
+          {container.image_size != null && (
+            <InfoRow label="Image size" value={formatBytes(container.image_size)} />
+          )}
+          {container.last_pulled != null && (
+            <InfoRow label="Last pulled" value={formatDateTime(container.last_pulled, tz)} />
+          )}
+          {container.last_digest_check != null && (
+            <InfoRow
+              label="Update check"
+              value={
+                <span className="flex items-center gap-2 flex-wrap">
+                  <span>{formatDateTime(container.last_digest_check, tz)}</span>
+                  {container.update_available && (
+                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium bg-blue-500/15 text-blue-400 border border-blue-500/30">
+                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 10l7-7m0 0l7 7m-7-7v18" />
+                      </svg>
+                      Update available
+                    </span>
+                  )}
+                </span>
+              }
+            />
+          )}
         </div>
       </div>
 
