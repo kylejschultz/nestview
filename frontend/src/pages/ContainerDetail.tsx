@@ -360,9 +360,6 @@ export default function ContainerDetail() {
           {container.image_size != null && (
             <InfoRow label="Image size" value={formatBytes(container.image_size)} />
           )}
-          {container.last_pulled != null && (
-            <InfoRow label="Last pulled" value={formatDateTime(container.last_pulled, tz)} />
-          )}
           {container.last_digest_check != null && (
             <InfoRow
               label="Update check"
