@@ -1,5 +1,6 @@
 import os
 from contextlib import asynccontextmanager
+from datetime import datetime
 from pathlib import Path
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -62,9 +63,10 @@ async def lifespan(app: FastAPI):
 
     _seed_settings_from_env()
 
+    # Read scheduler settings after seeding so the values are guaranteed in the DB.
     with Session(engine) as _s:
         raw_time = get_setting(_s, "image_check_time") or "03:00"
-        check_enabled = (get_setting(_s, "image_check_enabled") or "true") != "false"
+        check_enabled = get_setting(_s, "image_check_enabled") != "false"
     try:
         h, m = (int(x) for x in raw_time.split(":"))
     except Exception:
@@ -74,6 +76,9 @@ async def lifespan(app: FastAPI):
     scheduler.add_job(run_cleanup, "interval", hours=1, id="cleanup")
     if check_enabled:
         scheduler.add_job(run_image_check, "cron", hour=h, minute=m, id="image_check")
+        print(f"[scheduler] image_check cron registered for {h:02d}:{m:02d}")
+    scheduler.add_job(run_image_check, "date", run_date=datetime.utcnow(), id="image_check_startup")
+    print(f"[scheduler] image_check startup run queued")
     scheduler.start()
 
     yield
