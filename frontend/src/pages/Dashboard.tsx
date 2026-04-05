@@ -47,7 +47,11 @@ function ComposeGroup({ project, members }: ComposeGroupProps) {
   const [collapsed, setCollapsed] = useState<boolean>(() => !!loadCollapsed()[project]);
   const [pendingAction, setPendingAction] = useState<StackAction | null>(null);
 
-  const { mutate, isPending, variables: activeAction } = useMutation({
+  const { mutate, isPending, variables: activeAction } = useMutation<
+    { ok: boolean; project: string; action: string; affected?: number; pulled?: number; restarted?: number },
+    Error,
+    StackAction
+  >({
     mutationFn: (action: StackAction) => {
       if (action === "stop") return api.stacks.stop(project);
       if (action === "start") return api.stacks.start(project);
