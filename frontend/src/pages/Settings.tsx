@@ -1,4 +1,4 @@
-import { useState } from "react";
+import React, { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
 import type { AlertEventType, AlertSetting, Container, GeneralSettings } from "../types";
@@ -11,7 +11,7 @@ interface ToggleProps {
   checked: boolean;
   onChange: (value: boolean) => void;
   disabled?: boolean;
-  label: string;
+  label?: string;
 }
 
 function Toggle({ checked, onChange, disabled, label }: ToggleProps) {
@@ -33,7 +33,7 @@ function Toggle({ checked, onChange, disabled, label }: ToggleProps) {
           }`}
         />
       </button>
-      <span className={`text-xs ${checked ? "text-slate-300" : "text-slate-600"}`}>{label}</span>
+      {label && <span className={`text-xs ${checked ? "text-slate-300" : "text-slate-600"}`}>{label}</span>}
     </label>
   );
 }
@@ -55,33 +55,33 @@ function buildDisabledSet(settings: AlertSetting[]): Set<string> {
   return s;
 }
 
-// ── Per-container row ─────────────────────────────────────────────────────────
+// ── Per-container row (table) ─────────────────────────────────────────────────
+
+const COL_W = "w-14";
 
 interface ContainerRowProps {
   container: Container;
   disabledSet: Set<string>;
   onToggle: (container_name: string, event_type: AlertEventType, enabled: boolean) => void;
-  isPending: boolean;
+  isDisabled: boolean;
 }
 
-function ContainerRow({ container: c, disabledSet, onToggle, isPending }: ContainerRowProps) {
+function ContainerRow({ container: c, disabledSet, onToggle, isDisabled }: ContainerRowProps) {
   return (
-    <div className="flex items-center justify-between gap-4 py-3 border-b border-border last:border-0">
-      <div className="min-w-0">
+    <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border last:border-0">
+      <div className="flex-1 min-w-0">
         <p className="text-sm font-medium text-slate-200 truncate">{c.name}</p>
         <p className="text-xs text-slate-500 font-mono truncate mt-0.5">{c.image}</p>
       </div>
-      <div className="flex items-center gap-5 shrink-0">
-        {ALERT_TYPES.map(({ key, label }) => (
+      {ALERT_TYPES.map(({ key }) => (
+        <div key={key} className={`${COL_W} flex justify-center`}>
           <Toggle
-            key={key}
-            label={label}
             checked={!disabledSet.has(`${c.name}:${key}`)}
-            disabled={isPending}
+            disabled={isDisabled}
             onChange={(enabled) => onToggle(c.name, key, enabled)}
           />
-        ))}
-      </div>
+        </div>
+      ))}
     </div>
   );
 }
@@ -150,119 +150,24 @@ function AboutSection({ version }: { version?: string }) {
   );
 }
 
-// ── Image Updates section ─────────────────────────────────────────────────────
+// ── General tab ───────────────────────────────────────────────────────────────
 
-function ImageUpdatesSection() {
-  const queryClient = useQueryClient();
-
-  const { data: allSettings, isLoading } = useQuery<Record<string, string>>({
-    queryKey: ["settings-all"],
-    queryFn: api.settings.getAll,
-  });
-
-  const serverEnabled = (allSettings?.image_check_enabled ?? "true") !== "false";
-  const serverTime = allSettings?.image_check_time ?? "03:00";
-
-  const [enabledDraft, setEnabledDraft] = useState<boolean | null>(null);
-  const [timeDraft, setTimeDraft] = useState<string | null>(null);
-
-  const enabled = enabledDraft ?? serverEnabled;
-  const time = timeDraft ?? serverTime;
-
-  const [saved, setSaved] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const { mutate: save, isPending } = useMutation({
-    mutationFn: (body: Record<string, string>) => api.settings.save(body),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["settings-all"] });
-      setEnabledDraft(null);
-      setTimeDraft(null);
-      setSaved(true);
-      setError(null);
-      setTimeout(() => setSaved(false), 3_000);
-    },
-    onError: (err: Error) => setError(err.message),
-  });
-
-  const [checkDone, setCheckDone] = useState(false);
-  const [checkError, setCheckError] = useState<string | null>(null);
-
-  const { mutate: checkNow, isPending: isChecking } = useMutation({
-    mutationFn: api.admin.checkImages,
-    onSuccess: () => {
-      setCheckDone(true);
-      setCheckError(null);
-      setTimeout(() => setCheckDone(false), 3_000);
-    },
-    onError: (err: Error) => setCheckError(err.message),
-  });
-
-  const hasDraft = enabledDraft !== null || timeDraft !== null;
-
-  if (isLoading) return null;
-
+function SectionHeader({ label }: { label: string }) {
   return (
-    <section className="card p-5 space-y-4">
-      <div>
-        <h2 className="text-sm font-semibold text-slate-200">Image Updates</h2>
-        <p className="text-xs text-slate-500 mt-1">
-          Automatically check for newer container images on a daily schedule.
-        </p>
-      </div>
-      <div className="space-y-4">
-        <div className="flex items-center justify-between">
-          <p className="text-xs font-medium text-slate-400">Enable automatic image update checks</p>
-          <Toggle
-            checked={enabled}
-            onChange={(v) => setEnabledDraft(v)}
-            disabled={isPending}
-            label={enabled ? "On" : "Off"}
-          />
-        </div>
-        <div className="space-y-1.5">
-          <label className="text-xs font-medium text-slate-400">Daily check time (24h)</label>
-          <input
-            type="time"
-            value={time}
-            onChange={(e) => setTimeDraft(e.target.value)}
-            disabled={isPending || !enabled}
-            className="bg-surface-3 border border-border rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-accent disabled:opacity-40 disabled:cursor-not-allowed"
-          />
-        </div>
-      </div>
-      <div className="flex items-center gap-3">
-        <button
-          disabled={isPending || !hasDraft}
-          onClick={() => {
-            const body: Record<string, string> = {};
-            if (enabledDraft !== null) body.image_check_enabled = enabledDraft ? "true" : "false";
-            if (timeDraft !== null) body.image_check_time = timeDraft;
-            save(body);
-          }}
-          className="px-4 py-2 text-sm rounded-lg bg-accent hover:bg-accent-hover text-white font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-        >
-          Save
-        </button>
-        {saved && <span className="text-xs text-green-400">Saved.</span>}
-        {error && <span className="text-xs text-red-400">{error}</span>}
-      </div>
-      <div className="flex items-center gap-3 pt-1 border-t border-border">
-        <button
-          disabled={isChecking}
-          onClick={() => checkNow()}
-          className="px-3 py-1.5 text-xs rounded-lg border border-border text-slate-400 hover:text-slate-200 hover:border-slate-500 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-        >
-          {isChecking ? "Checking…" : "Check now"}
-        </button>
-        {checkDone && <span className="text-xs text-green-400">Check complete</span>}
-        {checkError && <span className="text-xs text-red-400">{checkError}</span>}
-      </div>
-    </section>
+    <div className="px-5 py-2 border-b border-border bg-surface-3/40">
+      <span className="text-xs font-semibold uppercase tracking-widest text-slate-500">{label}</span>
+    </div>
   );
 }
 
-// ── General tab ───────────────────────────────────────────────────────────────
+function SettingRow({ label, children, last }: { label: string; children: React.ReactNode; last?: boolean }) {
+  return (
+    <div className={`flex items-start gap-4 px-5 py-3 ${last ? "" : "border-b border-border"}`}>
+      <span className="w-44 shrink-0 text-sm text-slate-400 pt-0.5">{label}</span>
+      <div className="flex-1 min-w-0">{children}</div>
+    </div>
+  );
+}
 
 function GeneralTab() {
   const queryClient = useQueryClient();
@@ -279,22 +184,42 @@ function GeneralTab() {
     retry: false,
   });
 
+  const { data: allSettings, isLoading: isLoadingAll } = useQuery<Record<string, string>>({
+    queryKey: ["settings-all"],
+    queryFn: api.settings.getAll,
+  });
+
+  // General settings drafts
   const [webhookDraft, setWebhookDraft] = useState<string | null>(null);
   const [retentionDraft, setRetentionDraft] = useState<string | null>(null);
   const [ttlDraft, setTtlDraft] = useState<string | null>(null);
   const [timezoneDraft, setTimezoneDraft] = useState<string | null>(null);
 
+  // Image check drafts
+  const serverEnabled = (allSettings?.image_check_enabled ?? "true") !== "false";
+  const serverTime = allSettings?.image_check_time ?? "03:00";
+  const [enabledDraft, setEnabledDraft] = useState<boolean | null>(null);
+  const [timeDraft, setTimeDraft] = useState<string | null>(null);
+
+  // Computed values
   const webhook = webhookDraft ?? general?.discord_webhook_url ?? "";
   const retention = retentionDraft ?? String(general?.log_retention_days ?? 7);
   const ttl = ttlDraft ?? String(general?.exited_container_ttl_hours ?? 0.083);
   const timezone = timezoneDraft ?? general?.timezone ?? "UTC";
+  const imageEnabled = enabledDraft ?? serverEnabled;
+  const imageTime = timeDraft ?? serverTime;
 
+  // Save statuses
   const [webhookSaved, setWebhookSaved] = useState(false);
   const [retentionSaved, setRetentionSaved] = useState(false);
   const [timezoneSaved, setTimezoneSaved] = useState(false);
+  const [imageSaved, setImageSaved] = useState(false);
+  const [checkDone, setCheckDone] = useState(false);
   const [webhookError, setWebhookError] = useState<string | null>(null);
   const [retentionError, setRetentionError] = useState<string | null>(null);
   const [timezoneError, setTimezoneError] = useState<string | null>(null);
+  const [imageError, setImageError] = useState<string | null>(null);
+  const [checkError, setCheckError] = useState<string | null>(null);
 
   const { mutate: save, isPending: isSaving } = useMutation({
     mutationFn: (body: Partial<GeneralSettings>) => api.settings.saveGeneral(body),
@@ -327,7 +252,30 @@ function GeneralTab() {
     },
   });
 
-  if (isLoading) {
+  const { mutate: saveImage, isPending: isSavingImage } = useMutation({
+    mutationFn: (body: Record<string, string>) => api.settings.save(body),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["settings-all"] });
+      setEnabledDraft(null);
+      setTimeDraft(null);
+      setImageSaved(true);
+      setImageError(null);
+      setTimeout(() => setImageSaved(false), 3_000);
+    },
+    onError: (err: Error) => setImageError(err.message),
+  });
+
+  const { mutate: checkNow, isPending: isChecking } = useMutation({
+    mutationFn: api.admin.checkImages,
+    onSuccess: () => {
+      setCheckDone(true);
+      setCheckError(null);
+      setTimeout(() => setCheckDone(false), 3_000);
+    },
+    onError: (err: Error) => setCheckError(err.message),
+  });
+
+  if (isLoading || isLoadingAll) {
     return <div className="py-12 text-center text-slate-500">Loading…</div>;
   }
 
@@ -335,119 +283,145 @@ function GeneralTab() {
   const retentionValid = !isNaN(retentionNum) && retentionNum >= 1 && retentionNum <= 365;
   const ttlNum = parseFloat(ttl);
   const ttlValid = !isNaN(ttlNum) && ttlNum >= 0;
+  const imageHasDraft = enabledDraft !== null || timeDraft !== null;
 
   return (
-    <div className="space-y-8">
-      {/* Discord webhook */}
-      <section className="card p-5 space-y-4">
-        <div>
-          <h2 className="text-sm font-semibold text-slate-200">Discord Webhook</h2>
-          <p className="text-xs text-slate-500 mt-1">
-            Paste a Discord incoming webhook URL to receive container event alerts.
-          </p>
-        </div>
-        <WebhookField
-          value={webhook}
-          onChange={setWebhookDraft}
-          disabled={isSaving}
-        />
-        <div className="flex items-center gap-3">
-          <button
-            disabled={isSaving || webhookDraft === null}
-            onClick={() => save({ discord_webhook_url: webhook })}
-            className="px-4 py-2 text-sm rounded-lg bg-accent hover:bg-accent-hover text-white font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-          >
-            Save
-          </button>
-          {webhookSaved && <span className="text-xs text-green-400">Saved.</span>}
-          {webhookError && <span className="text-xs text-red-400">{webhookError}</span>}
-        </div>
-      </section>
+    <div className="space-y-6">
+      <div className="card overflow-hidden">
 
-      {/* Data & Retention */}
-      <section className="card p-5 space-y-4">
-        <div>
-          <h2 className="text-sm font-semibold text-slate-200">Data & Retention</h2>
-          <p className="text-xs text-slate-500 mt-1">
-            Logs and events older than the retention period are deleted during the hourly cleanup job.
-          </p>
-        </div>
-        <div className="space-y-4">
-          <div className="space-y-1.5">
-            <label className="text-xs font-medium text-slate-400">Log retention (days)</label>
-            <div className="flex items-center gap-3">
-              <input
-                type="number"
-                min={1}
-                max={365}
-                value={retention}
-                onChange={(e) => setRetentionDraft(e.target.value)}
-                className="w-24 bg-surface-3 border border-border rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-accent"
-              />
+        {/* DISCORD */}
+        <SectionHeader label="Discord" />
+        <SettingRow label="Webhook URL">
+          <div className="space-y-2">
+            <WebhookField value={webhook} onChange={setWebhookDraft} disabled={isSaving} />
+            <div className="flex items-center gap-2">
+              <button
+                disabled={isSaving || webhookDraft === null}
+                onClick={() => save({ discord_webhook_url: webhook })}
+                className="px-3 py-1.5 text-xs rounded-lg bg-accent hover:bg-accent-hover text-white font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                Save
+              </button>
+              {webhookSaved && <span className="text-xs text-green-400">Saved.</span>}
+              {webhookError && <span className="text-xs text-red-400">{webhookError}</span>}
             </div>
           </div>
-          <div className="space-y-1.5">
-            <label className="text-xs font-medium text-slate-400">Exited container TTL (hours)</label>
-            <div className="flex items-center gap-3">
+        </SettingRow>
+
+        {/* RETENTION */}
+        <SectionHeader label="Retention" />
+        <SettingRow label="Log retention">
+          <div className="flex items-center gap-2">
+            <input
+              type="number"
+              min={1}
+              max={365}
+              value={retention}
+              onChange={(e) => setRetentionDraft(e.target.value)}
+              className="w-20 bg-surface-3 border border-border rounded-lg px-3 py-1.5 text-sm text-slate-200 focus:outline-none focus:border-accent"
+            />
+            <span className="text-sm text-slate-500">days</span>
+          </div>
+        </SettingRow>
+        <SettingRow label="Container TTL">
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
               <input
                 type="number"
                 min={0}
                 step={0.001}
                 value={ttl}
                 onChange={(e) => setTtlDraft(e.target.value)}
-                className="w-24 bg-surface-3 border border-border rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-accent"
+                className="w-20 bg-surface-3 border border-border rounded-lg px-3 py-1.5 text-sm text-slate-200 focus:outline-none focus:border-accent"
               />
-              <span className="text-xs text-slate-500">Set to 0 to disable</span>
+              <span className="text-sm text-slate-500">hours</span>
+              <span className="text-xs text-slate-600">(0 = disabled)</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                disabled={isSaving || (retentionDraft === null && ttlDraft === null) || !retentionValid || !ttlValid}
+                onClick={() => {
+                  const body: Partial<GeneralSettings> = {};
+                  if (retentionDraft !== null) body.log_retention_days = retentionNum;
+                  if (ttlDraft !== null) body.exited_container_ttl_hours = ttlNum;
+                  save(body);
+                }}
+                className="px-3 py-1.5 text-xs rounded-lg bg-accent hover:bg-accent-hover text-white font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                Save
+              </button>
+              {retentionSaved && <span className="text-xs text-green-400">Saved.</span>}
+              {retentionError && <span className="text-xs text-red-400">{retentionError}</span>}
             </div>
           </div>
-        </div>
-        <div className="flex items-center gap-3">
-          <button
-            disabled={isSaving || (retentionDraft === null && ttlDraft === null) || !retentionValid || !ttlValid}
-            onClick={() => {
-              const body: Partial<GeneralSettings> = {};
-              if (retentionDraft !== null) body.log_retention_days = retentionNum;
-              if (ttlDraft !== null) body.exited_container_ttl_hours = ttlNum;
-              save(body);
-            }}
-            className="px-4 py-2 text-sm rounded-lg bg-accent hover:bg-accent-hover text-white font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-          >
-            Save
-          </button>
-          {retentionSaved && <span className="text-xs text-green-400">Saved.</span>}
-          {retentionError && <span className="text-xs text-red-400">{retentionError}</span>}
-        </div>
-      </section>
+        </SettingRow>
 
-      {/* Timezone */}
-      <section className="card p-5 space-y-4">
-        <div>
-          <h2 className="text-sm font-semibold text-slate-200">Timezone</h2>
-          <p className="text-xs text-slate-500 mt-1">
-            IANA timezone name — controls all timestamps in the UI.
-          </p>
-        </div>
-        <TimezoneSelect
-          value={timezone}
-          onChange={setTimezoneDraft}
-          disabled={isSaving}
-        />
-        <div className="flex items-center gap-3">
-          <button
-            disabled={isSaving || timezoneDraft === null}
-            onClick={() => save({ timezone })}
-            className="px-4 py-2 text-sm rounded-lg bg-accent hover:bg-accent-hover text-white font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-          >
-            Save
-          </button>
-          {timezoneSaved && <span className="text-xs text-green-400">Saved.</span>}
-          {timezoneError && <span className="text-xs text-red-400">{timezoneError}</span>}
-        </div>
-      </section>
+        {/* TIMEZONE */}
+        <SectionHeader label="Timezone" />
+        <SettingRow label="Timezone" last>
+          <div className="space-y-2">
+            <TimezoneSelect value={timezone} onChange={setTimezoneDraft} disabled={isSaving} />
+            <div className="flex items-center gap-2">
+              <button
+                disabled={isSaving || timezoneDraft === null}
+                onClick={() => save({ timezone })}
+                className="px-3 py-1.5 text-xs rounded-lg bg-accent hover:bg-accent-hover text-white font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                Save
+              </button>
+              {timezoneSaved && <span className="text-xs text-green-400">Saved.</span>}
+              {timezoneError && <span className="text-xs text-red-400">{timezoneError}</span>}
+            </div>
+          </div>
+        </SettingRow>
 
-      <ImageUpdatesSection />
+        {/* IMAGE UPDATES */}
+        <SectionHeader label="Image Updates" />
+        <SettingRow label="Auto-check">
+          <Toggle
+            checked={imageEnabled}
+            onChange={(v) => setEnabledDraft(v)}
+            disabled={isSavingImage}
+          />
+        </SettingRow>
+        <SettingRow label="Daily check time" last>
+          <div className="space-y-2">
+            <input
+              type="time"
+              value={imageTime}
+              onChange={(e) => setTimeDraft(e.target.value)}
+              disabled={isSavingImage || !imageEnabled}
+              className="bg-surface-3 border border-border rounded-lg px-3 py-1.5 text-sm text-slate-200 focus:outline-none focus:border-accent disabled:opacity-40 disabled:cursor-not-allowed"
+            />
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                disabled={isSavingImage || !imageHasDraft}
+                onClick={() => {
+                  const body: Record<string, string> = {};
+                  if (enabledDraft !== null) body.image_check_enabled = enabledDraft ? "true" : "false";
+                  if (timeDraft !== null) body.image_check_time = imageTime;
+                  saveImage(body);
+                }}
+                className="px-3 py-1.5 text-xs rounded-lg bg-accent hover:bg-accent-hover text-white font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                Save
+              </button>
+              <button
+                disabled={isChecking}
+                onClick={() => checkNow()}
+                className="px-3 py-1.5 text-xs rounded-lg border border-border text-slate-400 hover:text-slate-200 hover:border-slate-500 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {isChecking ? "Checking…" : "Check now"}
+              </button>
+              {imageSaved && <span className="text-xs text-green-400">Saved.</span>}
+              {imageError && <span className="text-xs text-red-400">{imageError}</span>}
+              {checkDone && <span className="text-xs text-green-400">Check complete.</span>}
+              {checkError && <span className="text-xs text-red-400">{checkError}</span>}
+            </div>
+          </div>
+        </SettingRow>
 
-      <hr className="border-border" />
+      </div>
 
       <AboutSection version={versionData?.version} />
     </div>
@@ -484,6 +458,15 @@ function NotificationsTab() {
     },
   });
 
+  const { mutate: bulkToggle, isPending: isBulkPending } = useMutation({
+    mutationFn: (changes: Array<{ container_name: string; event_type: AlertEventType; enabled: boolean }>) =>
+      Promise.all(changes.map((c) => api.settings.setAlert(c.container_name, c.event_type, c.enabled))),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["alert-settings"] });
+    },
+  });
+
+  const isDisabled = isPending || isBulkPending;
   const isLoading = loadingContainers || loadingSettings;
   const disabledSet = buildDisabledSet(alertSettings);
 
@@ -495,6 +478,18 @@ function NotificationsTab() {
     } else {
       ungrouped.push(c);
     }
+  }
+
+  function handleToggleAll(members: Container[]) {
+    const allEnabled = members.every((c) =>
+      ALERT_TYPES.every((t) => !disabledSet.has(`${c.name}:${t.key}`))
+    );
+    const targetEnabled = !allEnabled;
+    bulkToggle(
+      members.flatMap((c) =>
+        ALERT_TYPES.map((t) => ({ container_name: c.name, event_type: t.key, enabled: targetEnabled }))
+      )
+    );
   }
 
   if (isLoading) {
@@ -509,59 +504,72 @@ function NotificationsTab() {
     );
   }
 
-  return (
-    <div className="space-y-6">
-      {/* Column labels */}
-      <div className="flex items-center justify-end gap-5 pr-0.5">
-        {ALERT_TYPES.map(({ key, label }) => (
-          <span key={key} className="w-9 text-center text-xs font-medium text-slate-500 uppercase tracking-wide">
-            {label}
-          </span>
-        ))}
-      </div>
+  const togglesWidth = `${ALERT_TYPES.length * 3.5}rem`; // 4 × w-14 (3.5rem)
 
-      {Object.entries(groups).map(([project, members]) => (
-        <section key={project} className="card">
-          <div className="px-4 py-3 border-b border-border flex items-center gap-2">
-            <svg className="w-3.5 h-3.5 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-            </svg>
-            <span className="text-xs font-semibold uppercase tracking-widest text-slate-500">{project}</span>
+  return (
+    <div className="space-y-4">
+      <div className="card overflow-hidden">
+        {/* Column header row */}
+        <div className="flex items-center gap-2 px-4 py-2 border-b border-border bg-surface-3/40">
+          <span className="flex-1 text-xs font-medium uppercase tracking-wide text-slate-500">Container</span>
+          <div className="flex shrink-0" style={{ width: togglesWidth }}>
+            {ALERT_TYPES.map(({ key, label }) => (
+              <span key={key} className={`${COL_W} text-center text-xs font-medium uppercase tracking-wide text-slate-500`}>
+                {label}
+              </span>
+            ))}
           </div>
-          <div className="px-4">
+        </div>
+
+        {/* Compose stacks */}
+        {Object.entries(groups).map(([project, members]) => (
+          <React.Fragment key={project}>
+            {/* Stack header */}
+            <div className="flex items-center gap-2 px-4 py-2 border-b border-border bg-surface-3/20">
+              <svg className="w-3.5 h-3.5 text-slate-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+              </svg>
+              <span className="flex-1 text-xs font-semibold uppercase tracking-widest text-slate-500 truncate">{project}</span>
+              <button
+                disabled={isDisabled}
+                onClick={() => handleToggleAll(members)}
+                className="text-xs text-slate-500 hover:text-slate-300 border border-border rounded px-2 py-0.5 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                Toggle all
+              </button>
+            </div>
             {members.map((c) => (
               <ContainerRow
                 key={c.docker_id}
                 container={c}
                 disabledSet={disabledSet}
                 onToggle={(name, type, enabled) => mutate({ container_name: name, event_type: type, enabled })}
-                isPending={isPending}
+                isDisabled={isDisabled}
               />
             ))}
-          </div>
-        </section>
-      ))}
+          </React.Fragment>
+        ))}
 
-      {ungrouped.length > 0 && (
-        <section className="card">
-          {Object.keys(groups).length > 0 && (
-            <div className="px-4 py-3 border-b border-border">
-              <span className="text-xs font-semibold uppercase tracking-widest text-slate-500">Standalone</span>
-            </div>
-          )}
-          <div className="px-4">
+        {/* Standalone containers */}
+        {ungrouped.length > 0 && (
+          <React.Fragment>
+            {Object.keys(groups).length > 0 && (
+              <div className="flex items-center gap-2 px-4 py-2 border-b border-border bg-surface-3/20">
+                <span className="text-xs font-semibold uppercase tracking-widest text-slate-500">Standalone</span>
+              </div>
+            )}
             {ungrouped.map((c) => (
               <ContainerRow
                 key={c.docker_id}
                 container={c}
                 disabledSet={disabledSet}
                 onToggle={(name, type, enabled) => mutate({ container_name: name, event_type: type, enabled })}
-                isPending={isPending}
+                isDisabled={isDisabled}
               />
             ))}
-          </div>
-        </section>
-      )}
+          </React.Fragment>
+        )}
+      </div>
 
       <p className="text-xs text-slate-600">
         Settings are only meaningful when a Discord webhook URL is configured. Events are always recorded in the timeline regardless.
