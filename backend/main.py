@@ -13,7 +13,7 @@ _version_file = Path("/app/VERSION")
 APP_VERSION = _version_file.read_text().strip() if _version_file.exists() else "dev"
 
 from database import create_db_and_tables, engine
-from api import containers, logs, events, settings, actions, admin
+from api import containers, logs, events, settings, actions, admin, stack_actions
 from api.auth import api_key_required
 from services.cleanup import run_cleanup
 from services.app_settings import get_setting, set_setting
@@ -105,6 +105,7 @@ app.include_router(events.router)
 app.include_router(settings.router)
 app.include_router(actions.router)
 app.include_router(admin.router)
+app.include_router(stack_actions.router)
 
 
 @app.get("/api/version")
