@@ -1,3 +1,4 @@
+import logging
 import os
 from datetime import datetime, timedelta
 
@@ -6,6 +7,8 @@ from sqlmodel import Session, delete
 from database import engine
 from models import Container, ContainerLog, ContainerEvent
 from services.app_settings import get_setting
+
+logger = logging.getLogger(__name__)
 
 # Env-var bootstrap defaults; DB values (set via Settings UI) take precedence
 # at runtime once the service has started for the first time.
@@ -51,12 +54,12 @@ def run_cleanup():
         deleted_events = event_result.rowcount
 
     if deleted_logs or deleted_events:
-        print(
-            f"[cleanup] Removed {deleted_logs} logs and {deleted_events} events "
-            f"older than {log_retention} days"
+        logger.info(
+            "Removed %d logs and %d events older than %d days",
+            deleted_logs, deleted_events, log_retention,
         )
     if purged_containers:
-        print(
-            f"[cleanup] Purged {purged_containers} stale exited/dead container records "
-            f"(last_seen > {exited_ttl}h ago)"
+        logger.info(
+            "Purged %d stale exited/dead container records (last_seen > %sh ago)",
+            purged_containers, exited_ttl,
         )

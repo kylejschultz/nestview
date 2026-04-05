@@ -1,3 +1,4 @@
+import logging
 import os
 from contextlib import asynccontextmanager
 from datetime import datetime
@@ -8,6 +9,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 from sqlmodel import Session
+
+logger = logging.getLogger(__name__)
 
 _version_file = Path("/app/VERSION")
 APP_VERSION = _version_file.read_text().strip() if _version_file.exists() else "dev"
@@ -72,13 +75,19 @@ async def lifespan(app: FastAPI):
     except Exception:
         h, m = 3, 0
 
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
+
     scheduler = AsyncIOScheduler()
     scheduler.add_job(run_cleanup, "interval", hours=1, id="cleanup")
     if check_enabled:
         scheduler.add_job(run_image_check, "cron", hour=h, minute=m, id="image_check")
-        print(f"[scheduler] image_check cron registered for {h:02d}:{m:02d}")
+        logger.info("image_check cron registered for %02d:%02d", h, m)
     scheduler.add_job(run_image_check, "date", run_date=datetime.utcnow(), id="image_check_startup")
-    print(f"[scheduler] image_check startup run queued")
+    logger.info("image_check startup run queued")
     scheduler.start()
 
     yield
