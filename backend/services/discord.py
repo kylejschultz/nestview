@@ -9,6 +9,7 @@ EVENT_COLORS = {
     "oom": 0xA855F7,
     "restart": 0xEAB308,
     "start": 0x22C55E,
+    "update_available": 0x3B82F6,
 }
 
 EVENT_TITLES = {
@@ -19,6 +20,7 @@ EVENT_TITLES = {
     "oom": "Container OOM Killed",
     "restart": "Container Restarted",
     "start": "Container Started",
+    "update_available": "Image Update Available",
 }
 
 

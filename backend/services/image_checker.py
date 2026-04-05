@@ -5,6 +5,7 @@ Supports Docker Hub (docker.io) and GHCR (ghcr.io).
 Called by APScheduler on a daily cron (default 03:00) and by the admin trigger endpoint.
 """
 
+import asyncio
 import logging
 from datetime import datetime
 from typing import Optional, Tuple
@@ -14,7 +15,9 @@ import requests
 from sqlmodel import Session, select
 
 from database import engine
-from models import Container
+from models import Container, ContainerAlertSetting
+from services import discord
+from services.app_settings import get_setting
 
 logger = logging.getLogger(__name__)
 
@@ -166,6 +169,40 @@ def run_image_check() -> None:
     logger.info("image_checker: digest check run complete")
 
 
+def _update_alert_suppressed(container_name: str, session: Session) -> bool:
+    """Return True if the user has disabled update_available alerts for this container."""
+    setting = session.exec(
+        select(ContainerAlertSetting)
+        .where(ContainerAlertSetting.container_name == container_name)
+        .where(ContainerAlertSetting.event_type == "update_available")
+    ).first()
+    return setting is not None and not setting.enabled
+
+
+def _maybe_send_update_alert(session: Session, container: Container) -> None:
+    if _update_alert_suppressed(container.name, session):
+        return
+
+    webhook_url = get_setting(session, "discord_webhook_url") or ""
+    if not webhook_url:
+        return
+
+    try:
+        sent = asyncio.run(discord.send_alert(
+            webhook_url=webhook_url,
+            container_name=container.name,
+            event_type="update_available",
+            details=f"Image: {container.image}",
+        ))
+    except Exception as exc:
+        logger.warning("image_checker: discord alert failed for %r: %s", container.name, type(exc).__name__)
+        sent = False
+
+    if sent:
+        container.update_alert_sent_digest = container.registry_digest
+        logger.info("image_checker: update alert sent for %r", container.name)
+
+
 def _check_container(session: Session, container: Container) -> None:
     image_ref = container.image
 
@@ -201,6 +238,9 @@ def _check_container(session: Session, container: Container) -> None:
         container.image_size = image_size
     if last_pulled is not None:
         container.last_pulled = last_pulled
+
+    if container.update_available and container.update_alert_sent_digest != container.registry_digest:
+        _maybe_send_update_alert(session, container)
 
     session.add(container)
     logger.debug(

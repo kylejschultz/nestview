@@ -13,9 +13,9 @@ from services import discord
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
 
-# The three event types exposed in the UI.
+# The event types exposed in the UI.
 # "die" events reuse the "crash" setting (see events.py).
-ALERT_EVENT_TYPES = ("crash", "restart", "oom")
+ALERT_EVENT_TYPES = ("crash", "restart", "oom", "update_available")
 
 _DEFAULT_LOG_RETENTION_DAYS = 7
 _DEFAULT_EXITED_CONTAINER_TTL_HOURS = 0.083
@@ -30,6 +30,8 @@ _ALLOWED_SETTING_KEYS = {
     "exited_container_ttl_hours",
     "timezone",
     "wizard_dismissed",
+    "image_check_enabled",
+    "image_check_time",
 }
 
 
