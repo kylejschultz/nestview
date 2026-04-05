@@ -101,6 +101,7 @@ function ActionButtons({ container }: ActionButtonsProps) {
           message={modalMessages[pendingAction]}
           onConfirm={confirmAction}
           onCancel={() => setPendingAction(null)}
+          isPending={isPending}
         />
       )}
 
