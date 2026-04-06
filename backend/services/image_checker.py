@@ -106,16 +106,17 @@ def _fetch_registry_digest(registry: str, namespace: str, repo: str, tag: str) -
 # Local image attribute helpers
 # ---------------------------------------------------------------------------
 
-def _get_local_image_attrs(image_ref: str) -> Tuple[Optional[str], Optional[int], Optional[datetime]]:
+def _get_local_image_attrs(image_ref: str) -> Tuple[Optional[str], Optional[int], Optional[datetime], list]:
     """
-    Return (local_digest, image_size_bytes, last_pulled_utc) from the Docker daemon.
-    Returns (None, None, None) if the image is not found locally.
+    Return (local_digest, image_size_bytes, last_pulled_utc, repo_digests) from the Docker daemon.
+    Returns (None, None, None, []) if the image is not found locally.
     """
     try:
         client = docker.from_env()
         img = client.images.get(image_ref)
         local_digest: Optional[str] = img.id
         image_size: Optional[int] = img.attrs.get("Size")
+        repo_digests: list = img.attrs.get("RepoDigests", [])
 
         last_pulled: Optional[datetime] = None
         raw_time = img.attrs.get("Metadata", {}).get("LastTagTime")
@@ -128,13 +129,13 @@ def _get_local_image_attrs(image_ref: str) -> Tuple[Optional[str], Optional[int]
             except Exception:
                 pass
 
-        return local_digest, image_size, last_pulled
+        return local_digest, image_size, last_pulled, repo_digests
     except docker.errors.ImageNotFound:
         logger.warning("image_checker: image %r not found locally", image_ref)
-        return None, None, None
+        return None, None, None, []
     except Exception as exc:
         logger.warning("image_checker: could not inspect local image %r: %s", image_ref, exc)
-        return None, None, None
+        return None, None, None, []
 
 
 # ---------------------------------------------------------------------------
@@ -230,8 +231,8 @@ def _check_container(session: Session, container: Container) -> None:
         logger.debug("image_checker: skipping self-image %r", image_ref)
         return
 
-    # Local image attrs
-    local_digest, image_size, last_pulled = _get_local_image_attrs(image_ref)
+    # Local image attrs (includes RepoDigests for accurate comparison)
+    local_digest, image_size, last_pulled, repo_digests = _get_local_image_attrs(image_ref)
 
     # Registry digest
     try:
@@ -249,11 +250,22 @@ def _check_container(session: Session, container: Container) -> None:
     container.image_digest = local_digest
     container.registry_digest = registry_digest
     container.last_digest_check = datetime.utcnow()
-    container.update_available = bool(
-        registry_digest is not None
-        and local_digest is not None
-        and local_digest != registry_digest
-    )
+
+    # Local image.id (sha256 of config) and registry manifest digest (sha256 of manifest)
+    # are different hash spaces — they cannot be compared directly with ==.
+    # RepoDigests contains strings like "nginx@sha256:abc123..." which embed the registry
+    # manifest digest, making this the correct comparison for up-to-date detection.
+    if registry_digest is not None and repo_digests:
+        up_to_date = any(registry_digest in rd for rd in repo_digests)
+        container.update_available = not up_to_date
+    else:
+        # Fallback when RepoDigests is unavailable (e.g. locally-built images)
+        container.update_available = bool(
+            registry_digest is not None
+            and local_digest is not None
+            and local_digest != registry_digest
+        )
+
     if image_size is not None:
         container.image_size = image_size
     if last_pulled is not None:
@@ -264,9 +276,10 @@ def _check_container(session: Session, container: Container) -> None:
 
     session.add(container)
     logger.debug(
-        "image_checker: %r — local=%s registry=%s update_available=%s",
+        "image_checker: %r — local=%s registry=%s repo_digests=%d update_available=%s",
         container.name,
         (local_digest or "")[:16],
         (registry_digest or "")[:16],
+        len(repo_digests),
         container.update_available,
     )
