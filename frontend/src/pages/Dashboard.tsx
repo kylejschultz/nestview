@@ -5,6 +5,8 @@ import type { Container } from "../types";
 import ContainerCard from "../components/ContainerCard";
 import EventTimeline from "../components/EventTimeline";
 import ConfirmModal from "../components/ConfirmModal";
+import Toast from "../components/Toast";
+import { useToast } from "../hooks/useToast";
 
 type Filter = "all" | "running" | "stopped";
 
@@ -42,18 +44,18 @@ interface ComposeGroupProps {
   members: Container[];
 }
 
+const STACK_SUCCESS_MESSAGES: Record<StackAction, string> = {
+  stop:           "Stack stopped",
+  start:          "Stack started",
+  restart:        "Stack restarted",
+  "pull-restart": "Stack pull & restart complete",
+};
+
 function ComposeGroup({ project, members }: ComposeGroupProps) {
   const queryClient = useQueryClient();
   const [collapsed, setCollapsed] = useState<boolean>(() => !!loadCollapsed()[project]);
   const [pendingAction, setPendingAction] = useState<StackAction | null>(null);
-  const [toast, setToast] = useState(false);
-  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  function showToast() {
-    setToast(true);
-    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
-    toastTimerRef.current = setTimeout(() => setToast(false), 3_000);
-  }
+  const { toastState, showToast, dismissToast } = useToast();
 
   const { mutate, isPending, variables: activeAction } = useMutation<
     { ok: boolean; project: string; action: string; affected?: number; pulled?: number; restarted?: number },
@@ -68,10 +70,11 @@ function ComposeGroup({ project, members }: ComposeGroupProps) {
     },
     onSuccess: (_data, action) => {
       setTimeout(() => queryClient.invalidateQueries({ queryKey: ["containers"] }), 1_500);
-      if (action === "pull-restart") showToast();
+      showToast(STACK_SUCCESS_MESSAGES[action], "success");
       setPendingAction(null);
     },
-    onError: () => {
+    onError: (err: Error) => {
+      showToast(err.message, "error");
       setPendingAction(null);
     },
   });
@@ -110,10 +113,14 @@ function ComposeGroup({ project, members }: ComposeGroupProps) {
 
   return (
     <div className="bg-surface-2 border border-border rounded-xl overflow-hidden">
-      {toast && (
-        <div className="fixed bottom-6 right-6 z-50 px-4 py-2.5 rounded-lg bg-surface-3 border border-border text-sm text-slate-200 shadow-lg transition-opacity duration-300">
-          Stack pull &amp; restart complete
-        </div>
+      {toastState && (
+        <Toast
+          key={toastState.id}
+          message={toastState.message}
+          type={toastState.type}
+          duration={toastState.duration}
+          onDismiss={dismissToast}
+        />
       )}
 
       {pendingAction && (

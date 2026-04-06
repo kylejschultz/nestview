@@ -4,6 +4,8 @@ import { api } from "../api";
 import type { AlertEventType, AlertSetting, Container, GeneralSettings } from "../types";
 import WebhookField from "../components/WebhookField";
 import TimezoneSelect from "../components/TimezoneSelect";
+import Toast from "../components/Toast";
+import { useToast } from "../hooks/useToast";
 
 // ── Toggle ────────────────────────────────────────────────────────────────────
 
@@ -209,47 +211,21 @@ function GeneralTab() {
   const imageEnabled = enabledDraft ?? serverEnabled;
   const imageTime = timeDraft ?? serverTime;
 
-  // Save statuses
-  const [webhookSaved, setWebhookSaved] = useState(false);
-  const [retentionSaved, setRetentionSaved] = useState(false);
-  const [timezoneSaved, setTimezoneSaved] = useState(false);
-  const [imageSaved, setImageSaved] = useState(false);
-  const [checkDone, setCheckDone] = useState(false);
-  const [webhookError, setWebhookError] = useState<string | null>(null);
-  const [retentionError, setRetentionError] = useState<string | null>(null);
-  const [timezoneError, setTimezoneError] = useState<string | null>(null);
-  const [imageError, setImageError] = useState<string | null>(null);
-  const [checkError, setCheckError] = useState<string | null>(null);
+  const { toastState, showToast, dismissToast } = useToast();
 
   const { mutate: save, isPending: isSaving } = useMutation({
     mutationFn: (body: Partial<GeneralSettings>) => api.settings.saveGeneral(body),
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ["settings-general"] });
-      if ("discord_webhook_url" in variables) {
-        setWebhookDraft(null);
-        setWebhookSaved(true);
-        setWebhookError(null);
-        setTimeout(() => setWebhookSaved(false), 3_000);
-      }
+      if ("discord_webhook_url" in variables) setWebhookDraft(null);
       if ("log_retention_days" in variables || "exited_container_ttl_hours" in variables) {
         setRetentionDraft(null);
         setTtlDraft(null);
-        setRetentionSaved(true);
-        setRetentionError(null);
-        setTimeout(() => setRetentionSaved(false), 3_000);
       }
-      if ("timezone" in variables) {
-        setTimezoneDraft(null);
-        setTimezoneSaved(true);
-        setTimezoneError(null);
-        setTimeout(() => setTimezoneSaved(false), 3_000);
-      }
+      if ("timezone" in variables) setTimezoneDraft(null);
+      showToast("Settings saved", "success");
     },
-    onError: (err: Error, variables) => {
-      if ("discord_webhook_url" in variables) setWebhookError(err.message);
-      if ("log_retention_days" in variables || "exited_container_ttl_hours" in variables) setRetentionError(err.message);
-      if ("timezone" in variables) setTimezoneError(err.message);
-    },
+    onError: (err: Error) => showToast(err.message, "error"),
   });
 
   const { mutate: saveImage, isPending: isSavingImage } = useMutation({
@@ -258,21 +234,15 @@ function GeneralTab() {
       queryClient.invalidateQueries({ queryKey: ["settings-all"] });
       setEnabledDraft(null);
       setTimeDraft(null);
-      setImageSaved(true);
-      setImageError(null);
-      setTimeout(() => setImageSaved(false), 3_000);
+      showToast("Settings saved", "success");
     },
-    onError: (err: Error) => setImageError(err.message),
+    onError: (err: Error) => showToast(err.message, "error"),
   });
 
   const { mutate: checkNow, isPending: isChecking } = useMutation({
     mutationFn: api.admin.checkImages,
-    onSuccess: () => {
-      setCheckDone(true);
-      setCheckError(null);
-      setTimeout(() => setCheckDone(false), 3_000);
-    },
-    onError: (err: Error) => setCheckError(err.message),
+    onSuccess: () => showToast("Image check complete", "success"),
+    onError: (err: Error) => showToast(err.message, "error"),
   });
 
   if (isLoading || isLoadingAll) {
@@ -287,13 +257,29 @@ function GeneralTab() {
 
   return (
     <div className="space-y-6">
+      {toastState && (
+        <Toast
+          key={toastState.id}
+          message={toastState.message}
+          type={toastState.type}
+          duration={toastState.duration}
+          onDismiss={dismissToast}
+        />
+      )}
+
       <div className="card overflow-hidden">
 
         {/* DISCORD */}
         <SectionHeader label="Discord" />
         <SettingRow label="Webhook URL">
           <div className="space-y-2">
-            <WebhookField value={webhook} onChange={setWebhookDraft} disabled={isSaving} />
+            <WebhookField
+              value={webhook}
+              onChange={setWebhookDraft}
+              disabled={isSaving}
+              onTestSuccess={() => showToast("Webhook test successful", "success")}
+              onTestError={(msg) => showToast(msg, "error")}
+            />
             <div className="flex items-center gap-2">
               <button
                 disabled={isSaving || webhookDraft === null}
@@ -302,8 +288,6 @@ function GeneralTab() {
               >
                 Save
               </button>
-              {webhookSaved && <span className="text-xs text-green-400">Saved.</span>}
-              {webhookError && <span className="text-xs text-red-400">{webhookError}</span>}
             </div>
           </div>
         </SettingRow>
@@ -350,8 +334,6 @@ function GeneralTab() {
               >
                 Save
               </button>
-              {retentionSaved && <span className="text-xs text-green-400">Saved.</span>}
-              {retentionError && <span className="text-xs text-red-400">{retentionError}</span>}
             </div>
           </div>
         </SettingRow>
@@ -369,8 +351,6 @@ function GeneralTab() {
               >
                 Save
               </button>
-              {timezoneSaved && <span className="text-xs text-green-400">Saved.</span>}
-              {timezoneError && <span className="text-xs text-red-400">{timezoneError}</span>}
             </div>
           </div>
         </SettingRow>
@@ -413,10 +393,6 @@ function GeneralTab() {
               >
                 {isChecking ? "Checking…" : "Check now"}
               </button>
-              {imageSaved && <span className="text-xs text-green-400">Saved.</span>}
-              {imageError && <span className="text-xs text-red-400">{imageError}</span>}
-              {checkDone && <span className="text-xs text-green-400">Check complete.</span>}
-              {checkError && <span className="text-xs text-red-400">{checkError}</span>}
             </div>
           </div>
         </SettingRow>

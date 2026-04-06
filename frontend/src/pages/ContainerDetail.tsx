@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
@@ -8,6 +8,8 @@ import MetricBar from "../components/MetricBar";
 import LogViewer from "../components/LogViewer";
 import EventTimeline from "../components/EventTimeline";
 import ConfirmModal from "../components/ConfirmModal";
+import Toast from "../components/Toast";
+import { useToast } from "../hooks/useToast";
 import { formatBytes, formatUptime, formatDateTime } from "../utils";
 import { useTimezone } from "../TimezoneContext";
 
@@ -33,22 +35,14 @@ interface ActionButtonsProps {
 function ActionButtons({ container }: ActionButtonsProps) {
   const queryClient = useQueryClient();
   const [pendingAction, setPendingAction] = useState<ActionType | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [toast, setToast] = useState(false);
-  const errorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const { toastState, showToast, dismissToast } = useToast();
 
-  function scheduleErrorDismiss(msg: string) {
-    setError(msg);
-    if (errorTimerRef.current) clearTimeout(errorTimerRef.current);
-    errorTimerRef.current = setTimeout(() => setError(null), 5_000);
-  }
-
-  function showToast() {
-    setToast(true);
-    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
-    toastTimerRef.current = setTimeout(() => setToast(false), 3_000);
-  }
+  const ACTION_SUCCESS_MESSAGES: Record<ActionType, string> = {
+    stop:           "Container stopped",
+    start:          "Container started",
+    restart:        "Container restarted",
+    "pull-restart": "Pull & Restart complete",
+  };
 
   const { mutate, isPending } = useMutation({
     mutationFn: (action: ActionType) => {
@@ -61,11 +55,11 @@ function ActionButtons({ container }: ActionButtonsProps) {
         queryClient.invalidateQueries({ queryKey: ["container", container.docker_id] });
         queryClient.invalidateQueries({ queryKey: ["containers"] });
       }, delay);
-      if (action === "pull-restart") showToast();
+      showToast(ACTION_SUCCESS_MESSAGES[action], "success");
       setPendingAction(null);
     },
     onError: (err: Error) => {
-      scheduleErrorDismiss(`Failed to ${pendingAction}: ${err.message}`);
+      showToast(err.message, "error");
       setPendingAction(null);
     },
   });
@@ -105,10 +99,14 @@ function ActionButtons({ container }: ActionButtonsProps) {
 
   return (
     <>
-      {toast && (
-        <div className="fixed bottom-6 right-6 z-50 px-4 py-2.5 rounded-lg bg-surface-3 border border-border text-sm text-slate-200 shadow-lg transition-opacity duration-300">
-          Pull &amp; Restart complete
-        </div>
+      {toastState && (
+        <Toast
+          key={toastState.id}
+          message={toastState.message}
+          type={toastState.type}
+          duration={toastState.duration}
+          onDismiss={dismissToast}
+        />
       )}
 
       {pendingAction && (
@@ -181,10 +179,6 @@ function ActionButtons({ container }: ActionButtonsProps) {
             </button>
           )}
         </div>
-
-        {error && (
-          <p className="text-xs text-red-400">{error}</p>
-        )}
       </div>
     </>
   );
