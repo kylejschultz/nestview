@@ -73,7 +73,7 @@ function ActionButtons({ container }: ActionButtonsProps) {
   const progressStepsRef = useRef<ProgressStep[]>([]);
   const actionRef = useRef<ActionType | null>(null);
   const initialDigestCheckRef = useRef<string | null>(null);
-  const initialRestartCountRef = useRef<number>(0);
+  const initialStartedAtRef = useRef<string | null>(null);
 
   const ACTION_SUCCESS_MESSAGES: Record<ActionType, string> = {
     stop:           "Container stopped",
@@ -136,8 +136,19 @@ function ActionButtons({ container }: ActionButtonsProps) {
       }
     } else if (action === "restart") {
       const stoppingDone = progressStepsRef.current.find(s => s.id === "stopping")?.status === "done";
-      if (!stoppingDone) {
-        if (fresh.state !== "running" || fresh.restart_count > initialRestartCountRef.current) {
+      const restarted =
+        fresh.state === "running" &&
+        fresh.started_at !== null &&
+        fresh.started_at !== initialStartedAtRef.current;
+
+      if (restarted) {
+        setStepStatus("stopping", "done");
+        setStepStatus("starting", "done");
+        setStepStatus("confirmed", "done");
+        stopPolling();
+        setIsComplete(true);
+      } else if (!stoppingDone) {
+        if (fresh.state !== "running") {
           setStepStatus("stopping", "done");
           setStepStatus("starting", "active");
         } else {
@@ -231,7 +242,7 @@ function ActionButtons({ container }: ActionButtonsProps) {
     onMutate: (action: ActionType) => {
       actionRef.current = action;
       initialDigestCheckRef.current = container.last_digest_check;
-      initialRestartCountRef.current = container.restart_count;
+      initialStartedAtRef.current = container.started_at;
       const steps = STEP_DEFINITIONS[action].map(s => ({ ...s }));
       steps[0] = { ...steps[0], status: "active" };
       updateSteps(steps);
