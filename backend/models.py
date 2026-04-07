@@ -33,6 +33,12 @@ class Container(SQLModel, table=True):
     created_at: Optional[datetime] = None
     started_at: Optional[datetime] = None
     last_seen: datetime = Field(default_factory=datetime.utcnow)
+    image_digest: Optional[str] = None
+    registry_digest: Optional[str] = None
+    update_available: bool = False
+    last_digest_check: Optional[datetime] = None
+    image_size: Optional[int] = None
+    update_alert_sent_digest: Optional[str] = None
 
 
 class ContainerLog(SQLModel, table=True):
@@ -60,6 +66,6 @@ class ContainerAlertSetting(SQLModel, table=True):
 
     id: Optional[int] = Field(default=None, primary_key=True)
     container_name: str = Field(index=True, max_length=256)
-    # One of: crash, restart, oom
+    # One of: crash, restart, oom, update_available
     event_type: str = Field(max_length=32)
     enabled: bool = Field(default=True)

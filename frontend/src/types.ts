@@ -18,6 +18,11 @@ export interface Container {
   created_at: string | null;
   started_at: string | null;
   last_seen: string;
+  update_available: boolean;
+  image_size: number | null;
+  last_digest_check: string | null;
+  image_digest: string | null;
+  registry_digest: string | null;
 }
 
 export interface ContainerLog {
@@ -29,7 +34,7 @@ export interface ContainerLog {
   message: string;
 }
 
-export type AlertEventType = "crash" | "restart" | "oom";
+export type AlertEventType = "crash" | "restart" | "oom" | "update_available";
 
 export interface AlertSetting {
   id: number;

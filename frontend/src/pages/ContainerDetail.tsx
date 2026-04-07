@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useParams, Link } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
@@ -7,53 +7,12 @@ import StatusBadge from "../components/StatusBadge";
 import MetricBar from "../components/MetricBar";
 import LogViewer from "../components/LogViewer";
 import EventTimeline from "../components/EventTimeline";
+import ConfirmModal from "../components/ConfirmModal";
+import type { ProgressStep } from "../components/ConfirmModal";
+import Toast from "../components/Toast";
+import { useToast } from "../hooks/useToast";
 import { formatBytes, formatUptime, formatDateTime } from "../utils";
 import { useTimezone } from "../TimezoneContext";
-
-// ── Confirmation modal ────────────────────────────────────────────────────────
-
-interface ConfirmModalProps {
-  message: string;
-  onConfirm: () => void;
-  onCancel: () => void;
-}
-
-function ConfirmModal({ message, onConfirm, onCancel }: ConfirmModalProps) {
-  // Close on Escape
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onCancel(); };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, [onCancel]);
-
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
-      onClick={onCancel}
-    >
-      <div
-        className="bg-surface-2 border border-border rounded-xl p-6 w-full max-w-sm mx-4 space-y-5 shadow-xl"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <p className="text-sm text-slate-200 leading-relaxed">{message}</p>
-        <div className="flex justify-end gap-3">
-          <button
-            onClick={onCancel}
-            className="px-4 py-2 text-sm rounded-lg border border-border text-slate-400 hover:text-slate-200 hover:border-slate-500 transition-colors"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={onConfirm}
-            className="px-4 py-2 text-sm rounded-lg bg-accent hover:bg-accent-hover text-white font-medium transition-colors"
-          >
-            Confirm
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 // ── Spinner ───────────────────────────────────────────────────────────────────
 
@@ -68,39 +27,244 @@ function Spinner() {
 
 // ── Action buttons ────────────────────────────────────────────────────────────
 
-type ActionType = "stop" | "restart" | "start";
+type ActionType = "stop" | "restart" | "start" | "pull-restart";
 
 interface ActionButtonsProps {
   container: Container;
 }
 
+const STEP_DEFINITIONS: Record<ActionType, ProgressStep[]> = {
+  stop: [
+    { id: "stopping",  label: "Stopping container…", status: "pending" },
+    { id: "confirmed", label: "Container stopped",    status: "pending" },
+  ],
+  start: [
+    { id: "starting",  label: "Starting container…", status: "pending" },
+    { id: "confirmed", label: "Container running",   status: "pending" },
+  ],
+  restart: [
+    { id: "stopping",  label: "Stopping container…", status: "pending" },
+    { id: "starting",  label: "Starting container…", status: "pending" },
+    { id: "confirmed", label: "Container running",   status: "pending" },
+  ],
+  "pull-restart": [
+    { id: "pulling",    label: "Pulling latest image…", status: "pending" },
+    { id: "restarting", label: "Restarting container…", status: "pending" },
+    { id: "confirming", label: "Confirming running…",   status: "pending" },
+    { id: "checking",   label: "Checking for updates…", status: "pending" },
+    { id: "complete",   label: "Complete",              status: "pending" },
+  ],
+};
+
 function ActionButtons({ container }: ActionButtonsProps) {
   const queryClient = useQueryClient();
   const [pendingAction, setPendingAction] = useState<ActionType | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const errorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const { toastState, showToast, dismissToast } = useToast();
 
-  function scheduleErrorDismiss(msg: string) {
-    setError(msg);
-    if (errorTimerRef.current) clearTimeout(errorTimerRef.current);
-    errorTimerRef.current = setTimeout(() => setError(null), 5_000);
+  // Progress state
+  const [progressSteps, setProgressSteps] = useState<ProgressStep[]>([]);
+  const [isComplete, setIsComplete] = useState(false);
+  const [hasError, setHasError] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  // Refs for polling (avoid stale closures)
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const progressStepsRef = useRef<ProgressStep[]>([]);
+  const actionRef = useRef<ActionType | null>(null);
+  const initialDigestCheckRef = useRef<string | null>(null);
+  const initialStartedAtRef = useRef<string | null>(null);
+
+  const ACTION_SUCCESS_MESSAGES: Record<ActionType, string> = {
+    stop:           "Container stopped",
+    start:          "Container started",
+    restart:        "Container restarted",
+    "pull-restart": "Pull & Restart complete",
+  };
+
+  function updateSteps(steps: ProgressStep[]) {
+    progressStepsRef.current = steps;
+    setProgressSteps(steps);
   }
 
-  const { mutate, isPending } = useMutation({
-    mutationFn: (action: ActionType) => api.containers[action](container.docker_id),
+  function setStepStatus(id: string, status: ProgressStep["status"]) {
+    const updated = progressStepsRef.current.map(s => s.id === id ? { ...s, status } : s);
+    updateSteps(updated);
+  }
+
+  function stopPolling() {
+    if (pollRef.current) {
+      clearInterval(pollRef.current);
+      pollRef.current = null;
+    }
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
+  }
+
+  function resetProgress() {
+    updateSteps([]);
+    setIsComplete(false);
+    setHasError(false);
+    setErrorMessage(null);
+    stopPolling();
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
+  }
+
+  function advanceSteps(action: ActionType, fresh: Container, initialDigestCheck: string | null) {
+    if (action === "stop") {
+      if (fresh.state === "exited" || fresh.state === "dead") {
+        setStepStatus("stopping", "done");
+        setStepStatus("confirmed", "done");
+        stopPolling();
+        setIsComplete(true);
+      } else {
+        setStepStatus("stopping", "active");
+      }
+    } else if (action === "start") {
+      if (fresh.state === "running") {
+        setStepStatus("starting", "done");
+        setStepStatus("confirmed", "done");
+        stopPolling();
+        setIsComplete(true);
+      } else {
+        setStepStatus("starting", "active");
+      }
+    } else if (action === "restart") {
+      const stoppingDone = progressStepsRef.current.find(s => s.id === "stopping")?.status === "done";
+      const restarted =
+        fresh.state === "running" &&
+        fresh.started_at !== null &&
+        fresh.started_at !== initialStartedAtRef.current;
+
+      if (restarted) {
+        setStepStatus("stopping", "done");
+        setStepStatus("starting", "done");
+        setStepStatus("confirmed", "done");
+        stopPolling();
+        setIsComplete(true);
+      } else if (!stoppingDone) {
+        if (fresh.state !== "running") {
+          setStepStatus("stopping", "done");
+          setStepStatus("starting", "active");
+        } else {
+          setStepStatus("stopping", "active");
+        }
+      } else {
+        if (fresh.state === "running") {
+          setStepStatus("starting", "done");
+          setStepStatus("confirmed", "done");
+          stopPolling();
+          setIsComplete(true);
+        }
+      }
+    } else if (action === "pull-restart") {
+      const restartingDone = progressStepsRef.current.find(s => s.id === "restarting")?.status === "done";
+      const confirmingDone = progressStepsRef.current.find(s => s.id === "confirming")?.status === "done";
+      const checkingDone   = progressStepsRef.current.find(s => s.id === "checking")?.status === "done";
+
+      if (!restartingDone) {
+        const restarted =
+          fresh.state === "running" &&
+          fresh.started_at !== null &&
+          fresh.started_at !== initialStartedAtRef.current;
+
+        if (restarted) {
+          setStepStatus("restarting", "done");
+          setStepStatus("confirming", "active");
+        } else if (fresh.state !== "running") {
+          setStepStatus("restarting", "active");
+        }
+      } else if (!confirmingDone) {
+        if (fresh.state === "running") {
+          setStepStatus("confirming", "done");
+          setStepStatus("checking", "active");
+        }
+      } else if (!checkingDone) {
+        if (fresh.last_digest_check !== initialDigestCheck) {
+          setStepStatus("checking", "done");
+          setStepStatus("complete", "done");
+          stopPolling();
+          setIsComplete(true);
+        }
+      }
+    }
+  }
+
+  function startPolling(action: ActionType, initialDigestCheck: string | null) {
+    timeoutRef.current = setTimeout(() => {
+      stopPolling();
+      const activeStep = progressStepsRef.current.find(s => s.status === "active");
+      if (activeStep) setStepStatus(activeStep.id, "error");
+      setHasError(true);
+      setErrorMessage("Timed out waiting for confirmation. The action may have completed — check the dashboard.");
+    }, 30_000);
+
+    pollRef.current = setInterval(async () => {
+      try {
+        const fresh = await api.containers.get(container.docker_id);
+        advanceSteps(action, fresh, initialDigestCheck);
+      } catch {
+        // ignore poll errors
+      }
+    }, 500);
+  }
+
+  // Cleanup on unmount
+  useEffect(() => () => {
+    stopPolling();
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
+  }, []);
+
+  // Toast + query invalidation on completion
+  useEffect(() => {
+    if (!isComplete || !actionRef.current) return;
+    showToast(ACTION_SUCCESS_MESSAGES[actionRef.current], "success");
+    queryClient.invalidateQueries({ queryKey: ["container", container.docker_id] });
+    queryClient.invalidateQueries({ queryKey: ["containers"] });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isComplete]);
+
+  // Toast on error
+  useEffect(() => {
+    if (!hasError || !errorMessage) return;
+    showToast(errorMessage, "error");
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasError]);
+
+  const { mutate, isPending: mutationIsPending } = useMutation({
+    mutationFn: (action: ActionType) => {
+      if (action === "pull-restart") return api.containers.pullRestart(container.docker_id);
+      return api.containers[action](container.docker_id);
+    },
+    onMutate: (action: ActionType) => {
+      actionRef.current = action;
+      initialDigestCheckRef.current = container.last_digest_check;
+      initialStartedAtRef.current = container.started_at;
+      const steps = STEP_DEFINITIONS[action].map(s => ({ ...s }));
+      steps[0] = { ...steps[0], status: "active" };
+      updateSteps(steps);
+    },
     onSuccess: (_data, action) => {
-      // After restart, Docker may take a moment to register the new container ID,
-      // so delay the re-fetch slightly to give the collector time to post fresh data.
-      const delay = action === "restart" ? 1_500 : 0;
-      setTimeout(() => {
-        queryClient.invalidateQueries({ queryKey: ["container", container.docker_id] });
-        queryClient.invalidateQueries({ queryKey: ["containers"] });
-      }, delay);
-      setPendingAction(null);
+      if (action === "pull-restart") {
+        setStepStatus("pulling", "done");
+        setStepStatus("restarting", "active");
+      }
+      startPolling(action, initialDigestCheckRef.current);
     },
     onError: (err: Error) => {
-      scheduleErrorDismiss(`Failed to ${pendingAction}: ${err.message}`);
-      setPendingAction(null);
+      stopPolling();
+      const activeStep = progressStepsRef.current.find(s => s.status === "active");
+      if (activeStep) setStepStatus(activeStep.id, "error");
+      setHasError(true);
+      setErrorMessage(err.message);
     },
   });
 
@@ -111,8 +275,9 @@ function ActionButtons({ container }: ActionButtonsProps) {
   function confirmAction() {
     if (!pendingAction) return;
     mutate(pendingAction);
-    // pendingAction cleared in onSuccess/onError
   }
+
+  const isPending = mutationIsPending || progressSteps.length > 0;
 
   // Determine which buttons to show
   const state = container.state;
@@ -123,24 +288,43 @@ function ActionButtons({ container }: ActionButtonsProps) {
   if (!showStop && !showStart) return null;
 
   const BUTTON_STYLES: Record<ActionType, string> = {
-    stop:    "border-red-500/50 text-red-400 hover:bg-red-500/10 hover:border-red-400",
-    restart: "border-yellow-500/50 text-yellow-400 hover:bg-yellow-500/10 hover:border-yellow-400",
-    start:   "border-green-500/50 text-green-400 hover:bg-green-500/10 hover:border-green-400",
+    stop:           "border-red-500/50 text-red-400 hover:bg-red-500/10 hover:border-red-400",
+    restart:        "border-yellow-500/50 text-yellow-400 hover:bg-yellow-500/10 hover:border-yellow-400",
+    start:          "border-green-500/50 text-green-400 hover:bg-green-500/10 hover:border-green-400",
+    "pull-restart": container.update_available
+      ? "border-blue-400 text-blue-400 hover:bg-blue-500/10"
+      : "border-blue-500/50 text-blue-400 hover:bg-blue-500/10 hover:border-blue-400",
   };
 
   const modalMessages: Record<ActionType, string> = {
-    stop:    `Are you sure you want to stop ${container.name}?`,
-    restart: `Are you sure you want to restart ${container.name}?`,
-    start:   `Are you sure you want to start ${container.name}?`,
+    stop:           `Are you sure you want to stop ${container.name}?`,
+    restart:        `Are you sure you want to restart ${container.name}?`,
+    start:          `Are you sure you want to start ${container.name}?`,
+    "pull-restart": `Pull the latest image and restart ${container.name}? This may take a moment.`,
   };
 
   return (
     <>
+      {toastState && (
+        <Toast
+          key={toastState.id}
+          message={toastState.message}
+          type={toastState.type}
+          duration={toastState.duration}
+          onDismiss={dismissToast}
+        />
+      )}
+
       {pendingAction && (
         <ConfirmModal
           message={modalMessages[pendingAction]}
           onConfirm={confirmAction}
-          onCancel={() => setPendingAction(null)}
+          onCancel={() => { resetProgress(); setPendingAction(null); }}
+          isPending={isPending}
+          progressSteps={progressSteps}
+          isComplete={isComplete}
+          hasError={hasError}
+          errorMessage={errorMessage ?? undefined}
         />
       )}
 
@@ -158,6 +342,20 @@ function ActionButtons({ container }: ActionButtonsProps) {
                 </svg>
               )}
               Restart
+            </button>
+          )}
+          {showRestart && (
+            <button
+              disabled={isPending}
+              onClick={() => requestAction("pull-restart")}
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg border transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${BUTTON_STYLES["pull-restart"]}`}
+            >
+              {isPending && pendingAction === "pull-restart" ? <Spinner /> : (
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                </svg>
+              )}
+              Pull &amp; Restart
             </button>
           )}
           {showStop && (
@@ -191,10 +389,6 @@ function ActionButtons({ container }: ActionButtonsProps) {
             </button>
           )}
         </div>
-
-        {error && (
-          <p className="text-xs text-red-400">{error}</p>
-        )}
       </div>
     </>
   );
@@ -220,7 +414,11 @@ export default function ContainerDetail() {
   const { data: container, isLoading, isError } = useQuery<Container>({
     queryKey: ["container", id],
     queryFn: () => api.containers.get(id!),
-    refetchInterval: 10_000,
+    refetchInterval: (query) => {
+      const state = (query.state.data as Container | undefined)?.state;
+      if (state && ["restarting", "created"].includes(state)) return 2_000;
+      return 10_000;
+    },
     enabled: !!id,
   });
 
@@ -354,6 +552,27 @@ export default function ContainerDetail() {
                     <div key={v} className="text-xs">{v}</div>
                   ))}
                 </div>
+              }
+            />
+          )}
+          {container.image_size != null && (
+            <InfoRow label="Image size" value={formatBytes(container.image_size)} />
+          )}
+          {container.last_digest_check != null && (
+            <InfoRow
+              label="Update check"
+              value={
+                <span className="flex items-center gap-2 flex-wrap">
+                  <span>{formatDateTime(container.last_digest_check, tz)}</span>
+                  {container.update_available && (
+                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium bg-blue-500/15 text-blue-400 border border-blue-500/30">
+                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 10l7-7m0 0l7 7m-7-7v18" />
+                      </svg>
+                      Update available
+                    </span>
+                  )}
+                </span>
               }
             />
           )}

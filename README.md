@@ -27,9 +27,6 @@ services:
       - DATABASE_PATH=/data/nestview.db
       - LOG_RETENTION_DAYS=${LOG_RETENTION_DAYS:-7}
       - NESTVIEW_COLLECTOR_KEY=${NESTVIEW_COLLECTOR_KEY:-}
-      # Optional: protect write endpoints (start/stop/restart, settings).
-      # The frontend will prompt for this key on first load if set.
-      - NESTVIEW_API_KEY=${NESTVIEW_API_KEY:-}
     volumes:
       - nestview_data:/data
       - /var/run/docker.sock:/var/run/docker.sock
@@ -85,15 +82,7 @@ docker compose up -d
 
 **If you need to access Nestview remotely**, put it behind a VPN (Tailscale, WireGuard) or a reverse proxy with authentication (Authelia, Authentik, nginx basic auth). Do not port-forward 8080 through your router.
 
-### Optional API key (NESTVIEW_API_KEY)
-
-For an extra layer of protection, set `NESTVIEW_API_KEY` in your `.env` file:
-
-```bash
-NESTVIEW_API_KEY=your-strong-random-key
-```
-
-When set, all write operations (container start/stop/restart, settings changes) require the key. The frontend will prompt for it on first load. Viewing the dashboard, logs, and events does not require the key.
+**Authentication** is planned for v0.3.0. Until then, restrict network access rather than exposing Nestview publicly.
 
 ---
 
@@ -105,7 +94,6 @@ When set, all write operations (container start/stop/restart, settings changes) 
 |---|---|---|
 | `NESTVIEW_PORT` | `8080` | Host port Nestview is exposed on |
 | `NESTVIEW_COLLECTOR_KEY` | _(empty)_ | Optional shared secret to authenticate the collector |
-| `NESTVIEW_API_KEY` | _(empty)_ | Optional key to protect write endpoints; frontend prompts for it when set |
 | `POLL_INTERVAL` | `10` | Seconds between Docker stats polls |
 | `LOG_BATCH_INTERVAL` | `5` | Seconds between log flushes to the backend |
 

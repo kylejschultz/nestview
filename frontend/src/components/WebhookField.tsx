@@ -6,9 +6,11 @@ interface WebhookFieldProps {
   value: string;
   onChange: (value: string) => void;
   disabled?: boolean;
+  onTestSuccess?: () => void;
+  onTestError?: (msg: string) => void;
 }
 
-export default function WebhookField({ value, onChange, disabled }: WebhookFieldProps) {
+export default function WebhookField({ value, onChange, disabled, onTestSuccess, onTestError }: WebhookFieldProps) {
   const [testStatus, setTestStatus] = useState<"idle" | "ok" | "error">("idle");
   const [testMessage, setTestMessage] = useState<string>("");
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -22,18 +24,32 @@ export default function WebhookField({ value, onChange, disabled }: WebhookField
     mutationFn: () => api.settings.testWebhook(value),
     onSuccess: (data) => {
       if (data.ok) {
-        setTestStatus("ok");
-        setTestMessage("Test message sent.");
+        if (onTestSuccess) {
+          onTestSuccess();
+        } else {
+          setTestStatus("ok");
+          setTestMessage("Test message sent.");
+          scheduleReset();
+        }
       } else {
-        setTestStatus("error");
-        setTestMessage(data.error ?? "Test failed.");
+        const msg = data.error ?? "Test failed.";
+        if (onTestError) {
+          onTestError(msg);
+        } else {
+          setTestStatus("error");
+          setTestMessage(msg);
+          scheduleReset();
+        }
       }
-      scheduleReset();
     },
     onError: (err: Error) => {
-      setTestStatus("error");
-      setTestMessage(err.message);
-      scheduleReset();
+      if (onTestError) {
+        onTestError(err.message);
+      } else {
+        setTestStatus("error");
+        setTestMessage(err.message);
+        scheduleReset();
+      }
     },
   });
 

@@ -21,7 +21,17 @@ export default function ContainerCard({ container: c }: Props) {
           <p className="font-medium text-slate-100 truncate">{c.name}</p>
           <p className="text-xs text-slate-500 font-mono truncate mt-0.5">{c.image}</p>
         </div>
-        <StatusBadge state={c.state} className="shrink-0" />
+        <div className="flex items-center gap-2 shrink-0">
+          {c.update_available && (
+            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium bg-blue-500/15 text-blue-400 border border-blue-500/30">
+              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5 10l7-7m0 0l7 7m-7-7v18" />
+              </svg>
+              Update
+            </span>
+          )}
+          <StatusBadge state={c.state} />
+        </div>
       </div>
 
       {c.state === "running" && (

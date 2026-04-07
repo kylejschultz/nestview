@@ -1,11 +1,16 @@
 import { useState, useRef, useEffect } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
 import type { Container } from "../types";
 import ContainerCard from "../components/ContainerCard";
 import EventTimeline from "../components/EventTimeline";
+import ConfirmModal from "../components/ConfirmModal";
+import type { ProgressStep } from "../components/ConfirmModal";
+import Toast from "../components/Toast";
+import { useToast } from "../hooks/useToast";
 
 type Filter = "all" | "running" | "stopped";
+type StackProgressMap = Record<string, ProgressStep[]>;
 
 const STORAGE_KEY = "nestview:stack_collapsed";
 
@@ -25,13 +30,302 @@ function ChevronRight({ className }: { className?: string }) {
   );
 }
 
+type StackAction = "stop" | "start" | "restart" | "pull-restart";
+
+function StackActionSpinner() {
+  return (
+    <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
+      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+    </svg>
+  );
+}
+
 interface ComposeGroupProps {
   project: string;
   members: Container[];
 }
 
+const STACK_SUCCESS_MESSAGES: Record<StackAction, string> = {
+  stop:           "Stack stopped",
+  start:          "Stack started",
+  restart:        "Stack restarted",
+  "pull-restart": "Stack pull & restart complete",
+};
+
 function ComposeGroup({ project, members }: ComposeGroupProps) {
+  const queryClient = useQueryClient();
   const [collapsed, setCollapsed] = useState<boolean>(() => !!loadCollapsed()[project]);
+  const [pendingAction, setPendingAction] = useState<StackAction | null>(null);
+  const [stackProgress, setStackProgress] = useState<StackProgressMap>({});
+  const [isComplete, setIsComplete] = useState(false);
+  const [hasError, setHasError] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [isProgressing, setIsProgressing] = useState(false);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const stackProgressRef = useRef<StackProgressMap>({});
+  const initialStartedAtRef = useRef<Record<string, string | null>>({});
+  const { toastState, showToast, dismissToast } = useToast();
+
+  // Mirror state to ref for use in polling interval
+  useEffect(() => { stackProgressRef.current = stackProgress; }, [stackProgress]);
+
+  // Toast + cache invalidation on completion
+  useEffect(() => {
+    if (!isComplete || !pendingAction) return;
+    showToast(STACK_SUCCESS_MESSAGES[pendingAction], "success");
+    queryClient.invalidateQueries({ queryKey: ["containers"] });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isComplete]);
+
+  // Toast on error
+  useEffect(() => {
+    if (!hasError || !errorMessage) return;
+    showToast(errorMessage, "error");
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasError]);
+
+  // Cleanup on unmount
+  useEffect(() => () => stopPolling(), []);
+
+  const { mutate, isPending } = useMutation<
+    { ok: boolean; project: string; action: string; affected?: number; pulled?: number; restarted?: number },
+    Error,
+    StackAction
+  >({
+    mutationFn: (action: StackAction) => {
+      if (action === "stop") return api.stacks.stop(project);
+      if (action === "start") return api.stacks.start(project);
+      if (action === "restart") return api.stacks.restart(project);
+      return api.stacks.pullRestart(project);
+    },
+  });
+
+  function stopPolling() {
+    if (pollRef.current) {
+      clearInterval(pollRef.current);
+      pollRef.current = null;
+    }
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
+  }
+
+  function resetStackProgress() {
+    setStackProgress({});
+    setIsComplete(false);
+    setHasError(false);
+    setErrorMessage(null);
+    setIsProgressing(false);
+    stopPolling();
+  }
+
+  function getStepsForAction(action: StackAction): ProgressStep[] {
+    switch (action) {
+      case "stop": return [
+        { id: "stopping",  label: "Stopping…",          status: "pending" },
+        { id: "confirmed", label: "Container stopped",   status: "pending" },
+      ];
+      case "start": return [
+        { id: "starting",  label: "Starting…",           status: "pending" },
+        { id: "confirmed", label: "Container running",   status: "pending" },
+      ];
+      case "restart": return [
+        { id: "stopping",  label: "Stopping…",           status: "pending" },
+        { id: "starting",  label: "Starting…",           status: "pending" },
+        { id: "confirmed", label: "Container running",   status: "pending" },
+      ];
+      case "pull-restart": return [
+        { id: "pulling",    label: "Pulling image…",      status: "pending" },
+        { id: "restarting", label: "Restarting…",         status: "pending" },
+        { id: "confirming", label: "Confirming running…", status: "pending" },
+        { id: "complete",   label: "Complete",            status: "pending" },
+      ];
+    }
+  }
+
+  function getFirstStepId(action: StackAction): string {
+    switch (action) {
+      case "stop":         return "stopping";
+      case "start":        return "starting";
+      case "restart":      return "stopping";
+      case "pull-restart": return "pulling";
+    }
+  }
+
+  function initStackProgress(action: StackAction) {
+    const firstId = getFirstStepId(action);
+    const initial: StackProgressMap = {};
+    const startedAt: Record<string, string | null> = {};
+    for (const c of members) {
+      initial[c.docker_id] = getStepsForAction(action).map((s) => ({
+        ...s,
+        status: s.id === firstId ? ("active" as const) : ("pending" as const),
+      }));
+      startedAt[c.docker_id] = c.started_at;
+    }
+    initialStartedAtRef.current = startedAt;
+    setStackProgress(initial);
+    stackProgressRef.current = initial;
+  }
+
+  function computeNextProgress(
+    action: StackAction,
+    memberMap: Record<string, Container>,
+    currentProgress: StackProgressMap,
+  ): { nextProgress: StackProgressMap; allDone: boolean } {
+    const next: StackProgressMap = {};
+    let allDone = true;
+
+    for (const c of members) {
+      const fresh = memberMap[c.docker_id];
+      if (!fresh) {
+        next[c.docker_id] = currentProgress[c.docker_id] ?? [];
+        allDone = false;
+        continue;
+      }
+      const steps = (currentProgress[c.docker_id] ?? []).map((s) => ({ ...s }));
+
+      if (action === "stop") {
+        if (fresh.state === "exited" || fresh.state === "dead") {
+          steps.forEach((s) => { s.status = "done"; });
+        }
+      } else if (action === "start") {
+        if (fresh.state === "running") {
+          steps.forEach((s) => { s.status = "done"; });
+        }
+      } else if (action === "restart") {
+        const stopping = steps.find((s) => s.id === "stopping");
+        const starting  = steps.find((s) => s.id === "starting");
+        const confirmed = steps.find((s) => s.id === "confirmed");
+
+        const restarted =
+          fresh.state === "running" &&
+          fresh.started_at !== null &&
+          fresh.started_at !== initialStartedAtRef.current[fresh.docker_id];
+
+        if (restarted) {
+          steps.forEach((s) => { s.status = "done"; });
+        } else {
+          if (stopping?.status === "active" && fresh.state !== "running") {
+            stopping.status = "done";
+            if (starting) starting.status = "active";
+          }
+          if (starting?.status === "active" && fresh.state === "running") {
+            starting.status = "done";
+            if (confirmed) confirmed.status = "done";
+          }
+        }
+      } else if (action === "pull-restart") {
+        const restarting = steps.find((s) => s.id === "restarting");
+        const confirming = steps.find((s) => s.id === "confirming");
+        const complete   = steps.find((s) => s.id === "complete");
+
+        const restarted =
+          fresh.state === "running" &&
+          fresh.started_at !== null &&
+          fresh.started_at !== initialStartedAtRef.current[fresh.docker_id];
+
+        if (restarted && restarting?.status === "active") {
+          steps.forEach((s) => { s.status = "done"; });
+        } else {
+          if (restarting?.status === "active" && fresh.state !== "running") {
+            restarting.status = "done";
+            if (confirming) confirming.status = "active";
+          }
+          if (confirming?.status === "active" && fresh.state === "running") {
+            confirming.status = "done";
+            if (complete) complete.status = "done";
+          }
+        }
+      }
+
+      next[c.docker_id] = steps;
+      const finalStep = steps[steps.length - 1];
+      if (finalStep?.status !== "done") allDone = false;
+    }
+
+    return { nextProgress: next, allDone };
+  }
+
+  function startPolling(action: StackAction) {
+    timeoutRef.current = setTimeout(() => {
+      stopPolling();
+      setHasError(true);
+      setErrorMessage("Timed out waiting for confirmation. The action may have completed — check the dashboard.");
+      setIsProgressing(false);
+    }, 30_000);
+
+    pollRef.current = setInterval(async () => {
+      try {
+        const all = await api.containers.list();
+        const memberMap = Object.fromEntries(
+          all
+            .filter((c) => c.compose_project === project)
+            .map((c) => [c.docker_id, c])
+        );
+        const { nextProgress, allDone } = computeNextProgress(
+          action, memberMap, stackProgressRef.current
+        );
+        setStackProgress(nextProgress);
+        stackProgressRef.current = nextProgress;
+
+        if (allDone) {
+          stopPolling();
+          setIsComplete(true);
+          setIsProgressing(false);
+        }
+      } catch {
+        // ignore poll errors
+      }
+    }, 500);
+  }
+
+  function buildFlatSteps(progress: StackProgressMap): ProgressStep[] {
+    const flat: ProgressStep[] = [];
+    for (const c of members) {
+      flat.push({
+        id: `header-${c.docker_id}`,
+        label: c.name,
+        status: "done", // sentinel for header styling in ConfirmModal
+      });
+      flat.push(...(progress[c.docker_id] ?? []));
+    }
+    return flat;
+  }
+
+  function handleConfirm() {
+    if (!pendingAction) return;
+    const actionToFire = pendingAction;
+    initStackProgress(actionToFire);
+    setIsProgressing(true);
+    mutate(actionToFire, {
+      onSuccess: () => {
+        if (actionToFire === "pull-restart") {
+          const prev = stackProgressRef.current;
+          const next: StackProgressMap = {};
+          for (const c of members) {
+            next[c.docker_id] = (prev[c.docker_id] ?? []).map((s) => {
+              if (s.id === "pulling")    return { ...s, status: "done"   as const };
+              if (s.id === "restarting") return { ...s, status: "active" as const };
+              return s;
+            });
+          }
+          stackProgressRef.current = next;
+          setStackProgress(next);
+        }
+        startPolling(actionToFire);
+      },
+      onError: (err) => {
+        stopPolling();
+        setHasError(true);
+        setErrorMessage(err.message);
+        setIsProgressing(false);
+      },
+    });
+  }
 
   function toggle() {
     setCollapsed((prev) => {
@@ -49,28 +343,108 @@ function ComposeGroup({ project, members }: ComposeGroupProps) {
     });
   }
 
+  const STACK_BUTTON_STYLES: Record<StackAction, string> = {
+    stop:           "border-red-500/50 text-red-400 hover:bg-red-500/10 hover:border-red-400",
+    start:          "border-green-500/50 text-green-400 hover:bg-green-500/10 hover:border-green-400",
+    restart:        "border-yellow-500/50 text-yellow-400 hover:bg-yellow-500/10 hover:border-yellow-400",
+    "pull-restart": "border-blue-500/50 text-blue-400 hover:bg-blue-500/10 hover:border-blue-400",
+  };
+
+  const MODAL_MESSAGES: Record<StackAction, string> = {
+    stop:           `Stop all containers in ${project}?`,
+    start:          `Start all containers in ${project}?`,
+    restart:        `Restart all containers in ${project}?`,
+    "pull-restart": `Pull latest images and restart all containers in ${project}?`,
+  };
+
+  const updateCount = members.filter((m) => m.update_available).length;
+  const progressSteps = Object.keys(stackProgress).length > 0 ? buildFlatSteps(stackProgress) : undefined;
+
   return (
-    <section>
-      <button
-        onClick={toggle}
-        className="w-full flex items-center gap-2 mb-3 group cursor-pointer"
-        aria-expanded={!collapsed}
-      >
-        <ChevronRight
-          className={`w-3.5 h-3.5 text-slate-500 transition-transform duration-200 ${collapsed ? "" : "rotate-90"}`}
+    <div className="bg-surface-2 border border-border rounded-xl overflow-hidden">
+      {toastState && (
+        <Toast
+          key={toastState.id}
+          message={toastState.message}
+          type={toastState.type}
+          duration={toastState.duration}
+          onDismiss={dismissToast}
         />
-        <svg className="w-3.5 h-3.5 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-        </svg>
-        <span className="text-xs font-semibold uppercase tracking-widest text-slate-500 group-hover:text-slate-400 transition-colors">
-          {project}
-        </span>
-        {collapsed && (
-          <span className="text-xs text-slate-600 font-normal normal-case tracking-normal">
-            — {members.length} container{members.length !== 1 ? "s" : ""}
+      )}
+
+      {pendingAction && (
+        <ConfirmModal
+          message={MODAL_MESSAGES[pendingAction]}
+          onConfirm={handleConfirm}
+          onCancel={() => {
+            setPendingAction(null);
+            resetStackProgress();
+          }}
+          isPending={isProgressing}
+          progressSteps={progressSteps}
+          isComplete={isComplete}
+          hasError={hasError}
+          errorMessage={errorMessage ?? undefined}
+        />
+      )}
+
+      {/* Card header */}
+      <div className={`flex items-center gap-2 px-4 py-3 ${collapsed ? "" : "border-b border-border"}`}>
+        {/* Collapse toggle — fills remaining space */}
+        <button
+          onClick={toggle}
+          className="flex items-center gap-2 group cursor-pointer flex-1 min-w-0"
+          aria-expanded={!collapsed}
+        >
+          <ChevronRight
+            className={`w-3.5 h-3.5 text-slate-500 shrink-0 transition-transform duration-200 ${collapsed ? "" : "rotate-90"}`}
+          />
+          <svg className="w-3.5 h-3.5 text-slate-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+          </svg>
+          <span className="text-xs font-semibold uppercase tracking-widest text-slate-500 group-hover:text-slate-400 transition-colors truncate">
+            {project}
           </span>
-        )}
-      </button>
+          {updateCount > 0 && (
+            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium bg-blue-500/15 text-blue-400 border border-blue-500/30 normal-case tracking-normal shrink-0">
+              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5 10l7-7m0 0l7 7m-7-7v18" />
+              </svg>
+              {updateCount === 1 ? "1 update" : `${updateCount} updates`}
+            </span>
+          )}
+          {collapsed && (
+            <span className="text-xs text-slate-600 font-normal normal-case tracking-normal shrink-0">
+              — {members.length} container{members.length !== 1 ? "s" : ""}
+            </span>
+          )}
+        </button>
+
+        {/* Stack action buttons */}
+        <div className="flex items-center gap-1 shrink-0">
+          {(["restart", "stop", "start", "pull-restart"] as StackAction[]).map((action) => {
+            const isActive = isProgressing && pendingAction === action;
+            const labels: Record<StackAction, string> = {
+              stop: "Stop all",
+              start: "Start all",
+              restart: "Restart all",
+              "pull-restart": "Pull & Restart",
+            };
+            return (
+              <button
+                key={action}
+                disabled={isPending || isProgressing}
+                onClick={() => setPendingAction(action)}
+                title={labels[action]}
+                className={`inline-flex items-center gap-1 px-2 py-1 text-xs rounded-md border transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${STACK_BUTTON_STYLES[action]}`}
+              >
+                {isActive ? <StackActionSpinner /> : null}
+                {labels[action]}
+              </button>
+            );
+          })}
+        </div>
+      </div>
 
       {/* CSS grid-rows trick: animates height without JS measurement */}
       <div
@@ -79,14 +453,14 @@ function ComposeGroup({ project, members }: ComposeGroupProps) {
         }`}
       >
         <div className="overflow-hidden">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 pb-1">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 p-4">
             {members.map((c) => (
               <ContainerCard key={c.docker_id} container={c} />
             ))}
           </div>
         </div>
       </div>
-    </section>
+    </div>
   );
 }
 
