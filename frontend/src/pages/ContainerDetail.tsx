@@ -168,10 +168,15 @@ function ActionButtons({ container }: ActionButtonsProps) {
       const checkingDone   = progressStepsRef.current.find(s => s.id === "checking")?.status === "done";
 
       if (!restartingDone) {
-        if (fresh.state !== "running") {
+        const restarted =
+          fresh.state === "running" &&
+          fresh.started_at !== null &&
+          fresh.started_at !== initialStartedAtRef.current;
+
+        if (restarted) {
           setStepStatus("restarting", "done");
           setStepStatus("confirming", "active");
-        } else {
+        } else if (fresh.state !== "running") {
           setStepStatus("restarting", "active");
         }
       } else if (!confirmingDone) {
