@@ -63,7 +63,9 @@ function ComposeGroup({ project, members }: ComposeGroupProps) {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isProgressing, setIsProgressing] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const stackProgressRef = useRef<StackProgressMap>({});
+  const initialStartedAtRef = useRef<Record<string, string | null>>({});
   const { toastState, showToast, dismissToast } = useToast();
 
   // Mirror state to ref for use in polling interval
@@ -104,6 +106,10 @@ function ComposeGroup({ project, members }: ComposeGroupProps) {
     if (pollRef.current) {
       clearInterval(pollRef.current);
       pollRef.current = null;
+    }
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
     }
   }
 
@@ -152,12 +158,15 @@ function ComposeGroup({ project, members }: ComposeGroupProps) {
   function initStackProgress(action: StackAction) {
     const firstId = getFirstStepId(action);
     const initial: StackProgressMap = {};
+    const startedAt: Record<string, string | null> = {};
     for (const c of members) {
       initial[c.docker_id] = getStepsForAction(action).map((s) => ({
         ...s,
         status: s.id === firstId ? ("active" as const) : ("pending" as const),
       }));
+      startedAt[c.docker_id] = c.started_at;
     }
+    initialStartedAtRef.current = startedAt;
     setStackProgress(initial);
     stackProgressRef.current = initial;
   }
@@ -192,26 +201,44 @@ function ComposeGroup({ project, members }: ComposeGroupProps) {
         const starting  = steps.find((s) => s.id === "starting");
         const confirmed = steps.find((s) => s.id === "confirmed");
 
-        if (stopping?.status === "active" && fresh.state !== "running") {
-          stopping.status = "done";
-          if (starting) starting.status = "active";
-        }
-        if (starting?.status === "active" && fresh.state === "running") {
-          starting.status = "done";
-          if (confirmed) confirmed.status = "done";
+        const restarted =
+          fresh.state === "running" &&
+          fresh.started_at !== null &&
+          fresh.started_at !== initialStartedAtRef.current[fresh.docker_id];
+
+        if (restarted) {
+          steps.forEach((s) => { s.status = "done"; });
+        } else {
+          if (stopping?.status === "active" && fresh.state !== "running") {
+            stopping.status = "done";
+            if (starting) starting.status = "active";
+          }
+          if (starting?.status === "active" && fresh.state === "running") {
+            starting.status = "done";
+            if (confirmed) confirmed.status = "done";
+          }
         }
       } else if (action === "pull-restart") {
         const restarting = steps.find((s) => s.id === "restarting");
         const confirming = steps.find((s) => s.id === "confirming");
         const complete   = steps.find((s) => s.id === "complete");
 
-        if (restarting?.status === "active" && fresh.state !== "running") {
-          restarting.status = "done";
-          if (confirming) confirming.status = "active";
-        }
-        if (confirming?.status === "active" && fresh.state === "running") {
-          confirming.status = "done";
-          if (complete) complete.status = "done";
+        const restarted =
+          fresh.state === "running" &&
+          fresh.started_at !== null &&
+          fresh.started_at !== initialStartedAtRef.current[fresh.docker_id];
+
+        if (restarted && restarting?.status === "active") {
+          steps.forEach((s) => { s.status = "done"; });
+        } else {
+          if (restarting?.status === "active" && fresh.state !== "running") {
+            restarting.status = "done";
+            if (confirming) confirming.status = "active";
+          }
+          if (confirming?.status === "active" && fresh.state === "running") {
+            confirming.status = "done";
+            if (complete) complete.status = "done";
+          }
         }
       }
 
@@ -224,6 +251,13 @@ function ComposeGroup({ project, members }: ComposeGroupProps) {
   }
 
   function startPolling(action: StackAction) {
+    timeoutRef.current = setTimeout(() => {
+      stopPolling();
+      setHasError(true);
+      setErrorMessage("Timed out waiting for confirmation. The action may have completed — check the dashboard.");
+      setIsProgressing(false);
+    }, 30_000);
+
     pollRef.current = setInterval(async () => {
       try {
         const all = await api.containers.list();
