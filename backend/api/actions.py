@@ -89,7 +89,7 @@ def pull_restart_container(docker_id: str, session: Session = Depends(get_sessio
     except Exception as exc:
         logger.warning("pull-restart: digest re-check failed for %r: %s", db_container.name, exc)
 
-    return {"ok": True, "action": "pull-restart", "container": db_container.name}
+    return {"ok": True, "action": "pull-restart", "container": db_container.name, "pulled": True, "restarted": True}
 
 
 def _run_action(docker_id: str, action: Action, session: Session) -> dict:
