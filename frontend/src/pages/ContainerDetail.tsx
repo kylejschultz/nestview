@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useParams, Link } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
@@ -8,6 +8,7 @@ import MetricBar from "../components/MetricBar";
 import LogViewer from "../components/LogViewer";
 import EventTimeline from "../components/EventTimeline";
 import ConfirmModal from "../components/ConfirmModal";
+import type { ProgressStep } from "../components/ConfirmModal";
 import Toast from "../components/Toast";
 import { useToast } from "../hooks/useToast";
 import { formatBytes, formatUptime, formatDateTime } from "../utils";
@@ -32,11 +33,45 @@ interface ActionButtonsProps {
   container: Container;
 }
 
+const STEP_DEFINITIONS: Record<ActionType, ProgressStep[]> = {
+  stop: [
+    { id: "stopping",  label: "Stopping container…", status: "pending" },
+    { id: "confirmed", label: "Container stopped",    status: "pending" },
+  ],
+  start: [
+    { id: "starting",  label: "Starting container…", status: "pending" },
+    { id: "confirmed", label: "Container running",   status: "pending" },
+  ],
+  restart: [
+    { id: "stopping",  label: "Stopping container…", status: "pending" },
+    { id: "starting",  label: "Starting container…", status: "pending" },
+    { id: "confirmed", label: "Container running",   status: "pending" },
+  ],
+  "pull-restart": [
+    { id: "pulling",    label: "Pulling latest image…", status: "pending" },
+    { id: "restarting", label: "Restarting container…", status: "pending" },
+    { id: "confirming", label: "Confirming running…",   status: "pending" },
+    { id: "checking",   label: "Checking for updates…", status: "pending" },
+    { id: "complete",   label: "Complete",              status: "pending" },
+  ],
+};
+
 function ActionButtons({ container }: ActionButtonsProps) {
   const queryClient = useQueryClient();
   const [pendingAction, setPendingAction] = useState<ActionType | null>(null);
-  const [pendingToast, setPendingToast] = useState<{ action: ActionType; expectedState: string } | null>(null);
   const { toastState, showToast, dismissToast } = useToast();
+
+  // Progress state
+  const [progressSteps, setProgressSteps] = useState<ProgressStep[]>([]);
+  const [isComplete, setIsComplete] = useState(false);
+  const [hasError, setHasError] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  // Refs for polling (avoid stale closures)
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const progressStepsRef = useRef<ProgressStep[]>([]);
+  const actionRef = useRef<ActionType | null>(null);
+  const initialDigestCheckRef = useRef<string | null>(null);
 
   const ACTION_SUCCESS_MESSAGES: Record<ActionType, string> = {
     stop:           "Container stopped",
@@ -45,47 +80,150 @@ function ActionButtons({ container }: ActionButtonsProps) {
     "pull-restart": "Pull & Restart complete",
   };
 
-  const EXPECTED_STATES: Record<ActionType, string> = {
-    stop:           "exited",
-    start:          "running",
-    restart:        "running",
-    "pull-restart": "running",
-  };
+  function updateSteps(steps: ProgressStep[]) {
+    progressStepsRef.current = steps;
+    setProgressSteps(steps);
+  }
 
-  const ACTION_DELAYS: Record<ActionType, number> = {
-    stop:           2_000,
-    start:          2_000,
-    restart:        1_500,
-    "pull-restart": 3_000,
-  };
+  function setStepStatus(id: string, status: ProgressStep["status"]) {
+    const updated = progressStepsRef.current.map(s => s.id === id ? { ...s, status } : s);
+    updateSteps(updated);
+  }
 
-  // Fire toast once the container reaches the expected state after an action
-  useEffect(() => {
-    if (!pendingToast) return;
-    if (container.state === pendingToast.expectedState) {
-      showToast(ACTION_SUCCESS_MESSAGES[pendingToast.action], "success");
-      setPendingToast(null);
+  function stopPolling() {
+    if (pollRef.current) {
+      clearInterval(pollRef.current);
+      pollRef.current = null;
     }
-  // ACTION_SUCCESS_MESSAGES is stable (defined at render, same shape every time)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [container.state, pendingToast]);
+  }
 
-  const { mutate, isPending } = useMutation({
+  function resetProgress() {
+    updateSteps([]);
+    setIsComplete(false);
+    setHasError(false);
+    setErrorMessage(null);
+    stopPolling();
+  }
+
+  function advanceSteps(action: ActionType, fresh: Container, initialDigestCheck: string | null) {
+    if (action === "stop") {
+      if (fresh.state === "exited" || fresh.state === "dead") {
+        setStepStatus("stopping", "done");
+        setStepStatus("confirmed", "done");
+        stopPolling();
+        setIsComplete(true);
+      } else {
+        setStepStatus("stopping", "active");
+      }
+    } else if (action === "start") {
+      if (fresh.state === "running") {
+        setStepStatus("starting", "done");
+        setStepStatus("confirmed", "done");
+        stopPolling();
+        setIsComplete(true);
+      } else {
+        setStepStatus("starting", "active");
+      }
+    } else if (action === "restart") {
+      const stoppingDone = progressStepsRef.current.find(s => s.id === "stopping")?.status === "done";
+      if (!stoppingDone) {
+        if (fresh.state !== "running") {
+          setStepStatus("stopping", "done");
+          setStepStatus("starting", "active");
+        } else {
+          setStepStatus("stopping", "active");
+        }
+      } else {
+        if (fresh.state === "running") {
+          setStepStatus("starting", "done");
+          setStepStatus("confirmed", "done");
+          stopPolling();
+          setIsComplete(true);
+        }
+      }
+    } else if (action === "pull-restart") {
+      const restartingDone = progressStepsRef.current.find(s => s.id === "restarting")?.status === "done";
+      const confirmingDone = progressStepsRef.current.find(s => s.id === "confirming")?.status === "done";
+      const checkingDone   = progressStepsRef.current.find(s => s.id === "checking")?.status === "done";
+
+      if (!restartingDone) {
+        if (fresh.state !== "running") {
+          setStepStatus("restarting", "done");
+          setStepStatus("confirming", "active");
+        } else {
+          setStepStatus("restarting", "active");
+        }
+      } else if (!confirmingDone) {
+        if (fresh.state === "running") {
+          setStepStatus("confirming", "done");
+          setStepStatus("checking", "active");
+        }
+      } else if (!checkingDone) {
+        if (fresh.last_digest_check !== initialDigestCheck) {
+          setStepStatus("checking", "done");
+          setStepStatus("complete", "done");
+          stopPolling();
+          setIsComplete(true);
+        }
+      }
+    }
+  }
+
+  function startPolling(action: ActionType, initialDigestCheck: string | null) {
+    pollRef.current = setInterval(async () => {
+      try {
+        const fresh = await api.containers.get(container.docker_id);
+        advanceSteps(action, fresh, initialDigestCheck);
+      } catch {
+        // ignore poll errors
+      }
+    }, 1500);
+  }
+
+  // Cleanup on unmount
+  useEffect(() => () => stopPolling(), []);
+
+  // Toast + query invalidation on completion
+  useEffect(() => {
+    if (!isComplete || !actionRef.current) return;
+    showToast(ACTION_SUCCESS_MESSAGES[actionRef.current], "success");
+    queryClient.invalidateQueries({ queryKey: ["container", container.docker_id] });
+    queryClient.invalidateQueries({ queryKey: ["containers"] });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isComplete]);
+
+  // Toast on error
+  useEffect(() => {
+    if (!hasError || !errorMessage) return;
+    showToast(errorMessage, "error");
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasError]);
+
+  const { mutate, isPending: mutationIsPending } = useMutation({
     mutationFn: (action: ActionType) => {
       if (action === "pull-restart") return api.containers.pullRestart(container.docker_id);
       return api.containers[action](container.docker_id);
     },
+    onMutate: (action: ActionType) => {
+      actionRef.current = action;
+      initialDigestCheckRef.current = container.last_digest_check;
+      const steps = STEP_DEFINITIONS[action].map(s => ({ ...s }));
+      steps[0] = { ...steps[0], status: "active" };
+      updateSteps(steps);
+    },
     onSuccess: (_data, action) => {
-      setTimeout(() => {
-        queryClient.invalidateQueries({ queryKey: ["container", container.docker_id] });
-        queryClient.invalidateQueries({ queryKey: ["containers"] });
-      }, ACTION_DELAYS[action]);
-      setPendingToast({ action, expectedState: EXPECTED_STATES[action] });
-      setPendingAction(null);
+      if (action === "pull-restart") {
+        setStepStatus("pulling", "done");
+        setStepStatus("restarting", "active");
+      }
+      startPolling(action, initialDigestCheckRef.current);
     },
     onError: (err: Error) => {
-      showToast(err.message, "error");
-      setPendingAction(null);
+      stopPolling();
+      const activeStep = progressStepsRef.current.find(s => s.status === "active");
+      if (activeStep) setStepStatus(activeStep.id, "error");
+      setHasError(true);
+      setErrorMessage(err.message);
     },
   });
 
@@ -97,6 +235,8 @@ function ActionButtons({ container }: ActionButtonsProps) {
     if (!pendingAction) return;
     mutate(pendingAction);
   }
+
+  const isPending = mutationIsPending || progressSteps.length > 0;
 
   // Determine which buttons to show
   const state = container.state;
@@ -138,8 +278,12 @@ function ActionButtons({ container }: ActionButtonsProps) {
         <ConfirmModal
           message={modalMessages[pendingAction]}
           onConfirm={confirmAction}
-          onCancel={() => setPendingAction(null)}
+          onCancel={() => { resetProgress(); setPendingAction(null); }}
           isPending={isPending}
+          progressSteps={progressSteps}
+          isComplete={isComplete}
+          hasError={hasError}
+          errorMessage={errorMessage ?? undefined}
         />
       )}
 
