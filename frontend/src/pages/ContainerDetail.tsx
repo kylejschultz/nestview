@@ -69,9 +69,11 @@ function ActionButtons({ container }: ActionButtonsProps) {
 
   // Refs for polling (avoid stale closures)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const progressStepsRef = useRef<ProgressStep[]>([]);
   const actionRef = useRef<ActionType | null>(null);
   const initialDigestCheckRef = useRef<string | null>(null);
+  const initialRestartCountRef = useRef<number>(0);
 
   const ACTION_SUCCESS_MESSAGES: Record<ActionType, string> = {
     stop:           "Container stopped",
@@ -95,6 +97,10 @@ function ActionButtons({ container }: ActionButtonsProps) {
       clearInterval(pollRef.current);
       pollRef.current = null;
     }
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
   }
 
   function resetProgress() {
@@ -103,6 +109,10 @@ function ActionButtons({ container }: ActionButtonsProps) {
     setHasError(false);
     setErrorMessage(null);
     stopPolling();
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
   }
 
   function advanceSteps(action: ActionType, fresh: Container, initialDigestCheck: string | null) {
@@ -127,7 +137,7 @@ function ActionButtons({ container }: ActionButtonsProps) {
     } else if (action === "restart") {
       const stoppingDone = progressStepsRef.current.find(s => s.id === "stopping")?.status === "done";
       if (!stoppingDone) {
-        if (fresh.state !== "running") {
+        if (fresh.state !== "running" || fresh.restart_count > initialRestartCountRef.current) {
           setStepStatus("stopping", "done");
           setStepStatus("starting", "active");
         } else {
@@ -170,6 +180,14 @@ function ActionButtons({ container }: ActionButtonsProps) {
   }
 
   function startPolling(action: ActionType, initialDigestCheck: string | null) {
+    timeoutRef.current = setTimeout(() => {
+      stopPolling();
+      const activeStep = progressStepsRef.current.find(s => s.status === "active");
+      if (activeStep) setStepStatus(activeStep.id, "error");
+      setHasError(true);
+      setErrorMessage("Timed out waiting for confirmation. The action may have completed — check the dashboard.");
+    }, 30_000);
+
     pollRef.current = setInterval(async () => {
       try {
         const fresh = await api.containers.get(container.docker_id);
@@ -177,11 +195,17 @@ function ActionButtons({ container }: ActionButtonsProps) {
       } catch {
         // ignore poll errors
       }
-    }, 1500);
+    }, 500);
   }
 
   // Cleanup on unmount
-  useEffect(() => () => stopPolling(), []);
+  useEffect(() => () => {
+    stopPolling();
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
+  }, []);
 
   // Toast + query invalidation on completion
   useEffect(() => {
@@ -207,6 +231,7 @@ function ActionButtons({ container }: ActionButtonsProps) {
     onMutate: (action: ActionType) => {
       actionRef.current = action;
       initialDigestCheckRef.current = container.last_digest_check;
+      initialRestartCountRef.current = container.restart_count;
       const steps = STEP_DEFINITIONS[action].map(s => ({ ...s }));
       steps[0] = { ...steps[0], status: "active" };
       updateSteps(steps);

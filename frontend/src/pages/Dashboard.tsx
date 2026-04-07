@@ -246,7 +246,7 @@ function ComposeGroup({ project, members }: ComposeGroupProps) {
       } catch {
         // ignore poll errors
       }
-    }, 1500);
+    }, 500);
   }
 
   function buildFlatSteps(progress: StackProgressMap): ProgressStep[] {
