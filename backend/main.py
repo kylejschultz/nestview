@@ -17,7 +17,6 @@ APP_VERSION = _version_file.read_text().strip() if _version_file.exists() else "
 
 from database import create_db_and_tables, engine
 from api import containers, logs, events, settings, actions, admin, stack_actions
-from api.auth import api_key_required
 from services.cleanup import run_cleanup
 from services.app_settings import get_setting, set_setting
 from services.image_checker import run_image_check
@@ -129,8 +128,4 @@ def health():
 
 @app.get("/api/config")
 def config():
-    """
-    Returns public configuration the frontend needs before auth is established.
-    Never exposes secret values — only boolean flags derived from them.
-    """
-    return {"api_key_required": api_key_required()}
+    return {"api_key_required": False}

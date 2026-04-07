@@ -11,7 +11,6 @@ services:
       - DATABASE_PATH=/data/nestview.db
       - LOG_RETENTION_DAYS=${LOG_RETENTION_DAYS:-7}
       - NESTVIEW_COLLECTOR_KEY=${NESTVIEW_COLLECTOR_KEY:-}
-      - NESTVIEW_API_KEY=${NESTVIEW_API_KEY:-}
     volumes:
       - nestview_data:/data
       # Writable socket required for container stop/start/restart actions.

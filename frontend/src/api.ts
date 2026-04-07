@@ -1,36 +1,9 @@
 import type { AlertEventType, AlertSetting, Container, ContainerLog, ContainerEvent, GeneralSettings, WizardStatus } from "./types";
 
 const BASE = "/api";
-const API_KEY_STORAGE_KEY = "nestview:api_key";
-
-export function getApiKey(): string {
-  return sessionStorage.getItem(API_KEY_STORAGE_KEY) ?? "";
-}
-
-export function setApiKey(key: string): void {
-  sessionStorage.setItem(API_KEY_STORAGE_KEY, key);
-}
-
-export function clearApiKey(): void {
-  sessionStorage.removeItem(API_KEY_STORAGE_KEY);
-}
-
-function authHeaders(): Record<string, string> {
-  const key = getApiKey();
-  return key ? { "X-API-Key": key } : {};
-}
-
-function handleAuthFailure() {
-  clearApiKey();
-  window.dispatchEvent(new Event("nestview:auth-required"));
-}
 
 async function get<T>(path: string): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, { headers: authHeaders() });
-  if (res.status === 401 || res.status === 403) {
-    handleAuthFailure();
-    throw new Error("Authentication required");
-  }
+  const res = await fetch(`${BASE}${path}`);
   if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
   return res.json();
 }
@@ -38,13 +11,9 @@ async function get<T>(path: string): Promise<T> {
 async function patch<T>(path: string, body: unknown): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
     method: "PATCH",
-    headers: { "Content-Type": "application/json", ...authHeaders() },
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-  if (res.status === 401 || res.status === 403) {
-    handleAuthFailure();
-    throw new Error("Authentication required");
-  }
   if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
   return res.json();
 }
@@ -52,13 +21,9 @@ async function patch<T>(path: string, body: unknown): Promise<T> {
 async function post<T>(path: string, body?: unknown): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
     method: "POST",
-    headers: { ...authHeaders(), ...(body !== undefined ? { "Content-Type": "application/json" } : {}) },
+    headers: body !== undefined ? { "Content-Type": "application/json" } : {},
     ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
   });
-  if (res.status === 401 || res.status === 403) {
-    handleAuthFailure();
-    throw new Error("Authentication required");
-  }
   if (!res.ok) {
     const resBody = await res.json().catch(() => ({}));
     throw new Error((resBody as { detail?: string }).detail ?? `${res.status} ${res.statusText}`);
@@ -67,7 +32,6 @@ async function post<T>(path: string, body?: unknown): Promise<T> {
 }
 
 export const api = {
-  config: () => fetch(`${BASE}/config`).then((r) => r.json()) as Promise<{ api_key_required: boolean }>,
   version: () => fetch(`${BASE}/version`).then((r) => r.json()) as Promise<{ version: string }>,
   containers: {
     list: () => get<Container[]>("/containers"),

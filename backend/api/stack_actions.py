@@ -5,7 +5,6 @@ import docker.errors
 from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import Session, select
 
-from api.auth import verify_api_key
 from database import get_session
 from models import Container
 from services.image_checker import check_single_container
@@ -30,22 +29,22 @@ def _get_project_containers(compose_project: str, session: Session) -> list[Cont
     return list(containers)
 
 
-@router.post("/{compose_project}/stop", dependencies=[Depends(verify_api_key)])
+@router.post("/{compose_project}/stop")
 def stop_stack(compose_project: str, session: Session = Depends(get_session)):
     return _run_stack_action(compose_project, "stop", session)
 
 
-@router.post("/{compose_project}/start", dependencies=[Depends(verify_api_key)])
+@router.post("/{compose_project}/start")
 def start_stack(compose_project: str, session: Session = Depends(get_session)):
     return _run_stack_action(compose_project, "start", session)
 
 
-@router.post("/{compose_project}/restart", dependencies=[Depends(verify_api_key)])
+@router.post("/{compose_project}/restart")
 def restart_stack(compose_project: str, session: Session = Depends(get_session)):
     return _run_stack_action(compose_project, "restart", session)
 
 
-@router.post("/{compose_project}/pull-restart", dependencies=[Depends(verify_api_key)])
+@router.post("/{compose_project}/pull-restart")
 def pull_restart_stack(compose_project: str, session: Session = Depends(get_session)):
     containers = _get_project_containers(compose_project, session)
     client = docker.from_env()

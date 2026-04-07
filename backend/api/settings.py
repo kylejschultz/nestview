@@ -5,7 +5,6 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field, field_validator
 from sqlmodel import Session, select
 
-from api.auth import verify_api_key
 from database import get_session
 from models import AppSetting, ContainerAlertSetting
 from services.app_settings import get_setting, set_setting
@@ -51,7 +50,7 @@ def get_alert_settings(session: Session = Depends(get_session)) -> List[dict]:
     return [r.dict() for r in rows]
 
 
-@router.patch("/alerts", dependencies=[Depends(verify_api_key)])
+@router.patch("/alerts")
 def patch_alert_setting(
     payload: AlertSettingPatch,
     session: Session = Depends(get_session),
@@ -89,7 +88,7 @@ def get_all_settings(session: Session = Depends(get_session)) -> Dict[str, str]:
     return {row.key: row.value for row in rows}
 
 
-@router.patch("", dependencies=[Depends(verify_api_key)])
+@router.patch("")
 def patch_settings(
     payload: Dict[str, str],
     session: Session = Depends(get_session),
@@ -174,7 +173,7 @@ def get_general_settings(session: Session = Depends(get_session)) -> dict:
     }
 
 
-@router.patch("/general", dependencies=[Depends(verify_api_key)])
+@router.patch("/general")
 def patch_general_settings(
     payload: GeneralSettingsPatch,
     session: Session = Depends(get_session),
@@ -217,7 +216,7 @@ def get_wizard_status(session: Session = Depends(get_session)) -> dict:
     return {"completed": completed}
 
 
-@router.post("/wizard/dismiss", dependencies=[Depends(verify_api_key)])
+@router.post("/wizard/dismiss")
 def dismiss_wizard(session: Session = Depends(get_session)) -> dict:
     set_setting(session, "wizard_dismissed", "true")
     session.commit()
@@ -244,7 +243,7 @@ class TestWebhookBody(BaseModel):
         return v
 
 
-@router.post("/test-webhook", dependencies=[Depends(verify_api_key)])
+@router.post("/test-webhook")
 async def test_webhook(
     body: TestWebhookBody = TestWebhookBody(),
     session: Session = Depends(get_session),

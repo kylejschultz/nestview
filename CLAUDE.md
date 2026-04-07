@@ -115,6 +115,8 @@ All config is in `.env` (copy from `.env.example`). Docker Compose auto-loads it
 | `POLL_INTERVAL` | `10` | Seconds between Docker stats polls |
 | `LOG_BATCH_INTERVAL` | `5` | Seconds between log flushes |
 
+> **Authentication:** User-facing endpoints are unauthenticated in v0.2.x (trusted-network mode). Proper auth is planned for v0.3.0.
+
 **Never commit `.env`.** It is in `.gitignore`. It may contain a Discord webhook URL or collector key.
 
 ---
@@ -166,10 +168,10 @@ All endpoints are prefixed `/api/`.
 | `GET` | `/containers` | none | List all containers |
 | `GET` | `/containers/{docker_id}` | none | Single container |
 | `POST` | `/containers/batch` | collector key | Full reconciliation snapshot |
-| `POST` | `/containers/{docker_id}/start` | api key | Start container |
-| `POST` | `/containers/{docker_id}/stop` | api key | Stop container |
-| `POST` | `/containers/{docker_id}/restart` | api key | Restart container |
-| `POST` | `/containers/{docker_id}/pull-restart` | api key | Pull latest image and restart container |
+| `POST` | `/containers/{docker_id}/start` | none | Start container |
+| `POST` | `/containers/{docker_id}/stop` | none | Stop container |
+| `POST` | `/containers/{docker_id}/restart` | none | Restart container |
+| `POST` | `/containers/{docker_id}/pull-restart` | none | Pull latest image and restart container |
 | `GET` | `/containers/{docker_id}/logs` | none | Container logs (paginated, searchable) |
 | `GET` | `/logs` | none | All logs (paginated, searchable) |
 | `POST` | `/collector/logs` | collector key | Batch log ingest |
@@ -177,11 +179,11 @@ All endpoints are prefixed `/api/`.
 | `POST` | `/collector/events` | collector key | Ingest a single event |
 | `GET` | `/settings/alerts` | none | List alert settings |
 | `PATCH` | `/settings/alerts` | none | Enable/disable an alert type per container |
-| `POST` | `/stacks/{compose_project}/stop` | api key | Stop all containers in a compose stack |
-| `POST` | `/stacks/{compose_project}/start` | api key | Start all containers in a compose stack |
-| `POST` | `/stacks/{compose_project}/restart` | api key | Restart all containers in a compose stack |
-| `POST` | `/stacks/{compose_project}/pull-restart` | api key | Pull latest images and restart a compose stack |
-| `POST` | `/admin/check-images` | api key | Trigger an immediate image update check |
+| `POST` | `/stacks/{compose_project}/stop` | none | Stop all containers in a compose stack |
+| `POST` | `/stacks/{compose_project}/start` | none | Start all containers in a compose stack |
+| `POST` | `/stacks/{compose_project}/restart` | none | Restart all containers in a compose stack |
+| `POST` | `/stacks/{compose_project}/pull-restart` | none | Pull latest images and restart a compose stack |
+| `POST` | `/admin/check-images` | none | Trigger an immediate image update check |
 
 ---
 

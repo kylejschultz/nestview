@@ -6,8 +6,8 @@ import docker.errors
 from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import Session, select
 
-from api.auth import verify_api_key
 from database import get_session
+
 from models import Container
 from services.image_checker import check_single_container
 
@@ -34,22 +34,22 @@ def _get_db_container(docker_id: str, session: Session) -> Container:
     return container
 
 
-@router.post("/{docker_id}/stop", dependencies=[Depends(verify_api_key)])
+@router.post("/{docker_id}/stop")
 def stop_container(docker_id: str, session: Session = Depends(get_session)):
     return _run_action(docker_id, "stop", session)
 
 
-@router.post("/{docker_id}/restart", dependencies=[Depends(verify_api_key)])
+@router.post("/{docker_id}/restart")
 def restart_container(docker_id: str, session: Session = Depends(get_session)):
     return _run_action(docker_id, "restart", session)
 
 
-@router.post("/{docker_id}/start", dependencies=[Depends(verify_api_key)])
+@router.post("/{docker_id}/start")
 def start_container(docker_id: str, session: Session = Depends(get_session)):
     return _run_action(docker_id, "start", session)
 
 
-@router.post("/{docker_id}/pull-restart", dependencies=[Depends(verify_api_key)])
+@router.post("/{docker_id}/pull-restart")
 def pull_restart_container(docker_id: str, session: Session = Depends(get_session)):
     db_container = _get_db_container(docker_id, session)
 
