@@ -5,10 +5,12 @@ import type { Container } from "../types";
 import ContainerCard from "../components/ContainerCard";
 import EventTimeline from "../components/EventTimeline";
 import ConfirmModal from "../components/ConfirmModal";
+import type { ProgressStep } from "../components/ConfirmModal";
 import Toast from "../components/Toast";
 import { useToast } from "../hooks/useToast";
 
 type Filter = "all" | "running" | "stopped";
+type StackProgressMap = Record<string, ProgressStep[]>;
 
 const STORAGE_KEY = "nestview:stack_collapsed";
 
@@ -55,9 +57,37 @@ function ComposeGroup({ project, members }: ComposeGroupProps) {
   const queryClient = useQueryClient();
   const [collapsed, setCollapsed] = useState<boolean>(() => !!loadCollapsed()[project]);
   const [pendingAction, setPendingAction] = useState<StackAction | null>(null);
+  const [stackProgress, setStackProgress] = useState<StackProgressMap>({});
+  const [isComplete, setIsComplete] = useState(false);
+  const [hasError, setHasError] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [isProgressing, setIsProgressing] = useState(false);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const stackProgressRef = useRef<StackProgressMap>({});
   const { toastState, showToast, dismissToast } = useToast();
 
-  const { mutate, isPending, variables: activeAction } = useMutation<
+  // Mirror state to ref for use in polling interval
+  useEffect(() => { stackProgressRef.current = stackProgress; }, [stackProgress]);
+
+  // Toast + cache invalidation on completion
+  useEffect(() => {
+    if (!isComplete || !pendingAction) return;
+    showToast(STACK_SUCCESS_MESSAGES[pendingAction], "success");
+    queryClient.invalidateQueries({ queryKey: ["containers"] });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isComplete]);
+
+  // Toast on error
+  useEffect(() => {
+    if (!hasError || !errorMessage) return;
+    showToast(errorMessage, "error");
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasError]);
+
+  // Cleanup on unmount
+  useEffect(() => () => stopPolling(), []);
+
+  const { mutate, isPending } = useMutation<
     { ok: boolean; project: string; action: string; affected?: number; pulled?: number; restarted?: number },
     Error,
     StackAction
@@ -68,16 +98,200 @@ function ComposeGroup({ project, members }: ComposeGroupProps) {
       if (action === "restart") return api.stacks.restart(project);
       return api.stacks.pullRestart(project);
     },
-    onSuccess: (_data, action) => {
-      setTimeout(() => queryClient.invalidateQueries({ queryKey: ["containers"] }), 1_500);
-      showToast(STACK_SUCCESS_MESSAGES[action], "success");
-      setPendingAction(null);
-    },
-    onError: (err: Error) => {
-      showToast(err.message, "error");
-      setPendingAction(null);
-    },
   });
+
+  function stopPolling() {
+    if (pollRef.current) {
+      clearInterval(pollRef.current);
+      pollRef.current = null;
+    }
+  }
+
+  function resetStackProgress() {
+    setStackProgress({});
+    setIsComplete(false);
+    setHasError(false);
+    setErrorMessage(null);
+    setIsProgressing(false);
+    stopPolling();
+  }
+
+  function getStepsForAction(action: StackAction): ProgressStep[] {
+    switch (action) {
+      case "stop": return [
+        { id: "stopping",  label: "Stopping…",          status: "pending" },
+        { id: "confirmed", label: "Container stopped",   status: "pending" },
+      ];
+      case "start": return [
+        { id: "starting",  label: "Starting…",           status: "pending" },
+        { id: "confirmed", label: "Container running",   status: "pending" },
+      ];
+      case "restart": return [
+        { id: "stopping",  label: "Stopping…",           status: "pending" },
+        { id: "starting",  label: "Starting…",           status: "pending" },
+        { id: "confirmed", label: "Container running",   status: "pending" },
+      ];
+      case "pull-restart": return [
+        { id: "pulling",    label: "Pulling image…",      status: "pending" },
+        { id: "restarting", label: "Restarting…",         status: "pending" },
+        { id: "confirming", label: "Confirming running…", status: "pending" },
+        { id: "complete",   label: "Complete",            status: "pending" },
+      ];
+    }
+  }
+
+  function getFirstStepId(action: StackAction): string {
+    switch (action) {
+      case "stop":         return "stopping";
+      case "start":        return "starting";
+      case "restart":      return "stopping";
+      case "pull-restart": return "pulling";
+    }
+  }
+
+  function initStackProgress(action: StackAction) {
+    const firstId = getFirstStepId(action);
+    const initial: StackProgressMap = {};
+    for (const c of members) {
+      initial[c.docker_id] = getStepsForAction(action).map((s) => ({
+        ...s,
+        status: s.id === firstId ? ("active" as const) : ("pending" as const),
+      }));
+    }
+    setStackProgress(initial);
+    stackProgressRef.current = initial;
+  }
+
+  function computeNextProgress(
+    action: StackAction,
+    memberMap: Record<string, Container>,
+    currentProgress: StackProgressMap,
+  ): { nextProgress: StackProgressMap; allDone: boolean } {
+    const next: StackProgressMap = {};
+    let allDone = true;
+
+    for (const c of members) {
+      const fresh = memberMap[c.docker_id];
+      if (!fresh) {
+        next[c.docker_id] = currentProgress[c.docker_id] ?? [];
+        allDone = false;
+        continue;
+      }
+      const steps = (currentProgress[c.docker_id] ?? []).map((s) => ({ ...s }));
+
+      if (action === "stop") {
+        if (fresh.state === "exited" || fresh.state === "dead") {
+          steps.forEach((s) => { s.status = "done"; });
+        }
+      } else if (action === "start") {
+        if (fresh.state === "running") {
+          steps.forEach((s) => { s.status = "done"; });
+        }
+      } else if (action === "restart") {
+        const stopping = steps.find((s) => s.id === "stopping");
+        const starting  = steps.find((s) => s.id === "starting");
+        const confirmed = steps.find((s) => s.id === "confirmed");
+
+        if (stopping?.status === "active" && fresh.state !== "running") {
+          stopping.status = "done";
+          if (starting) starting.status = "active";
+        }
+        if (starting?.status === "active" && fresh.state === "running") {
+          starting.status = "done";
+          if (confirmed) confirmed.status = "done";
+        }
+      } else if (action === "pull-restart") {
+        const restarting = steps.find((s) => s.id === "restarting");
+        const confirming = steps.find((s) => s.id === "confirming");
+        const complete   = steps.find((s) => s.id === "complete");
+
+        if (restarting?.status === "active" && fresh.state !== "running") {
+          restarting.status = "done";
+          if (confirming) confirming.status = "active";
+        }
+        if (confirming?.status === "active" && fresh.state === "running") {
+          confirming.status = "done";
+          if (complete) complete.status = "done";
+        }
+      }
+
+      next[c.docker_id] = steps;
+      const finalStep = steps[steps.length - 1];
+      if (finalStep?.status !== "done") allDone = false;
+    }
+
+    return { nextProgress: next, allDone };
+  }
+
+  function startPolling(action: StackAction) {
+    pollRef.current = setInterval(async () => {
+      try {
+        const all = await api.containers.list();
+        const memberMap = Object.fromEntries(
+          all
+            .filter((c) => c.compose_project === project)
+            .map((c) => [c.docker_id, c])
+        );
+        const { nextProgress, allDone } = computeNextProgress(
+          action, memberMap, stackProgressRef.current
+        );
+        setStackProgress(nextProgress);
+        stackProgressRef.current = nextProgress;
+
+        if (allDone) {
+          stopPolling();
+          setIsComplete(true);
+          setIsProgressing(false);
+        }
+      } catch {
+        // ignore poll errors
+      }
+    }, 1500);
+  }
+
+  function buildFlatSteps(progress: StackProgressMap): ProgressStep[] {
+    const flat: ProgressStep[] = [];
+    for (const c of members) {
+      flat.push({
+        id: `header-${c.docker_id}`,
+        label: c.name,
+        status: "done", // sentinel for header styling in ConfirmModal
+      });
+      flat.push(...(progress[c.docker_id] ?? []));
+    }
+    return flat;
+  }
+
+  function handleConfirm() {
+    if (!pendingAction) return;
+    const actionToFire = pendingAction;
+    initStackProgress(actionToFire);
+    setIsProgressing(true);
+    mutate(actionToFire, {
+      onSuccess: () => {
+        if (actionToFire === "pull-restart") {
+          const prev = stackProgressRef.current;
+          const next: StackProgressMap = {};
+          for (const c of members) {
+            next[c.docker_id] = (prev[c.docker_id] ?? []).map((s) => {
+              if (s.id === "pulling")    return { ...s, status: "done"   as const };
+              if (s.id === "restarting") return { ...s, status: "active" as const };
+              return s;
+            });
+          }
+          stackProgressRef.current = next;
+          setStackProgress(next);
+        }
+        startPolling(actionToFire);
+      },
+      onError: (err) => {
+        stopPolling();
+        setHasError(true);
+        setErrorMessage(err.message);
+        setIsProgressing(false);
+      },
+    });
+  }
 
   function toggle() {
     setCollapsed((prev) => {
@@ -110,6 +324,7 @@ function ComposeGroup({ project, members }: ComposeGroupProps) {
   };
 
   const updateCount = members.filter((m) => m.update_available).length;
+  const progressSteps = Object.keys(stackProgress).length > 0 ? buildFlatSteps(stackProgress) : undefined;
 
   return (
     <div className="bg-surface-2 border border-border rounded-xl overflow-hidden">
@@ -126,9 +341,16 @@ function ComposeGroup({ project, members }: ComposeGroupProps) {
       {pendingAction && (
         <ConfirmModal
           message={MODAL_MESSAGES[pendingAction]}
-          onConfirm={() => { mutate(pendingAction); }}
-          onCancel={() => setPendingAction(null)}
-          isPending={isPending}
+          onConfirm={handleConfirm}
+          onCancel={() => {
+            setPendingAction(null);
+            resetStackProgress();
+          }}
+          isPending={isProgressing}
+          progressSteps={progressSteps}
+          isComplete={isComplete}
+          hasError={hasError}
+          errorMessage={errorMessage ?? undefined}
         />
       )}
 
@@ -167,7 +389,7 @@ function ComposeGroup({ project, members }: ComposeGroupProps) {
         {/* Stack action buttons */}
         <div className="flex items-center gap-1 shrink-0">
           {(["restart", "stop", "start", "pull-restart"] as StackAction[]).map((action) => {
-            const isActive = isPending && activeAction === action;
+            const isActive = isProgressing && pendingAction === action;
             const labels: Record<StackAction, string> = {
               stop: "Stop all",
               start: "Start all",
@@ -177,7 +399,7 @@ function ComposeGroup({ project, members }: ComposeGroupProps) {
             return (
               <button
                 key={action}
-                disabled={isPending}
+                disabled={isPending || isProgressing}
                 onClick={() => setPendingAction(action)}
                 title={labels[action]}
                 className={`inline-flex items-center gap-1 px-2 py-1 text-xs rounded-md border transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${STACK_BUTTON_STYLES[action]}`}

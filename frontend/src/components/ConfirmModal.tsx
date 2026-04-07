@@ -46,9 +46,10 @@ function stepColorClass(status: ProgressStep["status"]): string {
 }
 
 function progressTitle(steps: ProgressStep[]): string {
-  const active = steps.find((s) => s.status === "active");
+  const nonHeaders = steps.filter((s) => !s.id.startsWith("header-"));
+  const active = nonHeaders.find((s) => s.status === "active");
   if (active) return active.label;
-  const lastDone = [...steps].reverse().find((s) => s.status === "done");
+  const lastDone = [...nonHeaders].reverse().find((s) => s.status === "done");
   if (lastDone) return lastDone.label;
   return "Working\u2026";
 }
@@ -121,17 +122,27 @@ export default function ConfirmModal({
             )}
 
             {showProgress && (
-              <ul className="space-y-2">
-                {progressSteps!.map((step) => (
-                  <li
-                    key={step.id}
-                    className={`flex items-center gap-2 text-sm transition-colors ${stepColorClass(step.status)}`}
-                  >
-                    <StepIcon status={step.status} />
-                    <span>{step.label}</span>
-                  </li>
-                ))}
-              </ul>
+              <div className="max-h-[60vh] overflow-y-auto">
+                <ul className="space-y-2">
+                  {progressSteps!.map((step) =>
+                    step.id.startsWith("header-") ? (
+                      <li key={step.id} className="pt-1 first:pt-0">
+                        <span className="text-xs font-semibold uppercase tracking-widest text-slate-500">
+                          {step.label}
+                        </span>
+                      </li>
+                    ) : (
+                      <li
+                        key={step.id}
+                        className={`flex items-center gap-2 text-sm transition-colors pl-2 ${stepColorClass(step.status)}`}
+                      >
+                        <StepIcon status={step.status} />
+                        <span>{step.label}</span>
+                      </li>
+                    )
+                  )}
+                </ul>
+              </div>
             )}
 
             {/* Error message */}
