@@ -45,8 +45,8 @@ function Toggle({ checked, onChange, disabled, label }: ToggleProps) {
 const ALERT_TYPES: { key: AlertEventType; label: string }[] = [
   { key: "crash", label: "Crash" },
   { key: "restart", label: "Restart" },
-  { key: "oom", label: "OOM Kill" },
-  { key: "update_available", label: "Update" },
+  { key: "oom", label: "OOM" },
+  { key: "update_available", label: "Update Avail" },
 ];
 
 function buildDisabledSet(settings: AlertSetting[]): Set<string> {
@@ -59,7 +59,7 @@ function buildDisabledSet(settings: AlertSetting[]): Set<string> {
 
 // ── Per-container row (table) ─────────────────────────────────────────────────
 
-const COL_W = "w-14";
+const COL_W = "w-24";
 
 interface ContainerRowProps {
   container: Container;
@@ -358,11 +358,13 @@ function GeneralTab() {
         {/* IMAGE UPDATES */}
         <SectionHeader label="Image Updates" />
         <SettingRow label="Auto-check">
-          <Toggle
-            checked={imageEnabled}
-            onChange={(v) => setEnabledDraft(v)}
-            disabled={isSavingImage}
-          />
+          <div className="flex items-center">
+            <Toggle
+              checked={imageEnabled}
+              onChange={(v) => setEnabledDraft(v)}
+              disabled={isSavingImage}
+            />
+          </div>
         </SettingRow>
         <SettingRow label="Daily check time" last>
           <div className="space-y-2">
@@ -480,7 +482,7 @@ function NotificationsTab() {
     );
   }
 
-  const togglesWidth = `${ALERT_TYPES.length * 3.5}rem`; // 4 × w-14 (3.5rem)
+  const togglesWidth = `${ALERT_TYPES.length * 6}rem`; // 4 × w-24 (6rem)
 
   return (
     <div className="space-y-4">
