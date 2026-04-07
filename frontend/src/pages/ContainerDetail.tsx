@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useParams, Link } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
@@ -35,6 +35,7 @@ interface ActionButtonsProps {
 function ActionButtons({ container }: ActionButtonsProps) {
   const queryClient = useQueryClient();
   const [pendingAction, setPendingAction] = useState<ActionType | null>(null);
+  const [pendingToast, setPendingToast] = useState<{ action: ActionType; expectedState: string } | null>(null);
   const { toastState, showToast, dismissToast } = useToast();
 
   const ACTION_SUCCESS_MESSAGES: Record<ActionType, string> = {
@@ -44,18 +45,42 @@ function ActionButtons({ container }: ActionButtonsProps) {
     "pull-restart": "Pull & Restart complete",
   };
 
+  const EXPECTED_STATES: Record<ActionType, string> = {
+    stop:           "exited",
+    start:          "running",
+    restart:        "running",
+    "pull-restart": "running",
+  };
+
+  const ACTION_DELAYS: Record<ActionType, number> = {
+    stop:           2_000,
+    start:          2_000,
+    restart:        1_500,
+    "pull-restart": 3_000,
+  };
+
+  // Fire toast once the container reaches the expected state after an action
+  useEffect(() => {
+    if (!pendingToast) return;
+    if (container.state === pendingToast.expectedState) {
+      showToast(ACTION_SUCCESS_MESSAGES[pendingToast.action], "success");
+      setPendingToast(null);
+    }
+  // ACTION_SUCCESS_MESSAGES is stable (defined at render, same shape every time)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [container.state, pendingToast]);
+
   const { mutate, isPending } = useMutation({
     mutationFn: (action: ActionType) => {
       if (action === "pull-restart") return api.containers.pullRestart(container.docker_id);
       return api.containers[action](container.docker_id);
     },
     onSuccess: (_data, action) => {
-      const delay = action === "restart" || action === "pull-restart" ? 1_500 : 0;
       setTimeout(() => {
         queryClient.invalidateQueries({ queryKey: ["container", container.docker_id] });
         queryClient.invalidateQueries({ queryKey: ["containers"] });
-      }, delay);
-      showToast(ACTION_SUCCESS_MESSAGES[action], "success");
+      }, ACTION_DELAYS[action]);
+      setPendingToast({ action, expectedState: EXPECTED_STATES[action] });
       setPendingAction(null);
     },
     onError: (err: Error) => {
@@ -204,7 +229,11 @@ export default function ContainerDetail() {
   const { data: container, isLoading, isError } = useQuery<Container>({
     queryKey: ["container", id],
     queryFn: () => api.containers.get(id!),
-    refetchInterval: 10_000,
+    refetchInterval: (query) => {
+      const state = (query.state.data as Container | undefined)?.state;
+      if (state && ["restarting", "created"].includes(state)) return 2_000;
+      return 10_000;
+    },
     enabled: !!id,
   });
 
