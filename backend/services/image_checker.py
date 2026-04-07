@@ -78,10 +78,7 @@ def _fetch_dockerhub_digest(namespace: str, repo: str, tag: str) -> Optional[str
     resp = requests.get(url, timeout=15)
     resp.raise_for_status()
     data = resp.json()
-    images = data.get("images", [])
-    if images:
-        return images[0].get("digest")
-    return None
+    return data.get("digest")
 
 
 def _fetch_ghcr_digest(namespace: str, repo: str, tag: str) -> Optional[str]:
