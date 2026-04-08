@@ -40,33 +40,15 @@ jobs:
         id: version
         run: echo "tag=$(cat VERSION)" >> $GITHUB_OUTPUT
 
-      - name: Build and push backend
+      - name: Build and push
         run: |
           docker build --platform ${{ matrix.platform }} \
-            -t ghcr.io/kylejschultz/nestview-backend:sha-${{ steps.sha.outputs.short }}-${{ matrix.suffix }} \
-            -t ghcr.io/kylejschultz/nestview-backend:${{ steps.version.outputs.tag }}-${{ matrix.suffix }} \
-            -f backend/Dockerfile \
+            -t ghcr.io/kylejschultz/nestview:sha-${{ steps.sha.outputs.short }}-${{ matrix.suffix }} \
+            -t ghcr.io/kylejschultz/nestview:${{ steps.version.outputs.tag }}-${{ matrix.suffix }} \
+            -f Dockerfile \
             .
-          docker push ghcr.io/kylejschultz/nestview-backend:sha-${{ steps.sha.outputs.short }}-${{ matrix.suffix }}
-          docker push ghcr.io/kylejschultz/nestview-backend:${{ steps.version.outputs.tag }}-${{ matrix.suffix }}
-
-      - name: Build and push frontend
-        run: |
-          docker build --platform ${{ matrix.platform }} \
-            -t ghcr.io/kylejschultz/nestview-frontend:sha-${{ steps.sha.outputs.short }}-${{ matrix.suffix }} \
-            -t ghcr.io/kylejschultz/nestview-frontend:${{ steps.version.outputs.tag }}-${{ matrix.suffix }} \
-            ./frontend
-          docker push ghcr.io/kylejschultz/nestview-frontend:sha-${{ steps.sha.outputs.short }}-${{ matrix.suffix }}
-          docker push ghcr.io/kylejschultz/nestview-frontend:${{ steps.version.outputs.tag }}-${{ matrix.suffix }}
-
-      - name: Build and push collector
-        run: |
-          docker build --platform ${{ matrix.platform }} \
-            -t ghcr.io/kylejschultz/nestview-collector:sha-${{ steps.sha.outputs.short }}-${{ matrix.suffix }} \
-            -t ghcr.io/kylejschultz/nestview-collector:${{ steps.version.outputs.tag }}-${{ matrix.suffix }} \
-            ./collector
-          docker push ghcr.io/kylejschultz/nestview-collector:sha-${{ steps.sha.outputs.short }}-${{ matrix.suffix }}
-          docker push ghcr.io/kylejschultz/nestview-collector:${{ steps.version.outputs.tag }}-${{ matrix.suffix }}
+          docker push ghcr.io/kylejschultz/nestview:sha-${{ steps.sha.outputs.short }}-${{ matrix.suffix }}
+          docker push ghcr.io/kylejschultz/nestview:${{ steps.version.outputs.tag }}-${{ matrix.suffix }}
 
   merge:
     runs-on: ubuntu-24.04
@@ -94,29 +76,11 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Merge backend manifest
+      - name: Merge manifest
         run: |
           docker buildx imagetools create \
-            -t ghcr.io/kylejschultz/nestview-backend:latest \
-            -t ghcr.io/kylejschultz/nestview-backend:sha-${{ steps.sha.outputs.short }} \
-            -t ghcr.io/kylejschultz/nestview-backend:${{ steps.version.outputs.tag }} \
-            ghcr.io/kylejschultz/nestview-backend:sha-${{ steps.sha.outputs.short }}-amd64 \
-            ghcr.io/kylejschultz/nestview-backend:sha-${{ steps.sha.outputs.short }}-arm64
-
-      - name: Merge frontend manifest
-        run: |
-          docker buildx imagetools create \
-            -t ghcr.io/kylejschultz/nestview-frontend:latest \
-            -t ghcr.io/kylejschultz/nestview-frontend:sha-${{ steps.sha.outputs.short }} \
-            -t ghcr.io/kylejschultz/nestview-frontend:${{ steps.version.outputs.tag }} \
-            ghcr.io/kylejschultz/nestview-frontend:sha-${{ steps.sha.outputs.short }}-amd64 \
-            ghcr.io/kylejschultz/nestview-frontend:sha-${{ steps.sha.outputs.short }}-arm64
-
-      - name: Merge collector manifest
-        run: |
-          docker buildx imagetools create \
-            -t ghcr.io/kylejschultz/nestview-collector:latest \
-            -t ghcr.io/kylejschultz/nestview-collector:sha-${{ steps.sha.outputs.short }} \
-            -t ghcr.io/kylejschultz/nestview-collector:${{ steps.version.outputs.tag }} \
-            ghcr.io/kylejschultz/nestview-collector:sha-${{ steps.sha.outputs.short }}-amd64 \
-            ghcr.io/kylejschultz/nestview-collector:sha-${{ steps.sha.outputs.short }}-arm64
+            -t ghcr.io/kylejschultz/nestview:latest \
+            -t ghcr.io/kylejschultz/nestview:sha-${{ steps.sha.outputs.short }} \
+            -t ghcr.io/kylejschultz/nestview:${{ steps.version.outputs.tag }} \
+            ghcr.io/kylejschultz/nestview:sha-${{ steps.sha.outputs.short }}-amd64 \
+            ghcr.io/kylejschultz/nestview:sha-${{ steps.sha.outputs.short }}-arm64

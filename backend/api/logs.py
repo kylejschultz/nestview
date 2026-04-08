@@ -5,7 +5,6 @@ from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field, field_validator
 from sqlmodel import Session, select
 
-from api.auth import verify_collector_key
 from database import get_session
 from models import ContainerLog
 
@@ -43,7 +42,7 @@ def _parse_dt(s: str) -> datetime:
         return datetime.utcnow()
 
 
-@router.post("/collector/logs", dependencies=[Depends(verify_collector_key)])
+@router.post("/collector/logs")
 def ingest_logs(batch: LogBatch, session: Session = Depends(get_session)):
     for entry in batch.logs:
         log = ContainerLog(

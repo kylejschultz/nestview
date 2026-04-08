@@ -5,7 +5,6 @@ from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
 from sqlmodel import Session, select
 
-from api.auth import verify_collector_key
 from database import get_session
 from models import ContainerAlertSetting, ContainerEvent
 from services import discord
@@ -59,7 +58,7 @@ def _alert_suppressed(container_name: str, event_type: str, session: Session) ->
     return setting is not None and not setting.enabled
 
 
-@router.post("/collector/events", dependencies=[Depends(verify_collector_key)])
+@router.post("/collector/events")
 async def ingest_event(event: EventIn, session: Session = Depends(get_session)):
     ts = _parse_dt(event.timestamp)
 

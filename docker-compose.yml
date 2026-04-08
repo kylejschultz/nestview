@@ -1,51 +1,27 @@
-version: "3.9"
-
 services:
-  backend:
+  nestview:
     build:
       context: .
-      dockerfile: backend/Dockerfile
-    image: ghcr.io/kylejschultz/nestview-backend:latest
+      dockerfile: Dockerfile
+    image: ghcr.io/kylejschultz/nestview:latest
     restart: unless-stopped
+    ports:
+      - "${NESTVIEW_PORT:-8080}:8080"
     environment:
       - DATABASE_PATH=/data/nestview.db
       - LOG_RETENTION_DAYS=${LOG_RETENTION_DAYS:-7}
-      - NESTVIEW_COLLECTOR_KEY=${NESTVIEW_COLLECTOR_KEY:-}
+      - EXITED_CONTAINER_TTL_HOURS=${EXITED_CONTAINER_TTL_HOURS:-0.083}
+      - POLL_INTERVAL=${POLL_INTERVAL:-10}
+      - LOG_BATCH_INTERVAL=${LOG_BATCH_INTERVAL:-5}
+      - DISCORD_WEBHOOK_URL=${DISCORD_WEBHOOK_URL:-}
     volumes:
       - nestview_data:/data
-      # Writable socket required for container stop/start/restart actions.
-      # The collector socket mount (below) remains read-only.
       - /var/run/docker.sock:/var/run/docker.sock
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/api/health')"]
       interval: 15s
       timeout: 5s
       retries: 3
-
-  collector:
-    build: ./collector
-    image: ghcr.io/kylejschultz/nestview-collector:latest
-    restart: unless-stopped
-    depends_on:
-      backend:
-        condition: service_healthy
-    environment:
-      - BACKEND_URL=http://backend:8000
-      - POLL_INTERVAL=${POLL_INTERVAL:-10}
-      - LOG_BATCH_INTERVAL=${LOG_BATCH_INTERVAL:-5}
-      - NESTVIEW_COLLECTOR_KEY=${NESTVIEW_COLLECTOR_KEY:-}
-    volumes:
-      # Read-only access to the Docker socket
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-
-  frontend:
-    build: ./frontend
-    image: ghcr.io/kylejschultz/nestview-frontend:latest
-    restart: unless-stopped
-    ports:
-      - "${NESTVIEW_PORT:-8080}:80"
-    depends_on:
-      - backend
 
 volumes:
   nestview_data:

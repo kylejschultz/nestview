@@ -1,3 +1,0 @@
-docker==7.1.0
-# requests>=2.33.0 fixes CVEs GHSA-9hjg-9r4m-mvj7 and GHSA-gc5v-m9x4-r6x2.
-requests>=2.33.0

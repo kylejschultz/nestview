@@ -6,21 +6,14 @@ Nestview is a lightweight, self-hosted Docker visibility tool for homelabbers. I
 
 ## Architecture
 
-Three services, all containerized and orchestrated via Docker Compose:
+Single container, deployed via Docker Compose:
 
 ```
-collector (Python)
-  └── reads /var/run/docker.sock (read-only)
-  └── POSTs stats, logs, events → backend
-
-backend (FastAPI + SQLModel + SQLite)
-  └── stores all data in /data/nestview.db
-  └── serves REST API at :8000
-  └── reads /var/run/docker.sock (writable, for container actions)
-
-frontend (React + TypeScript + Vite → nginx)
-  └── served as static files at :8080
-  └── nginx proxies /api/ → backend:8000
+nestview (FastAPI + SQLModel + SQLite + embedded React)
+  └── reads /var/run/docker.sock (writable, for stats + actions)
+  └── serves REST API at :8080/api/
+  └── serves React SPA at :8080/ (StaticFiles)
+  └── runs collector threads in-process (stats poll, log stream, event watcher)
 ```
 
 **No migrations.** SQLModel calls `SQLModel.metadata.create_all(engine)` on startup. Schema changes require manual handling or a full reset.
@@ -33,7 +26,6 @@ frontend (React + TypeScript + Vite → nginx)
 nestview/
 ├── backend/
 │   ├── api/
-│   │   ├── auth.py          # X-Collector-Key header verification
 │   │   ├── actions.py       # Container start/stop/restart (POST)
 │   │   ├── containers.py    # Container CRUD + batch reconciliation
 │   │   ├── events.py        # Event ingestion + Discord alert dispatch
@@ -41,13 +33,12 @@ nestview/
 │   │   └── settings.py      # Per-container alert enable/disable
 │   ├── services/
 │   │   ├── cleanup.py       # APScheduler hourly job (log/event/container TTL)
+│   │   ├── collector.py     # In-process collector threads (stats, logs, events)
 │   │   └── discord.py       # Discord webhook embed sender
 │   ├── database.py          # SQLite engine + session factory
 │   ├── models.py            # SQLModel table definitions
 │   ├── main.py              # FastAPI app entrypoint
 │   └── requirements.txt
-├── collector/
-│   └── main.py              # Docker socket poller + log streamer + event watcher
 ├── frontend/
 │   ├── src/
 │   │   ├── api.ts           # All API calls (typed)
@@ -59,9 +50,9 @@ nestview/
 │   │   └── components/
 │   │       ├── ContainerCard.tsx
 │   │       └── EventTimeline.tsx
-│   ├── nginx.conf
 │   └── package.json
 ├── landing/                 # Static marketing page (index.html)
+├── Dockerfile               # Multi-stage: node build → python final
 ├── docker-compose.yml
 ├── .env.example
 └── README.md
@@ -76,19 +67,19 @@ nestview/
 - **FastAPI routers** are in `backend/api/`. Each file owns one domain and registers its own `APIRouter`. Routers are mounted in `main.py`.
 - **Models** live in `backend/models.py` — four tables: `Container`, `ContainerLog`, `ContainerEvent`, `ContainerAlertSetting`.
 - **No Alembic.** `create_db_and_tables()` auto-creates on startup. If you add a column to a model, the existing DB will not have it — drop and recreate, or write a one-off migration with raw SQLite.
-- **Collector-facing POST endpoints** use `Depends(verify_collector_key)` from `api/auth.py`. This checks the `X-Collector-Key` header against `NESTVIEW_COLLECTOR_KEY`. If the env var is empty, the check is skipped (trusted-network mode).
-- **Container state reconciliation** happens in `POST /api/containers/batch`. The collector sends a full `docker ps -a` snapshot; anything not in the batch is deleted. Ghost detection (same name/project, old container exited + new one running) also fires here.
+- **Collector-facing POST endpoints** (`/api/containers/batch`, `/api/collector/logs`, `/api/collector/events`) have no auth — the collector runs in-process as daemon threads and writes directly to the DB.
+- **Container state reconciliation** happens in `_apply_batch()` in `services/collector.py`. The stats loop sends a full `docker ps -a` snapshot; anything not in the batch is deleted. Ghost detection (same name/project, old container exited + new one running) also fires here.
 - **Ports, volumes, networks** are stored as JSON strings in SQLite and parsed to lists on read. Don't change this without updating the batch ingest and `list_containers` / `get_container` responses.
 - **Event types tracked by the collector:** `start`, `stop`, `die`, `kill`, `restart`, `oom`. `die` with non-zero exit code is mapped to `crash`. The `die` event reuses the `crash` alert setting key.
 - **Cleanup** runs hourly via APScheduler. Log/event retention is `LOG_RETENTION_DAYS`. Exited/dead container rows are TTL-purged after `EXITED_CONTAINER_TTL_HOURS` (fractional hours supported; set to `0` to disable).
 
 ### Collector
 
-- Single file: `collector/main.py`.
-- Three concurrent threads: stats poller, log batch flusher, Docker event watcher.
-- Log buffer is flushed to the backend every `LOG_BATCH_INTERVAL` seconds (default 5). Flush is batched — do not change to per-line POSTs.
-- The collector waits for `GET /api/health` to return 200 before starting its threads (handled by Docker `depends_on: condition: service_healthy` plus an internal `_wait_for_backend()` loop).
+- Lives in `backend/services/collector.py`. Started as daemon threads from the FastAPI `lifespan` function via `start_collector()`.
+- Two daemon threads: `collector-stats` (stats poll + log flush) and `collector-events` (Docker event watcher).
+- Log buffer is flushed to the DB directly every `LOG_BATCH_INTERVAL` seconds (default 5). Individual log-stream threads are spawned per running container from within the stats loop.
 - Stats use `container.stats(stream=False)` — one blocking call per container per poll. CPU% formula follows Docker's own calculation. Memory subtracts cache from usage.
+- Discord alerts for events are fired inline in `_watch_events()` using `asyncio.run()` (safe because the thread has no running event loop).
 
 ### Frontend
 
@@ -97,7 +88,7 @@ nestview/
 - **Compose project grouping** is handled in `Dashboard.tsx` (`ComposeGroup`) and `Settings.tsx`. Collapsed state is persisted to `localStorage` under `nestview:stack_collapsed`.
 - **No form elements.** Use `onClick`/`onChange` handlers directly. Avoid `<form>` tags.
 - **Routing:** React Router v6. Pages: `/` (Dashboard), `/logs` (Logs), `/settings` (Settings).
-- `npm run build` produces static files; nginx serves them and proxies `/api/` to `backend:8000`.
+- `npm run build` produces static files; the Dockerfile copies `dist/` to `/app/static` and FastAPI serves them via `StaticFiles`.
 
 ---
 
@@ -107,17 +98,16 @@ All config is in `.env` (copy from `.env.example`). Docker Compose auto-loads it
 
 | Variable | Default | Notes |
 |---|---|---|
-| `NESTVIEW_PORT` | `8080` | Host port for the frontend |
-| `NESTVIEW_COLLECTOR_KEY` | _(empty)_ | Shared secret for collector auth; leave empty on trusted networks |
+| `NESTVIEW_PORT` | `8080` | Host port exposed to the host |
 | `DISCORD_WEBHOOK_URL` | _(empty)_ | Leave blank to disable alerting |
 | `LOG_RETENTION_DAYS` | `7` | Retention for logs and events |
 | `EXITED_CONTAINER_TTL_HOURS` | `0.083` (~5 min) | TTL for stale exited/dead container rows; set to `0` to disable |
 | `POLL_INTERVAL` | `10` | Seconds between Docker stats polls |
 | `LOG_BATCH_INTERVAL` | `5` | Seconds between log flushes |
 
-> **Authentication:** User-facing endpoints are unauthenticated in v0.2.x (trusted-network mode). Proper auth is planned for v0.3.0.
+> **Authentication:** User-facing endpoints are unauthenticated in v0.3.x (trusted-network mode). Proper auth is planned for a future release.
 
-**Never commit `.env`.** It is in `.gitignore`. It may contain a Discord webhook URL or collector key.
+**Never commit `.env`.** It is in `.gitignore`. It may contain a Discord webhook URL.
 
 ---
 
@@ -142,14 +132,7 @@ npm run dev
 # UI at http://localhost:5173
 ```
 
-**Collector** (requires access to Docker socket):
-```bash
-cd collector
-pip install -r requirements.txt
-BACKEND_URL=http://localhost:8000 python main.py
-```
-
-**Full stack via Compose:**
+**Full stack via Compose** (single service):
 ```bash
 cp .env.example .env   # edit as needed
 docker compose up --build
@@ -167,16 +150,16 @@ All endpoints are prefixed `/api/`.
 | `GET` | `/health` | none | Liveness probe |
 | `GET` | `/containers` | none | List all containers |
 | `GET` | `/containers/{docker_id}` | none | Single container |
-| `POST` | `/containers/batch` | collector key | Full reconciliation snapshot |
+| `POST` | `/containers/batch` | none | Full reconciliation snapshot |
 | `POST` | `/containers/{docker_id}/start` | none | Start container |
 | `POST` | `/containers/{docker_id}/stop` | none | Stop container |
 | `POST` | `/containers/{docker_id}/restart` | none | Restart container |
 | `POST` | `/containers/{docker_id}/pull-restart` | none | Pull latest image and restart container |
 | `GET` | `/containers/{docker_id}/logs` | none | Container logs (paginated, searchable) |
 | `GET` | `/logs` | none | All logs (paginated, searchable) |
-| `POST` | `/collector/logs` | collector key | Batch log ingest |
+| `POST` | `/collector/logs` | none | Batch log ingest |
 | `GET` | `/collector/events` | none | Event timeline |
-| `POST` | `/collector/events` | collector key | Ingest a single event |
+| `POST` | `/collector/events` | none | Ingest a single event |
 | `GET` | `/settings/alerts` | none | List alert settings |
 | `PATCH` | `/settings/alerts` | none | Enable/disable an alert type per container |
 | `POST` | `/stacks/{compose_project}/stop` | none | Stop all containers in a compose stack |
@@ -190,7 +173,7 @@ All endpoints are prefixed `/api/`.
 ## Data Notes
 
 - **SQLite DB** lives in the `nestview_data` Docker volume at `/data/nestview.db`.
-- **Backup:** `docker compose cp backend:/data/nestview.db ./nestview-backup.db`
+- **Backup:** `docker compose cp nestview:/data/nestview.db ./nestview-backup.db`
 - **Full reset:** `docker compose down -v`
 - Ports, volumes, and networks are JSON-encoded strings in the DB. They are decoded to arrays in all GET responses. The frontend receives them as `string[]`.
 
@@ -247,6 +230,6 @@ Never push directly to `main`. All work happens on `dev` and goes to `main` via 
 
 - **Schema changes** are not auto-migrated. Drop the volume and restart, or write raw SQL.
 - **Empty collector batch** — the batch endpoint has a guard: if `seen_ids` is empty, reconciliation is skipped to avoid wiping the table when Docker is temporarily unreachable.
-- **`die` vs `crash`** — the collector maps `die` + non-zero exit to `crash`, but both share the `crash` alert setting. Don't add a separate `die` setting without updating `_SETTING_KEY` in `events.py`.
-- **Backend also mounts the Docker socket** (writable) for the actions API. The collector socket mount is read-only. Both are intentional.
+- **`die` vs `crash`** — the collector maps `die` + non-zero exit to `crash`, but both share the `crash` alert setting. Don't add a separate `die` setting without updating `_SETTING_KEY` in both `events.py` and `services/collector.py`.
+- **Single writable Docker socket mount** — the socket is mounted writable for both container actions and the in-process collector stats polling.
 - **macOS/Colima/OrbStack** all expose the socket at `/var/run/docker.sock` — no config changes needed. Only non-standard socket paths require updating the volume mount in `docker-compose.yml`.

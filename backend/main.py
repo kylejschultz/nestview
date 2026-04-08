@@ -89,6 +89,23 @@ async def lifespan(app: FastAPI):
     logger.info("image_check startup run queued")
     scheduler.start()
 
+    import os as _os
+    from services.collector import start_collector
+
+    poll_interval = max(1, int(_os.getenv("POLL_INTERVAL", "10")))
+    log_batch_interval = max(1, int(_os.getenv("LOG_BATCH_INTERVAL", "5")))
+    start_collector(poll_interval=poll_interval, log_batch_interval=log_batch_interval)
+
+    from pathlib import Path as _Path
+    from fastapi.staticfiles import StaticFiles
+
+    static_dir = _Path("/app/static")
+    if static_dir.exists():
+        app.mount("/", StaticFiles(directory=str(static_dir), html=True), name="static")
+        logger.info("Serving frontend static files from %s", static_dir)
+    else:
+        logger.info("No static dir found at %s — frontend not served (dev mode)", static_dir)
+
     yield
 
     scheduler.shutdown()
