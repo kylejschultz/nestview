@@ -9,8 +9,8 @@ Image update awareness, pull + restart actions, and dashboard update badges.
 - [x] Update badges on the dashboard — visual indicator on container cards when an update is available
 - [x] Image size display on the container detail page
 - [x] Last digest check timestamp on the container detail page
-- [x] Per-container pull + restart action — pull latest image and restart in one click
-- [x] Stack-level pull + restart action — pull and restart all containers in a Compose stack
+- [x] Per-container actions (start, stop, restart, pull & restart)
+- [x] Stack-level actions (start, stop, restart, pull & restart)
 
 ---
 
