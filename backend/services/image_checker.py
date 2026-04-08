@@ -21,7 +21,7 @@ from services.app_settings import get_setting
 
 logger = logging.getLogger(__name__)
 
-_SELF_IMAGES_PREFIX = "ghcr.io/kylejschultz/nestview-"
+_SELF_IMAGES_PREFIX = "ghcr.io/kylejschultz/nestview:"
 
 
 # ---------------------------------------------------------------------------

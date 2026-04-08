@@ -20,37 +20,18 @@ Nestview gives you a live health dashboard, searchable log history, and Discord 
 Create a `docker-compose.yml` with the following contents:
 ```yaml
 services:
-  backend:
-    image: ghcr.io/kylejschultz/nestview-backend:latest
+  nestview:
+    image: ghcr.io/kylejschultz/nestview:latest
     restart: unless-stopped
+    ports:
+      - "${NESTVIEW_PORT:-8484}:8080"
     environment:
       - DATABASE_PATH=/data/nestview.db
       - LOG_RETENTION_DAYS=${LOG_RETENTION_DAYS:-7}
-      - NESTVIEW_COLLECTOR_KEY=${NESTVIEW_COLLECTOR_KEY:-}
+      - DISCORD_WEBHOOK_URL=${DISCORD_WEBHOOK_URL:-}
     volumes:
       - nestview_data:/data
       - /var/run/docker.sock:/var/run/docker.sock
-
-  collector:
-    image: ghcr.io/kylejschultz/nestview-collector:latest
-    restart: unless-stopped
-    depends_on:
-      - backend
-    environment:
-      - BACKEND_URL=http://backend:8000
-      - POLL_INTERVAL=${POLL_INTERVAL:-10}
-      - LOG_BATCH_INTERVAL=${LOG_BATCH_INTERVAL:-5}
-      - NESTVIEW_COLLECTOR_KEY=${NESTVIEW_COLLECTOR_KEY:-}
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-
-  frontend:
-    image: ghcr.io/kylejschultz/nestview-frontend:latest
-    restart: unless-stopped
-    ports:
-      - "${NESTVIEW_PORT:-8080}:80"
-    depends_on:
-      - backend
 
 volumes:
   nestview_data:
@@ -59,10 +40,21 @@ volumes:
 Then run:
 ```bash
 docker compose up -d
-# Open http://localhost:8080 — the setup wizard will guide you through Discord alerts
+# Open http://localhost:8484 — the setup wizard will guide you through Discord alerts
 ```
 
 That's it. Nestview will find all running and stopped containers immediately.
+
+```bash
+# Or run directly without a compose file:
+docker run -d \
+  --name nestview \
+  --restart unless-stopped \
+  -p 8484:8080 \
+  -v nestview_data:/data \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  ghcr.io/kylejschultz/nestview:latest
+```
 
 ---
 
@@ -78,24 +70,24 @@ docker compose up -d
 
 ## Security
 
-> **Do not expose port 8080 directly to the internet.** Nestview is designed for home networks and trusted LANs. The dashboard has no login by default — anyone who can reach port 8080 can view your container names, logs, and metrics.
+> **Do not expose port 8484 directly to the internet.** Nestview is designed for home networks and trusted LANs. The dashboard has no login by default — anyone who can reach port 8484 can view your container names, logs, and metrics.
 
-**If you need to access Nestview remotely**, put it behind a VPN (Tailscale, WireGuard) or a reverse proxy with authentication (Authelia, Authentik, nginx basic auth). Do not port-forward 8080 through your router.
-
-**Authentication** is planned for v0.3.0. Until then, restrict network access rather than exposing Nestview publicly.
+**If you need to access Nestview remotely**, put it behind a VPN (Tailscale, WireGuard) or a reverse proxy with authentication (Authelia, Authentik, nginx basic auth). Do not port-forward 8484 through your router.
 
 ---
 
 ## Environment variables
 
-> The defaults work out of the box. Copy `.env.example` to `.env` only if you want to change the port or add a collector key.
+> The defaults work out of the box. Copy `.env.example` to `.env` only if you want to change the port or enable Discord alerts.
 
 | Variable | Default | Description |
 |---|---|---|
-| `NESTVIEW_PORT` | `8080` | Host port Nestview is exposed on |
-| `NESTVIEW_COLLECTOR_KEY` | _(empty)_ | Optional shared secret to authenticate the collector |
+| `NESTVIEW_PORT` | `8484` | Host port Nestview is exposed on |
+| `DISCORD_WEBHOOK_URL` | _(empty)_ | Leave blank to disable Discord alerting |
 | `POLL_INTERVAL` | `10` | Seconds between Docker stats polls |
-| `LOG_BATCH_INTERVAL` | `5` | Seconds between log flushes to the backend |
+| `LOG_BATCH_INTERVAL` | `5` | Seconds between log flushes to SQLite |
+
+`POLL_INTERVAL` and `LOG_BATCH_INTERVAL` are handled inside the single container — no separate collector service required.
 
 Log retention and exited container TTL are configured in the Settings UI.
 

@@ -9,11 +9,11 @@ Thanks for your interest in contributing. Nestview is a small project — contri
 
 ## Dev setup
 
-See the **Development** section in the README for how to run the backend, frontend, and collector locally.
+See the **Development** section in the README for how to run the backend and frontend locally.
 
 ## Conventions
 
-- Commit messages follow [Conventional Commits](https://www.conventionalcommits.org/) with scoped prefixes: `feat(frontend):`, `fix(collector):`, `docs:`, etc.
+- Commit messages follow [Conventional Commits](https://www.conventionalcommits.org/) with scoped prefixes: `feat(frontend):`, `fix(backend):`, `docs:`, etc.
 - Keep PRs focused — one feature or fix per PR.
 
 ## Code of conduct

@@ -6,7 +6,6 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, field_validator
 from sqlmodel import Session, delete, select
 
-from api.auth import verify_collector_key
 from database import get_session
 from models import Container
 
@@ -64,7 +63,7 @@ def _parse_dt(s: Optional[str]) -> Optional[datetime]:
         return None
 
 
-@router.post("/batch", dependencies=[Depends(verify_collector_key)])
+@router.post("/batch")
 def upsert_containers(batch: ContainerBatch, session: Session = Depends(get_session)):
     seen_ids = set()
     for c in batch.containers:
