@@ -40,16 +40,6 @@ Make logs more useful without adding infrastructure complexity.
 
 ---
 
-## Image and update awareness
-
-Know when your containers are running outdated images.
-
-- [x] **Image update notifications** — detect when a newer digest is available on Docker Hub or GHCR; alert via Discord
-- [ ] **Image pull history** — track when each image was last pulled
-- [x] **Image size display** — show image size on the container detail page
-
----
-
 ## Multi-host support
 
 For homelabs with more than one machine.
@@ -73,7 +63,6 @@ Understand what your containers are actually talking to.
 ## Ideas under consideration
 
 - Scheduled container restarts (cron-style from the UI)
-- Container action buttons (stop/start/restart) with confirmation
 - Email alerting as an alternative to Discord
 - Mobile-friendly PWA layout
 - Prometheus metrics endpoint (`/metrics`) for users who do run Grafana

@@ -109,8 +109,7 @@ Log retention and exited container TTL are configured in the Settings UI.
 - **Configurable retention** — set log retention and container TTL in the Settings UI; cleanup runs hourly
 - **Discord alerting** — get a notification when a container crashes, restarts unexpectedly, or is OOM-killed
 - **Image update detection** — background job checks Docker Hub / GHCR for newer digests; sends a Discord alert when an update is available
-- **Update badges** — dashboard cards show a visual indicator when a newer image is available for a running container
-- **Pull + restart actions** — pull the latest image and restart a container (or an entire Compose stack) in one click from the dashboard
+- **Container actions** — start, stop, restart, or pull the latest image and restart any container or Compose stack directly from the dashboard
 - **Image details** — container detail page shows image size and the timestamp of the last digest check
 
 ---
