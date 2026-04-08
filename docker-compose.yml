@@ -1,5 +1,6 @@
 services:
   nestview:
+    container_name: nestview
     build:
       context: .
       dockerfile: Dockerfile
