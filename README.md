@@ -70,7 +70,7 @@ docker compose up -d
 
 ## Security
 
-> **Do not expose port 8080 directly to the internet.** Nestview is designed for home networks and trusted LANs. The dashboard has no login by default — anyone who can reach port 8080 can view your container names, logs, and metrics.
+> **Do not expose port 8484 directly to the internet.** Nestview is designed for home networks and trusted LANs. The dashboard has no login by default — anyone who can reach port 8484 can view your container names, logs, and metrics.
 
 **If you need to access Nestview remotely**, put it behind a VPN (Tailscale, WireGuard) or a reverse proxy with authentication (Authelia, Authentik, nginx basic auth). Do not port-forward 8484 through your router.
 
