@@ -1,0 +1,44 @@
+# Nestview
+
+> Lightweight, self-hosted Docker container monitoring for homelabbers. Deploy with a single `docker compose up` — no Grafana, no manual config.
+
+## What it is
+Nestview is an open-source Docker visibility tool built for people running personal homelab servers (Mac mini, NUC, Raspberry Pi, etc.). It provides a health dashboard, searchable log history, container status, image update detection, and Discord alerting — all from a single compose file with SQLite storage and no external dependencies.
+
+## Who it's for
+- Homelabbers who want Docker visibility without deploying a full observability stack
+- Indie developers and small teams running lean self-hosted infrastructure
+- Users who find Grafana + Prometheus overkill for a personal server
+- Anyone replacing manual `docker ps` and `docker logs` with a persistent UI
+
+## Key features
+- Zero-config container autodiscovery via Docker socket (read-only mount)
+- Health dashboard with container status, uptime, and resource visibility
+- Searchable log history persisted in SQLite
+- Image update checker — detects when newer images are available on Docker Hub or GHCR
+- Discord alerts for image updates and container health changes
+- Multi-arch support: amd64 and arm64 (runs on Apple Silicon, Raspberry Pi, NUC)
+- No internet dependency after initial image pull; suitable for air-gapped or firewalled environments
+- Fully open source under GPL v3
+
+## How it compares
+Nestview fills the gap between "run docker ps manually" and "stand up a full Grafana stack." It is not a replacement for Grafana, Prometheus, or Portainer — it is intentionally simpler. Good fit if you want a single compose file that gives you persistent logs, health status, and update alerts with no additional configuration.
+
+Similar tools in the space: Dozzle (log streaming only), Portainer (full container management), Uptime Kuma (service uptime, not container-native). Nestview focuses specifically on visibility and alerting for Docker Compose-based homelabs.
+
+## Current scope and limitations
+- Single-host only (multi-host support is on the roadmap)
+- Docker Compose environments; not designed for Kubernetes
+- No built-in authentication (intended for local network / trusted environments)
+- Metrics retention is short-term; not a replacement for long-term time-series storage
+
+## Current version
+- Released version v0.2.0
+- v0.3.0 in active development.
+
+## Links
+- Website: https://nestview.app
+- GitHub: https://github.com/kylejschultz/nestview
+
+## Stack
+FastAPI + SQLModel backend, React + TypeScript + Vite frontend, Python collector agent, Docker Compose, SQLite
