@@ -7,6 +7,18 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.2.0] — 2026-04-06
+
+### Added
+
+- Image update detection — background job checks running containers for newer digests on Docker Hub and GHCR on a configurable daily schedule
+- Discord alerts for available image updates — notification sent when a newer digest is detected for a running container
+- Image size and last digest check timestamp on the container detail page
+- Per-container actions — start, stop, restart, and pull & restart with confirmation modal and live progress steps
+- Stack-level actions — start, stop, restart, and pull & restart applied across all containers in a Compose project
+
+---
+
 ## [0.1.0] — 2026-03-31
 
 Initial release.
