@@ -7,6 +7,23 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.3.0] — TBD
+
+### Changed
+
+- Collapsed three-container stack (backend, collector, frontend) into a single image (`ghcr.io/kylejschultz/nestview`)
+- Collector logic now runs as daemon threads inside the backend process — no separate container or inter-service HTTP required
+- React frontend is embedded in the image and served directly by FastAPI via `StaticFiles` — nginx container removed
+- `docker-compose.yml` simplified to a single `nestview` service
+- `docker run` one-liner now supported as an alternative to Compose
+- Removed `NESTVIEW_COLLECTOR_KEY` and `BACKEND_URL` environment variables
+
+### Removed
+
+- `nestview-backend`, `nestview-collector`, and `nestview-frontend` images superseded by `nestview`
+
+---
+
 ## [0.2.0] — 2026-04-06
 
 ### Added
