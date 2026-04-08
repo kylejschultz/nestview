@@ -1,6 +1,20 @@
 # Nestview Roadmap
 
-## v0.1.0 — Current release
+## v0.2.0 — Current release
+
+Image update awareness, pull + restart actions, and dashboard update badges.
+
+- [x] Image update checker — background job polls Docker Hub / GHCR for newer digests on a configurable schedule
+- [x] Discord alerts for available image updates — notification sent when a newer digest is detected for a running container
+- [x] Update badges on the dashboard — visual indicator on container cards when an update is available
+- [x] Image size display on the container detail page
+- [x] Last digest check timestamp on the container detail page
+- [x] Per-container pull + restart action — pull latest image and restart in one click
+- [x] Stack-level pull + restart action — pull and restart all containers in a Compose stack
+
+---
+
+## v0.1.0
 
 Core visibility and alerting for self-hosted Docker environments.
 
@@ -30,9 +44,9 @@ Make logs more useful without adding infrastructure complexity.
 
 Know when your containers are running outdated images.
 
-- [ ] **Image update notifications** — detect when a newer digest is available on Docker Hub or GHCR; alert via Discord
+- [x] **Image update notifications** — detect when a newer digest is available on Docker Hub or GHCR; alert via Discord
 - [ ] **Image pull history** — track when each image was last pulled
-- [ ] **Image size display** — show image size on the container detail page
+- [x] **Image size display** — show image size on the container detail page
 
 ---
 
