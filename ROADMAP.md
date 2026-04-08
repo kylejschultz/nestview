@@ -1,6 +1,20 @@
 # Nestview Roadmap
 
-## v0.1.0 — Current release
+## v0.2.0 — Current release
+
+Image update awareness, pull + restart actions, and dashboard update badges.
+
+- [x] Image update checker — background job polls Docker Hub / GHCR for newer digests on a configurable schedule
+- [x] Discord alerts for available image updates — notification sent when a newer digest is detected for a running container
+- [x] Update badges on the dashboard — visual indicator on container cards when an update is available
+- [x] Image size display on the container detail page
+- [x] Last digest check timestamp on the container detail page
+- [x] Per-container actions (start, stop, restart, pull & restart)
+- [x] Stack-level actions (start, stop, restart, pull & restart)
+
+---
+
+## v0.1.0
 
 Core visibility and alerting for self-hosted Docker environments.
 
@@ -23,16 +37,6 @@ Make logs more useful without adding infrastructure complexity.
 - [ ] **Log severity coloring** — automatic detection of ERROR / WARN / DEBUG lines in the UI
 - [ ] **Log export** — download logs for a container or time range as plain text
 - [ ] **Log bookmarks** — mark a specific log line to return to later
-
----
-
-## Image and update awareness
-
-Know when your containers are running outdated images.
-
-- [ ] **Image update notifications** — detect when a newer digest is available on Docker Hub or GHCR; alert via Discord
-- [ ] **Image pull history** — track when each image was last pulled
-- [ ] **Image size display** — show image size on the container detail page
 
 ---
 
@@ -59,7 +63,6 @@ Understand what your containers are actually talking to.
 ## Ideas under consideration
 
 - Scheduled container restarts (cron-style from the UI)
-- Container action buttons (stop/start/restart) with confirmation
 - Email alerting as an alternative to Discord
 - Mobile-friendly PWA layout
 - Prometheus metrics endpoint (`/metrics`) for users who do run Grafana

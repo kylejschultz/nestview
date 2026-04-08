@@ -108,13 +108,15 @@ Log retention and exited container TTL are configured in the Settings UI.
 - **Searchable log history** — logs streamed from every running container, stored in SQLite, searchable from the UI
 - **Configurable retention** — set log retention and container TTL in the Settings UI; cleanup runs hourly
 - **Discord alerting** — get a notification when a container crashes, restarts unexpectedly, or is OOM-killed
+- **Image update detection** — background job checks Docker Hub / GHCR for newer digests; sends a Discord alert when an update is available
+- **Container actions** — start, stop, restart, or pull the latest image and restart any container or Compose stack directly from the dashboard
+- **Image details** — container detail page shows image size and the timestamp of the last digest check
 
 ---
 
 ## What's next
 
 - **Log intelligence** — regex pattern alerting, severity coloring, log export, and bookmarks
-- **Image and update awareness** — detect outdated images, track pull history, show image size
 - **Multi-host support** — connect collectors from multiple Docker hosts to a single dashboard
 - **Network traffic visibility** — per-container bytes in/out, I/O history, and unexpected port detection
 
