@@ -32,10 +32,6 @@ Similar tools in the space: Dozzle (log streaming only), Portainer (full contain
 - No built-in authentication (intended for local network / trusted environments)
 - Metrics retention is short-term; not a replacement for long-term time-series storage
 
-## Current version
-- Released version v0.2.0
-- v0.3.0 in active development.
-
 ## Links
 - Website: https://nestview.app
 - GitHub: https://github.com/kylejschultz/nestview
