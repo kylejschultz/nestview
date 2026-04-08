@@ -98,7 +98,7 @@ All config is in `.env` (copy from `.env.example`). Docker Compose auto-loads it
 
 | Variable | Default | Notes |
 |---|---|---|
-| `NESTVIEW_PORT` | `8080` | Host port exposed to the host |
+| `NESTVIEW_PORT` | `8484` | Host port exposed to the host |
 | `DISCORD_WEBHOOK_URL` | _(empty)_ | Leave blank to disable alerting |
 | `LOG_RETENTION_DAYS` | `7` | Retention for logs and events |
 | `EXITED_CONTAINER_TTL_HOURS` | `0.083` (~5 min) | TTL for stale exited/dead container rows; set to `0` to disable |
@@ -136,7 +136,7 @@ npm run dev
 ```bash
 cp .env.example .env   # edit as needed
 docker compose up --build
-# UI at http://localhost:8080
+# UI at http://localhost:8484
 ```
 
 ---
