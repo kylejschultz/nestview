@@ -171,7 +171,7 @@ function SettingRow({ label, children, last }: { label: string; children: React.
   );
 }
 
-function GeneralTab() {
+function GeneralTab({ authMode }: { authMode?: string }) {
   const queryClient = useQueryClient();
 
   const { data: general, isLoading } = useQuery<GeneralSettings>({
@@ -196,6 +196,7 @@ function GeneralTab() {
   const [retentionDraft, setRetentionDraft] = useState<string | null>(null);
   const [ttlDraft, setTtlDraft] = useState<string | null>(null);
   const [timezoneDraft, setTimezoneDraft] = useState<string | null>(null);
+  const [sessionExpiryDraft, setSessionExpiryDraft] = useState<string | null>(null);
 
   // Image check drafts
   const serverEnabled = (allSettings?.image_check_enabled ?? "true") !== "false";
@@ -234,6 +235,16 @@ function GeneralTab() {
       queryClient.invalidateQueries({ queryKey: ["settings-all"] });
       setEnabledDraft(null);
       setTimeDraft(null);
+      showToast("Settings saved", "success");
+    },
+    onError: (err: Error) => showToast(err.message, "error"),
+  });
+
+  const { mutate: saveRaw, isPending: isSavingRaw } = useMutation({
+    mutationFn: (body: Record<string, string>) => api.settings.save(body),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["settings-all"] });
+      setSessionExpiryDraft(null);
       showToast("Settings saved", "success");
     },
     onError: (err: Error) => showToast(err.message, "error"),
@@ -399,6 +410,42 @@ function GeneralTab() {
           </div>
         </SettingRow>
 
+        {/* SECURITY */}
+        {authMode === "password" && (
+          <>
+            <SectionHeader label="Security" />
+            <SettingRow label="Session expiry" last>
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    min={1}
+                    max={365}
+                    value={sessionExpiryDraft ?? (allSettings?.session_expiry_days ?? "7")}
+                    onChange={(e) => setSessionExpiryDraft(e.target.value)}
+                    className="w-20 bg-surface-3 border border-border rounded-lg px-3 py-1.5 text-sm text-slate-200 focus:outline-none focus:border-accent"
+                  />
+                  <span className="text-sm text-slate-500">days</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    disabled={isSavingRaw || sessionExpiryDraft === null}
+                    onClick={() => {
+                      if (sessionExpiryDraft !== null) {
+                        saveRaw({ session_expiry_days: sessionExpiryDraft });
+                      }
+                    }}
+                    className="px-3 py-1.5 text-xs rounded-lg bg-accent hover:bg-accent-hover text-white font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    Save
+                  </button>
+                </div>
+                <p className="text-xs text-slate-500">How long a login session lasts before requiring re-authentication. Changes apply to new logins only.</p>
+              </div>
+            </SettingRow>
+          </>
+        )}
+
       </div>
 
       <AboutSection version={versionData?.version} />
@@ -560,7 +607,7 @@ function NotificationsTab() {
 
 type Tab = "general" | "notifications";
 
-export default function Settings() {
+export default function Settings({ authMode }: { authMode?: string }) {
   const [activeTab, setActiveTab] = useState<Tab>("general");
   const { data: versionData } = useQuery({
     queryKey: ["version"],
@@ -597,7 +644,7 @@ export default function Settings() {
         ))}
       </div>
 
-      {activeTab === "general" ? <GeneralTab /> : <NotificationsTab />}
+      {activeTab === "general" ? <GeneralTab authMode={authMode} /> : <NotificationsTab />}
     </div>
   );
 }

@@ -11,7 +11,7 @@ Endpoints:
 import logging
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from pydantic import BaseModel, Field
 from sqlmodel import Session
 
@@ -119,3 +119,35 @@ def login(
 def logout(response: Response) -> dict:
     response.delete_cookie(key=COOKIE_NAME, path="/")
     return {"ok": True}
+
+
+@router.get("/me")
+def me(
+    request: Request,
+    session: Session = Depends(get_session),
+) -> dict:
+    """
+    Returns the current authenticated user, or 401 if not logged in.
+    Used by the frontend to check session validity on load.
+    """
+    from services.auth import decode_session_token
+
+    auth_mode = get_auth_mode(session)
+    if auth_mode == "none":
+        return {"authenticated": True, "username": None, "auth_mode": "none"}
+
+    if not is_setup_complete(session):
+        raise HTTPException(status_code=403, detail="setup_required")
+
+    token = request.cookies.get(COOKIE_NAME)
+    if not token:
+        raise HTTPException(status_code=401, detail="not_authenticated")
+
+    expiry_days = get_session_expiry_days(session)
+    signer = get_signer(session)
+    username = decode_session_token(token, signer, max_age_seconds=expiry_days * 86400)
+
+    if username is None:
+        raise HTTPException(status_code=401, detail="session_expired")
+
+    return {"authenticated": True, "username": username, "auth_mode": "password"}

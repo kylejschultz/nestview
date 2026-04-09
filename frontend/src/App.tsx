@@ -5,11 +5,12 @@ import Dashboard from "./pages/Dashboard";
 import ContainerDetail from "./pages/ContainerDetail";
 import Settings from "./pages/Settings";
 import Setup from "./pages/Setup";
+import Login from "./pages/Login";
 import Header from "./components/Header";
 import SetupWizard from "./components/SetupWizard";
 import { TimezoneProvider } from "./TimezoneContext";
 import { api } from "./api";
-import type { AuthStatus, WizardStatus } from "./types";
+import type { AuthStatus, MeResponse, WizardStatus } from "./types";
 
 export default function App() {
   const queryClient = useQueryClient();
@@ -24,17 +25,35 @@ export default function App() {
     retry: false,
   });
 
+  const { data: meData, isLoading: meLoading } = useQuery<MeResponse>({
+    queryKey: ["auth-me"],
+    queryFn: api.auth.me,
+    staleTime: Infinity,
+    retry: false,
+    enabled: authStatus !== undefined && !authStatus.setup_required,
+  });
+
   const { data: wizardStatus } = useQuery<WizardStatus>({
     queryKey: ["wizard-status"],
     queryFn: api.settings.wizard,
     staleTime: Infinity,
-    enabled: authStatus !== undefined && !authStatus.setup_required,
+    enabled: authStatus !== undefined && !authStatus.setup_required && (meData?.authenticated === true),
   });
 
   const showWizard = !wizardDismissed && wizardStatus !== undefined && !wizardStatus.completed;
 
-  // Loading: auth status not yet fetched
-  if (authLoading) {
+  function handleLogin() {
+    queryClient.invalidateQueries({ queryKey: ["auth-status"] });
+    queryClient.invalidateQueries({ queryKey: ["auth-me"] });
+  }
+
+  async function handleLogout() {
+    await api.auth.logout();
+    queryClient.invalidateQueries({ queryKey: ["auth-me"] });
+  }
+
+  // Loading: auth status or session check not yet fetched
+  if (authLoading || (authStatus !== undefined && !authStatus.setup_required && meLoading)) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-surface-1">
         <div className="w-6 h-6 rounded-full border-2 border-accent border-t-transparent animate-spin" />
@@ -53,16 +72,21 @@ export default function App() {
     );
   }
 
-  // Normal: full app
+  // Auth mode "password" and not authenticated: show login gate
+  if (authStatus?.auth_mode === "password" && !meData?.authenticated) {
+    return <Login onLogin={handleLogin} />;
+  }
+
+  // Full app (auth_mode "none" or authenticated)
   return (
     <TimezoneProvider>
       <div className="min-h-screen flex flex-col">
-        <Header />
+        <Header onLogout={handleLogout} authMode={authStatus?.auth_mode} />
         <main className="flex-1 px-4 py-6 max-w-7xl mx-auto w-full">
           <Routes>
             <Route path="/" element={<Dashboard />} />
             <Route path="/containers/:id" element={<ContainerDetail />} />
-            <Route path="/settings" element={<Settings />} />
+            <Route path="/settings" element={<Settings authMode={authStatus?.auth_mode} />} />
             <Route path="/setup" element={<Navigate to="/" replace />} />
           </Routes>
         </main>
