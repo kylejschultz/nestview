@@ -52,8 +52,8 @@ export default function App() {
     try {
       await api.auth.logout();
     } finally {
+      queryClient.removeQueries({ queryKey: ["auth-me"] });
       navigate("/login", { replace: true });
-      queryClient.invalidateQueries({ queryKey: ["auth-me"] });
     }
   }
 
