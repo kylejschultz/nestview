@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Routes, Route, Navigate } from "react-router-dom";
+import { Routes, Route, Navigate, useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import Dashboard from "./pages/Dashboard";
 import ContainerDetail from "./pages/ContainerDetail";
@@ -14,11 +14,12 @@ import type { AuthStatus, MeResponse, WizardStatus } from "./types";
 
 export default function App() {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
 
   // Once the wizard is dismissed in this session, don't re-show it without a reload.
   const [wizardDismissed, setWizardDismissed] = useState(false);
 
-  const { data: authStatus, isLoading: authLoading } = useQuery<AuthStatus>({
+  const { data: authStatus, isLoading: authStatusLoading } = useQuery<AuthStatus>({
     queryKey: ["auth-status"],
     queryFn: api.auth.status,
     staleTime: Infinity,
@@ -48,12 +49,18 @@ export default function App() {
   }
 
   async function handleLogout() {
-    await api.auth.logout();
-    queryClient.invalidateQueries({ queryKey: ["auth-me"] });
+    try {
+      await api.auth.logout();
+    } finally {
+      navigate("/login", { replace: true });
+      queryClient.invalidateQueries({ queryKey: ["auth-me"] });
+    }
   }
 
+  const meEnabled = !authStatus?.setup_required && authStatus?.auth_mode === "password";
+
   // Loading: auth status or session check not yet fetched
-  if (authLoading || (authStatus !== undefined && !authStatus.setup_required && meLoading)) {
+  if (authStatusLoading || (meEnabled && meLoading)) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-surface-1">
         <div className="w-6 h-6 rounded-full border-2 border-accent border-t-transparent animate-spin" />
@@ -72,9 +79,14 @@ export default function App() {
     );
   }
 
-  // Auth mode "password" and not authenticated: show login gate
+  // Auth mode "password" and not authenticated: redirect to /login
   if (authStatus?.auth_mode === "password" && !meData?.authenticated) {
-    return <Login onLogin={handleLogin} />;
+    return (
+      <Routes>
+        <Route path="/login" element={<Login onLogin={handleLogin} />} />
+        <Route path="*" element={<Navigate to="/login" replace />} />
+      </Routes>
+    );
   }
 
   // Full app (auth_mode "none" or authenticated)
