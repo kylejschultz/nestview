@@ -10,3 +10,5 @@ pydantic==2.12.5
 docker==7.1.0
 # Explicit requests pin to fix CVE GHSA-gc5v-m9x4-r6x2 (transitive via docker SDK).
 requests>=2.33.0
+itsdangerous>=2.1.2
+bcrypt>=4.0.1

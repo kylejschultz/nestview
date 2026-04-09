@@ -1,5 +1,6 @@
 import logging
 import os
+import secrets
 from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
@@ -16,10 +17,11 @@ _version_file = Path("/app/VERSION")
 APP_VERSION = _version_file.read_text().strip() if _version_file.exists() else "dev"
 
 from database import create_db_and_tables, engine
-from api import containers, logs, events, settings, actions, admin, stack_actions
+from api import containers, logs, events, settings, actions, admin, stack_actions, auth
 from services.cleanup import run_cleanup
 from services.app_settings import get_setting, set_setting
 from services.image_checker import run_image_check
+from middleware.auth import AuthMiddleware
 
 
 def _seed_settings_from_env():
@@ -33,6 +35,7 @@ def _seed_settings_from_env():
         "timezone": os.getenv("TZ", "UTC"),
         "image_check_time": "03:00",
         "image_check_enabled": "true",
+        "session_expiry_hours": "24",
     }
     with Session(engine) as session:
         for key, value in seeds.items():
@@ -64,6 +67,28 @@ async def lifespan(app: FastAPI):
                 pass  # column already exists
 
     _seed_settings_from_env()
+
+    # Resolve SECRET_KEY: env var > AppSetting > auto-generate and persist.
+    with Session(engine) as _s:
+        env_secret = os.getenv("SECRET_KEY")
+        if env_secret:
+            secret_key = env_secret
+        else:
+            stored = get_setting(_s, "secret_key")
+            if stored:
+                secret_key = stored
+            else:
+                secret_key = secrets.token_hex(32)
+                set_setting(_s, "secret_key", secret_key)
+                _s.commit()
+                logger.info("Generated new SECRET_KEY and persisted to AppSetting")
+        app.state.secret_key = secret_key
+
+        expiry_raw = get_setting(_s, "session_expiry_hours") or "24"
+        try:
+            app.state.session_expiry_hours = float(expiry_raw)
+        except ValueError:
+            app.state.session_expiry_hours = 24.0
 
     # Read scheduler settings after seeding so the values are guaranteed in the DB.
     with Session(engine) as _s:
@@ -117,13 +142,16 @@ app = FastAPI(title="Nestview", version=APP_VERSION, lifespan=lifespan)
 # reaches it.  CORS is permissive here so local `npm run dev` works without extra
 # config.  If you expose the backend port directly, restrict allow_origins to the
 # specific host(s) that need access.
+app.add_middleware(AuthMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
     allow_methods=["GET", "POST", "PATCH", "PUT"],
     allow_headers=["*"],
+    allow_credentials=True,
 )
 
+app.include_router(auth.router)
 app.include_router(containers.router)
 app.include_router(logs.router)
 app.include_router(events.router)
