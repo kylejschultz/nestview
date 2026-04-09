@@ -43,9 +43,9 @@ export default function App() {
 
   const showWizard = !wizardDismissed && wizardStatus !== undefined && !wizardStatus.completed;
 
-  function handleLogin() {
-    queryClient.invalidateQueries({ queryKey: ["auth-status"] });
-    queryClient.invalidateQueries({ queryKey: ["auth-me"] });
+  async function handleLogin() {
+    await queryClient.invalidateQueries({ queryKey: ["auth-me"] });
+    navigate("/", { replace: true });
   }
 
   async function handleLogout() {
