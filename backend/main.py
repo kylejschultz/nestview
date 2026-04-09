@@ -5,7 +5,7 @@ from datetime import datetime
 from pathlib import Path
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 from sqlmodel import Session
@@ -17,9 +17,11 @@ APP_VERSION = _version_file.read_text().strip() if _version_file.exists() else "
 
 from database import create_db_and_tables, engine
 from api import containers, logs, events, settings, actions, admin, stack_actions
+from api import auth as auth_router
 from services.cleanup import run_cleanup
 from services.app_settings import get_setting, set_setting
 from services.image_checker import run_image_check
+from services.auth import require_auth
 
 
 def _seed_settings_from_env():
@@ -64,6 +66,27 @@ async def lifespan(app: FastAPI):
                 pass  # column already exists
 
     _seed_settings_from_env()
+
+    # Handle RESET_ADMIN_PASSWORD env var — clears credentials so setup wizard re-triggers
+    if os.getenv("RESET_ADMIN_PASSWORD", "").strip().lower() == "true":
+        with Session(engine) as _reset_session:
+            from services.app_settings import set_setting as _set
+            from sqlmodel import select as _select
+            from models import AppSetting as _AppSetting
+            for _key in ("admin_username", "admin_password_hash"):
+                _row = _reset_session.exec(_select(_AppSetting).where(_AppSetting.key == _key)).first()
+                if _row:
+                    _reset_session.delete(_row)
+            _reset_session.commit()
+        logger.warning(
+            "auth: RESET_ADMIN_PASSWORD=true — credentials cleared. "
+            "Remove this env var after completing setup."
+        )
+
+    # Ensure session_secret exists (creates one if not present)
+    with Session(engine) as _secret_session:
+        from services.auth import _load_or_create_secret
+        _load_or_create_secret(_secret_session)
 
     # Read scheduler settings after seeding so the values are guaranteed in the DB.
     with Session(engine) as _s:
@@ -124,13 +147,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(containers.router)
-app.include_router(logs.router)
-app.include_router(events.router)
-app.include_router(settings.router)
-app.include_router(actions.router)
-app.include_router(admin.router)
-app.include_router(stack_actions.router)
+app.include_router(auth_router.router)
+app.include_router(containers.router,    dependencies=[Depends(require_auth)])
+app.include_router(logs.router,          dependencies=[Depends(require_auth)])
+app.include_router(events.router,        dependencies=[Depends(require_auth)])
+app.include_router(settings.router,      dependencies=[Depends(require_auth)])
+app.include_router(actions.router,       dependencies=[Depends(require_auth)])
+app.include_router(admin.router,         dependencies=[Depends(require_auth)])
+app.include_router(stack_actions.router, dependencies=[Depends(require_auth)])
 
 
 @app.get("/api/version")
