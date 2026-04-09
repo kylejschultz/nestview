@@ -8,7 +8,7 @@ COPY frontend/ .
 RUN npm run build
 
 # ── Stage 2: Python backend + embedded frontend ───────────────────────────
-FROM python:3.12-slim
+FROM python:3.14-slim
 
 RUN pip install --upgrade pip
 
