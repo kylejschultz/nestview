@@ -7,6 +7,19 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.4.0] — TBD
+
+### Added
+
+- Mandatory authentication — username/password set during first-run setup wizard; bcrypt-hashed credentials stored in SQLite; signed httpOnly session cookie via `itsdangerous`
+- Setup wizard auth step — username and password required before the dashboard is accessible; "No authentication" escape hatch available with explicit confirmation
+- Login page at `/login` with redirect to original destination after successful authentication
+- Logout button in the navbar
+- Session expiry configurable in Settings UI
+- `RESET_ADMIN_PASSWORD=true` env var to clear credentials and re-trigger the setup wizard
+
+---
+
 ## [0.3.0] — 2026-04-08
 
 ### Changed

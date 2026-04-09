@@ -104,8 +104,9 @@ All config is in `.env` (copy from `.env.example`). Docker Compose auto-loads it
 | `EXITED_CONTAINER_TTL_HOURS` | `0.083` (~5 min) | TTL for stale exited/dead container rows; set to `0` to disable |
 | `POLL_INTERVAL` | `10` | Seconds between Docker stats polls |
 | `LOG_BATCH_INTERVAL` | `5` | Seconds between log flushes |
+| `RESET_ADMIN_PASSWORD` | _(unset)_ | Set to `true` to clear stored credentials and re-trigger the setup wizard on next start |
 
-> **Authentication:** User-facing endpoints are unauthenticated in v0.3.x (trusted-network mode). Proper auth is planned for a future release.
+> **Authentication:** v0.4.0 introduces mandatory auth. On first run, the setup wizard requires a username and password before the dashboard is accessible. Credentials are bcrypt-hashed and stored in `AppSetting`. Sessions use a signed httpOnly cookie via `itsdangerous`. A `RESET_ADMIN_PASSWORD=true` env var clears credentials and re-triggers the wizard. An "auth_mode = none" escape hatch is available for users behind an external auth proxy.
 
 **Never commit `.env`.** It is in `.gitignore`. It may contain a Discord webhook URL.
 
