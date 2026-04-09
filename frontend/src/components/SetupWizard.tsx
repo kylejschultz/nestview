@@ -13,12 +13,25 @@ export default function SetupWizard({ onDone }: SetupWizardProps) {
   const [webhookUrl, setWebhookUrl] = useState("");
   const [saveError, setSaveError] = useState<string | null>(null);
 
-  // Close on Escape
+  // Password step state
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [passwordError, setPasswordError] = useState<string | null>(null);
+  const [isSubmittingPassword, setIsSubmittingPassword] = useState(false);
+
+  // Check setup status on mount — skip password step if already set
   useEffect(() => {
-    const handler = (e: KeyboardEvent) => { if (e.key === "Escape") handleSkip(); };
+    api.auth.setupStatus().then(({ setup_complete }) => {
+      if (setup_complete) setStep(2);
+    }).catch(() => {});
+  }, []);
+
+  // Escape closes the wizard on step 2 only (no skip on step 1)
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === "Escape" && step === 2) handleSkip(); };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, []);
+  }, [step]);
 
   const { mutate: dismiss } = useMutation({
     mutationFn: api.settings.dismissWizard,
@@ -40,10 +53,36 @@ export default function SetupWizard({ onDone }: SetupWizardProps) {
     dismiss();
   }
 
+  async function handleSetPassword() {
+    setPasswordError(null);
+    if (password.length < 8) {
+      setPasswordError("Password must be at least 8 characters.");
+      return;
+    }
+    if (password !== confirmPassword) {
+      setPasswordError("Passwords do not match.");
+      return;
+    }
+    setIsSubmittingPassword(true);
+    try {
+      const setupResult = await api.auth.setup(password);
+      if (!setupResult.ok) {
+        setPasswordError(setupResult.detail ?? "Failed to set password.");
+        return;
+      }
+      await api.auth.login(password);
+      setStep(2);
+    } catch {
+      setPasswordError("An unexpected error occurred.");
+    } finally {
+      setIsSubmittingPassword(false);
+    }
+  }
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
-      onClick={handleSkip}
+      onClick={step === 2 ? handleSkip : undefined}
     >
       <div
         className="bg-surface-2 border border-border rounded-xl w-full max-w-md mx-4 shadow-xl overflow-hidden"
@@ -64,24 +103,43 @@ export default function SetupWizard({ onDone }: SetupWizardProps) {
         {step === 1 && (
           <div className="p-6 space-y-4">
             <div className="space-y-1">
-              <h2 className="text-lg font-semibold text-slate-100">Welcome to Nestview</h2>
+              <h2 className="text-lg font-semibold text-slate-100">Secure your dashboard</h2>
               <p className="text-sm text-slate-400 leading-relaxed">
-                Your Docker containers are now being tracked. Optionally, set up Discord
-                alerts to be notified when containers crash, restart, or get OOM-killed.
+                Create a password to protect Nestview. You'll use this to log in from any browser.
               </p>
             </div>
-            <div className="flex flex-col gap-2 pt-2">
+            <div className="space-y-3">
+              <div className="space-y-1">
+                <label className="text-xs text-slate-400">Password</label>
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(e) => { setPassword(e.target.value); setPasswordError(null); }}
+                  className="w-full px-3 py-2 text-sm bg-surface-3 border border-border rounded-lg text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-accent"
+                  placeholder="Min. 8 characters"
+                  disabled={isSubmittingPassword}
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs text-slate-400">Confirm password</label>
+                <input
+                  type="password"
+                  value={confirmPassword}
+                  onChange={(e) => { setConfirmPassword(e.target.value); setPasswordError(null); }}
+                  className="w-full px-3 py-2 text-sm bg-surface-3 border border-border rounded-lg text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-accent"
+                  placeholder="Re-enter password"
+                  disabled={isSubmittingPassword}
+                />
+              </div>
+              {passwordError && <p className="text-xs text-red-400">{passwordError}</p>}
+            </div>
+            <div className="pt-2">
               <button
-                onClick={() => setStep(2)}
-                className="w-full px-4 py-2.5 text-sm rounded-lg bg-accent hover:bg-accent-hover text-white font-medium transition-colors"
+                disabled={isSubmittingPassword}
+                onClick={handleSetPassword}
+                className="w-full px-4 py-2.5 text-sm rounded-lg bg-accent hover:bg-accent-hover text-white font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
               >
-                Set up Discord alerts
-              </button>
-              <button
-                onClick={handleSkip}
-                className="w-full px-4 py-2.5 text-sm rounded-lg border border-border text-slate-400 hover:text-slate-200 hover:border-slate-500 transition-colors"
-              >
-                Skip for now
+                {isSubmittingPassword ? "Setting up…" : "Set password & continue"}
               </button>
             </div>
           </div>
@@ -104,10 +162,10 @@ export default function SetupWizard({ onDone }: SetupWizardProps) {
             {saveError && <p className="text-xs text-red-400">{saveError}</p>}
             <div className="flex gap-2 pt-1">
               <button
-                onClick={() => setStep(1)}
+                onClick={handleSkip}
                 className="px-4 py-2 text-sm rounded-lg border border-border text-slate-400 hover:text-slate-200 hover:border-slate-500 transition-colors"
               >
-                Back
+                Skip for now
               </button>
               <button
                 disabled={isSaving || !webhookUrl}

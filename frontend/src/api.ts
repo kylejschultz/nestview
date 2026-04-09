@@ -71,6 +71,35 @@ export const api = {
   admin: {
     checkImages: () => post<{ ok: boolean }>("/admin/check-images"),
   },
+  auth: {
+    setupStatus: (): Promise<{ setup_complete: boolean }> =>
+      fetch('/api/auth/setup-status').then(r => r.json()),
+    setup: (password: string): Promise<{ ok: boolean; detail?: string }> =>
+      fetch('/api/auth/setup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password }),
+      }).then(r => r.json()),
+    login: (password: string): Promise<{ ok: boolean; detail?: string }> =>
+      fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password }),
+      }).then(r => r.json()),
+    logout: (): Promise<{ ok: boolean }> =>
+      fetch('/api/auth/logout', { method: 'POST' }).then(r => r.json()),
+    me: (): Promise<{ user: string }> =>
+      fetch('/api/auth/me').then(r => {
+        if (!r.ok) return Promise.reject(r.status);
+        return r.json();
+      }),
+    changePassword: (current: string, next: string): Promise<{ ok: boolean; detail?: string }> =>
+      fetch('/api/auth/change-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ current_password: current, new_password: next }),
+      }).then(r => r.json()),
+  },
   settings: {
     alerts: () => get<AlertSetting[]>("/settings/alerts"),
     setAlert: (container_name: string, event_type: AlertEventType, enabled: boolean) =>
