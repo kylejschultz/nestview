@@ -70,9 +70,13 @@ docker compose up -d
 
 ## Security
 
-> **Do not expose port 8484 directly to the internet.** Nestview is designed for home networks and trusted LANs. The dashboard has no login by default — anyone who can reach port 8484 can view your container names, logs, and metrics.
+Nestview requires authentication out of the box. On first launch, you'll be prompted to create an admin username and password before the dashboard is accessible.
 
-**If you need to access Nestview remotely**, put it behind a VPN (Tailscale, WireGuard) or a reverse proxy with authentication (Authelia, Authentik, nginx basic auth). Do not port-forward 8484 through your router.
+**If you use an external auth proxy** (Authelia, Authentik, nginx basic auth), you can select "No authentication" during setup to avoid double-authenticating. Only use this option if Nestview is not directly accessible from outside your network.
+
+**If you forget your password**, add `RESET_ADMIN_PASSWORD=true` to your `.env` file and restart the container. You'll be taken back through the setup wizard. Remove the variable and restart again once you've set a new password.
+
+**If you need to access Nestview remotely**, put it behind a VPN (Tailscale, WireGuard) rather than port-forwarding directly. Do not expose port 8484 to the internet.
 
 ---
 
@@ -86,6 +90,8 @@ docker compose up -d
 | `DISCORD_WEBHOOK_URL` | _(empty)_ | Leave blank to disable Discord alerting |
 | `POLL_INTERVAL` | `10` | Seconds between Docker stats polls |
 | `LOG_BATCH_INTERVAL` | `5` | Seconds between log flushes to SQLite |
+| `SECRET_KEY` | _(auto-generated)_ | Session cookie signing key. Leave blank — Nestview generates and persists one automatically. Set explicitly for scripted deployments that need stable sessions across data resets. |
+| `RESET_ADMIN_PASSWORD` | _(unset)_ | Set to `true` to clear stored credentials and re-trigger the setup wizard on next start. Remove after completing setup. |
 
 `POLL_INTERVAL` and `LOG_BATCH_INTERVAL` are handled inside the single container — no separate collector service required.
 
@@ -95,6 +101,7 @@ Log retention and exited container TTL are configured in the Settings UI.
 
 ## Features
 
+- **Authentication** — mandatory login on first run; bcrypt password hashing; signed session cookies; configurable session expiry
 - **Zero-config autodiscovery** — all containers, Compose stacks, ports, volumes, and networks detected automatically via the Docker socket
 - **Live health dashboard** — per-container CPU%, memory, uptime, restart count, and status badge; containers grouped by Compose project
 - **Searchable log history** — logs streamed from every running container, stored in SQLite, searchable from the UI

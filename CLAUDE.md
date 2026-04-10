@@ -87,7 +87,7 @@ nestview/
 - **Tailwind CSS** with a custom dark theme. CSS variables are defined in the global stylesheet (`bg-surface-2`, `bg-surface-3`, `bg-accent`, `border-border`, etc.). Use these — don't hardcode colors.
 - **Compose project grouping** is handled in `Dashboard.tsx` (`ComposeGroup`) and `Settings.tsx`. Collapsed state is persisted to `localStorage` under `nestview:stack_collapsed`.
 - **No form elements.** Use `onClick`/`onChange` handlers directly. Avoid `<form>` tags.
-- **Routing:** React Router v6. Pages: `/` (Dashboard), `/logs` (Logs), `/settings` (Settings).
+- **Routing:** React Router v6. Pages: `/` (Dashboard), `/logs` (Logs), `/settings` (Settings), `/login` (Login), `/setup` (First-run setup). The app gates all routes behind `/setup` if `setup_required` is true, and behind `/login` if the session is invalid.
 - `npm run build` produces static files; the Dockerfile copies `dist/` to `/app/static` and FastAPI serves them via `StaticFiles`.
 
 ---
@@ -104,7 +104,8 @@ All config is in `.env` (copy from `.env.example`). Docker Compose auto-loads it
 | `EXITED_CONTAINER_TTL_HOURS` | `0.083` (~5 min) | TTL for stale exited/dead container rows; set to `0` to disable |
 | `POLL_INTERVAL` | `10` | Seconds between Docker stats polls |
 | `LOG_BATCH_INTERVAL` | `5` | Seconds between log flushes |
-| `RESET_ADMIN_PASSWORD` | _(unset)_ | Set to `true` to clear stored credentials and re-trigger the setup wizard on next start |
+| `SECRET_KEY` | _(auto-generated)_ | Optional override for the session signing key. Auto-generated and persisted in `AppSetting` if not set. |
+| `RESET_ADMIN_PASSWORD` | _(unset)_ | Set to `true` to clear stored credentials and re-trigger setup wizard on next start. |
 
 > **Authentication:** v0.4.0 introduces mandatory auth. On first run, the setup wizard requires a username and password before the dashboard is accessible. Credentials are bcrypt-hashed and stored in `AppSetting`. Sessions use a signed httpOnly cookie via `itsdangerous`. A `RESET_ADMIN_PASSWORD=true` env var clears credentials and re-triggers the wizard. An "auth_mode = none" escape hatch is available for users behind an external auth proxy.
 
@@ -149,25 +150,30 @@ All endpoints are prefixed `/api/`.
 | Method | Path | Auth | Description |
 |---|---|---|---|
 | `GET` | `/health` | none | Liveness probe |
-| `GET` | `/containers` | none | List all containers |
-| `GET` | `/containers/{docker_id}` | none | Single container |
+| `GET`  | `/auth/status`  | none | Setup status and auth mode |
+| `POST` | `/auth/setup`   | none | First-run credential setup (409 if already done) |
+| `POST` | `/auth/login`   | none | Exchange credentials for session cookie |
+| `POST` | `/auth/logout`  | none | Clear session cookie |
+| `GET`  | `/auth/me`      | none | Current session info (401 if not authenticated) |
+| `GET` | `/containers` | cookie | List all containers |
+| `GET` | `/containers/{docker_id}` | cookie | Single container |
 | `POST` | `/containers/batch` | none | Full reconciliation snapshot |
-| `POST` | `/containers/{docker_id}/start` | none | Start container |
-| `POST` | `/containers/{docker_id}/stop` | none | Stop container |
-| `POST` | `/containers/{docker_id}/restart` | none | Restart container |
-| `POST` | `/containers/{docker_id}/pull-restart` | none | Pull latest image and restart container |
-| `GET` | `/containers/{docker_id}/logs` | none | Container logs (paginated, searchable) |
-| `GET` | `/logs` | none | All logs (paginated, searchable) |
+| `POST` | `/containers/{docker_id}/start` | cookie | Start container |
+| `POST` | `/containers/{docker_id}/stop` | cookie | Stop container |
+| `POST` | `/containers/{docker_id}/restart` | cookie | Restart container |
+| `POST` | `/containers/{docker_id}/pull-restart` | cookie | Pull latest image and restart container |
+| `GET` | `/containers/{docker_id}/logs` | cookie | Container logs (paginated, searchable) |
+| `GET` | `/logs` | cookie | All logs (paginated, searchable) |
 | `POST` | `/collector/logs` | none | Batch log ingest |
-| `GET` | `/collector/events` | none | Event timeline |
+| `GET` | `/collector/events` | cookie | Event timeline |
 | `POST` | `/collector/events` | none | Ingest a single event |
-| `GET` | `/settings/alerts` | none | List alert settings |
-| `PATCH` | `/settings/alerts` | none | Enable/disable an alert type per container |
-| `POST` | `/stacks/{compose_project}/stop` | none | Stop all containers in a compose stack |
-| `POST` | `/stacks/{compose_project}/start` | none | Start all containers in a compose stack |
-| `POST` | `/stacks/{compose_project}/restart` | none | Restart all containers in a compose stack |
-| `POST` | `/stacks/{compose_project}/pull-restart` | none | Pull latest images and restart a compose stack |
-| `POST` | `/admin/check-images` | none | Trigger an immediate image update check |
+| `GET` | `/settings/alerts` | cookie | List alert settings |
+| `PATCH` | `/settings/alerts` | cookie | Enable/disable an alert type per container |
+| `POST` | `/stacks/{compose_project}/stop` | cookie | Stop all containers in a compose stack |
+| `POST` | `/stacks/{compose_project}/start` | cookie | Start all containers in a compose stack |
+| `POST` | `/stacks/{compose_project}/restart` | cookie | Restart all containers in a compose stack |
+| `POST` | `/stacks/{compose_project}/pull-restart` | cookie | Pull latest images and restart a compose stack |
+| `POST` | `/admin/check-images` | cookie | Trigger an immediate image update check |
 
 ---
 
@@ -234,3 +240,5 @@ Never push directly to `main`. All work happens on `dev` and goes to `main` via 
 - **`die` vs `crash`** — the collector maps `die` + non-zero exit to `crash`, but both share the `crash` alert setting. Don't add a separate `die` setting without updating `_SETTING_KEY` in both `events.py` and `services/collector.py`.
 - **Single writable Docker socket mount** — the socket is mounted writable for both container actions and the in-process collector stats polling.
 - **macOS/Colima/OrbStack** all expose the socket at `/var/run/docker.sock` — no config changes needed. Only non-standard socket paths require updating the volume mount in `docker-compose.yml`.
+- **Auth on collector endpoints** — `/api/containers/batch`, `/api/collector/logs`, and `/api/collector/events` intentionally have no auth. The collector runs in-process and calls the DB directly; these endpoints are internal only and are excluded from `require_auth`.
+- **`RESET_ADMIN_PASSWORD` must be removed after use** — leaving it set means every restart clears credentials. Document this clearly when advising users.
