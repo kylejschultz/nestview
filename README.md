@@ -26,8 +26,6 @@ services:
     restart: unless-stopped
     ports:
       - "${NESTVIEW_PORT:-8484}:8080"
-    environment:
-      - DATABASE_PATH=/data/nestview.db
     volumes:
       - nestview_data:/data
       - /var/run/docker.sock:/var/run/docker.sock
