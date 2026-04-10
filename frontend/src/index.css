@@ -1,6 +1,19 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+
+@source "../index.html";
+@source "./**/*.{ts,tsx}";
+
+@theme {
+  --color-surface-0: #0b0d14;
+  --color-surface-1: #13161f;
+  --color-surface-2: #1c202e;
+  --color-surface-3: #252a3a;
+  --color-border: #2e3347;
+  --color-accent: #6366f1;
+  --color-accent-hover: #818cf8;
+  --font-sans: Inter, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+}
 
 @layer base {
   body {
