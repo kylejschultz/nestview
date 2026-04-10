@@ -87,7 +87,6 @@ Nestview requires authentication out of the box. On first launch, you'll be prom
 | Variable | Default | Description |
 |---|---|---|
 | `NESTVIEW_PORT` | `8484` | Host port Nestview is exposed on |
-| `DISCORD_WEBHOOK_URL` | _(empty)_ | Leave blank to disable Discord alerting |
 | `POLL_INTERVAL` | `10` | Seconds between Docker stats polls |
 | `LOG_BATCH_INTERVAL` | `5` | Seconds between log flushes to SQLite |
 | `SECRET_KEY` | _(auto-generated)_ | Session cookie signing key. Leave blank — Nestview generates and persists one automatically. Set explicitly for scripted deployments that need stable sessions across data resets. |
@@ -101,11 +100,11 @@ Log retention and exited container TTL are configured in the Settings UI.
 
 ## Features
 
-- **Authentication** — mandatory login on first run; bcrypt password hashing; signed session cookies; configurable session expiry
 - **Zero-config autodiscovery** — all containers, Compose stacks, ports, volumes, and networks detected automatically via the Docker socket
 - **Live health dashboard** — per-container CPU%, memory, uptime, restart count, and status badge; containers grouped by Compose project
 - **Searchable log history** — logs streamed from every running container, stored in SQLite, searchable from the UI
 - **Configurable retention** — set log retention and container TTL in the Settings UI; cleanup runs hourly
+- **Authentication** — mandatory login on first run; bcrypt password hashing; signed session cookies; configurable session expiry
 - **Discord alerting** — get a notification when a container crashes, restarts unexpectedly, or is OOM-killed
 - **Image update detection** — background job checks Docker Hub / GHCR for newer digests; sends a Discord alert when an update is available
 - **Container actions** — start, stop, restart, or pull the latest image and restart any container or Compose stack directly from the dashboard
