@@ -22,19 +22,12 @@ Create a `docker-compose.yml` with the following contents:
 services:
   nestview:
     container_name: nestview
-    build:
-      context: .
-      dockerfile: Dockerfile
     image: ghcr.io/kylejschultz/nestview:latest
     restart: unless-stopped
     ports:
       - "${NESTVIEW_PORT:-8484}:8080"
     environment:
       - DATABASE_PATH=/data/nestview.db
-      - LOG_RETENTION_DAYS=${LOG_RETENTION_DAYS:-7}
-      - EXITED_CONTAINER_TTL_HOURS=${EXITED_CONTAINER_TTL_HOURS:-0.083}
-      - POLL_INTERVAL=${POLL_INTERVAL:-10}
-      - LOG_BATCH_INTERVAL=${LOG_BATCH_INTERVAL:-5}
     volumes:
       - nestview_data:/data
       - /var/run/docker.sock:/var/run/docker.sock
