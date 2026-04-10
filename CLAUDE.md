@@ -67,7 +67,7 @@ nestview/
 - **FastAPI routers** are in `backend/api/`. Each file owns one domain and registers its own `APIRouter`. Routers are mounted in `main.py`.
 - **Models** live in `backend/models.py` — four tables: `Container`, `ContainerLog`, `ContainerEvent`, `ContainerAlertSetting`.
 - **No Alembic.** `create_db_and_tables()` auto-creates on startup. If you add a column to a model, the existing DB will not have it — drop and recreate, or write a one-off migration with raw SQLite.
-- **Collector-facing POST endpoints** (`/api/containers/batch`, `/api/collector/logs`, `/api/collector/events`) have no auth — the collector runs in-process as daemon threads and writes directly to the DB.
+- The collector runs in-process as daemon threads and writes directly to the DB via SQLModel — there are no HTTP endpoints for collector ingest.
 - **Container state reconciliation** happens in `_apply_batch()` in `services/collector.py`. The stats loop sends a full `docker ps -a` snapshot; anything not in the batch is deleted. Ghost detection (same name/project, old container exited + new one running) also fires here.
 - **Ports, volumes, networks** are stored as JSON strings in SQLite and parsed to lists on read. Don't change this without updating the batch ingest and `list_containers` / `get_container` responses.
 - **Event types tracked by the collector:** `start`, `stop`, `die`, `kill`, `restart`, `oom`. `die` with non-zero exit code is mapped to `crash`. The `die` event reuses the `crash` alert setting key.
@@ -158,16 +158,13 @@ All endpoints are prefixed `/api/`.
 | `POST` | `/auth/change-password` | cookie | Update the admin password (requires current password) |
 | `GET` | `/containers` | cookie | List all containers |
 | `GET` | `/containers/{docker_id}` | cookie | Single container |
-| `POST` | `/containers/batch` | none | Full reconciliation snapshot |
 | `POST` | `/containers/{docker_id}/start` | cookie | Start container |
 | `POST` | `/containers/{docker_id}/stop` | cookie | Stop container |
 | `POST` | `/containers/{docker_id}/restart` | cookie | Restart container |
 | `POST` | `/containers/{docker_id}/pull-restart` | cookie | Pull latest image and restart container |
 | `GET` | `/containers/{docker_id}/logs` | cookie | Container logs (paginated, searchable) |
 | `GET` | `/logs` | cookie | All logs (paginated, searchable) |
-| `POST` | `/collector/logs` | none | Batch log ingest |
 | `GET` | `/collector/events` | cookie | Event timeline |
-| `POST` | `/collector/events` | none | Ingest a single event |
 | `GET` | `/settings/alerts` | cookie | List alert settings |
 | `PATCH` | `/settings/alerts` | cookie | Enable/disable an alert type per container |
 | `POST` | `/stacks/{compose_project}/stop` | cookie | Stop all containers in a compose stack |
@@ -237,9 +234,9 @@ Never push directly to `main`. All work happens on `dev` and goes to `main` via 
 ## Common Pitfalls
 
 - **Schema changes** are not auto-migrated. Drop the volume and restart, or write raw SQL.
-- **Empty collector batch** — the batch endpoint has a guard: if `seen_ids` is empty, reconciliation is skipped to avoid wiping the table when Docker is temporarily unreachable.
+- **Empty collector batch** — `_apply_batch()` in `services/collector.py` has a guard: if `seen_ids` is empty, reconciliation is skipped to avoid wiping the table when Docker is temporarily unreachable.
 - **`die` vs `crash`** — the collector maps `die` + non-zero exit to `crash`, but both share the `crash` alert setting. Don't add a separate `die` setting without updating `_SETTING_KEY` in both `events.py` and `services/collector.py`.
 - **Single writable Docker socket mount** — the socket is mounted writable for both container actions and the in-process collector stats polling.
 - **macOS/Colima/OrbStack** all expose the socket at `/var/run/docker.sock` — no config changes needed. Only non-standard socket paths require updating the volume mount in `docker-compose.yml`.
-- **Auth on collector endpoints** — `/api/containers/batch`, `/api/collector/logs`, and `/api/collector/events` intentionally have no auth. The collector runs in-process and calls the DB directly; these endpoints are internal only and are excluded from `require_auth`.
+- **Collector writes directly to DB** — there are no HTTP endpoints for collector ingest. The collector runs in-process and uses SQLModel sessions directly.
 - **`RESET_ADMIN_PASSWORD` must be removed after use** — leaving it set means every restart clears credentials. Document this clearly when advising users.

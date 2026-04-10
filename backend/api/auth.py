@@ -9,6 +9,7 @@ Endpoints:
 """
 
 import logging
+import os
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
@@ -16,6 +17,7 @@ from pydantic import BaseModel, Field
 from sqlmodel import Session
 
 from database import get_session
+from limiter import limiter
 from services.app_settings import get_setting, set_setting
 from services.auth import (
     COOKIE_NAME,
@@ -25,6 +27,7 @@ from services.auth import (
     get_signer,
     hash_password,
     is_setup_complete,
+    require_auth,
     verify_password,
 )
 
@@ -82,7 +85,9 @@ def setup(payload: SetupPayload, session: Session = Depends(get_session)) -> dic
 
 
 @router.post("/login")
+@limiter.limit("10/minute")
 def login(
+    request: Request,
     payload: LoginPayload,
     response: Response,
     session: Session = Depends(get_session),
@@ -97,7 +102,10 @@ def login(
     stored_username = get_setting(session, "admin_username") or ""
     stored_hash = get_setting(session, "admin_password_hash") or ""
 
-    if payload.username != stored_username or not verify_password(payload.password, stored_hash):
+    hash_ok = verify_password(payload.password, stored_hash) if stored_hash else False
+    username_ok = payload.username == stored_username
+
+    if not (username_ok and hash_ok):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid username or password.",
@@ -107,6 +115,8 @@ def login(
     signer = get_signer(session)
     token = create_session_token(payload.username, signer)
 
+    secure_cookies = os.getenv("NESTVIEW_SECURE_COOKIES", "").strip().lower() == "true"
+
     response.set_cookie(
         key=COOKIE_NAME,
         value=token,
@@ -114,6 +124,7 @@ def login(
         samesite="lax",
         max_age=expiry_days * 86400,
         path="/",
+        secure=secure_cookies,
     )
 
     logger.info("auth: login successful — username=%r", payload.username)
@@ -158,10 +169,11 @@ def me(
     return {"authenticated": True, "username": username, "auth_mode": "password"}
 
 
-@router.post("/change-password")
+@router.post("/change-password", dependencies=[Depends(require_auth)])
+@limiter.limit("5/minute")
 def change_password(
-    payload: ChangePasswordPayload,
     request: Request,
+    payload: ChangePasswordPayload,
     session: Session = Depends(get_session),
 ) -> dict:
     """Change the admin password. Requires the current password to verify identity."""

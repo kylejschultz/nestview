@@ -8,6 +8,8 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from fastapi import Depends, FastAPI
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
 from sqlalchemy import text
 from sqlmodel import Session
 
@@ -19,6 +21,7 @@ APP_VERSION = _version_file.read_text().strip() if _version_file.exists() else "
 from database import create_db_and_tables, engine
 from api import containers, logs, events, settings, actions, admin, stack_actions
 from api import auth as auth_router
+from limiter import limiter
 from services.cleanup import run_cleanup
 from services.app_settings import get_setting, set_setting
 from services.image_checker import run_image_check
@@ -130,12 +133,21 @@ async def lifespan(app: FastAPI):
     else:
         logger.info("No static dir found at %s — frontend not served (dev mode)", static_dir)
 
+    if os.getenv("RESET_ADMIN_PASSWORD", "").strip().lower() == "true":
+        logger.warning(
+            "auth: RESET_ADMIN_PASSWORD is still set in your environment. "
+            "Remove it after completing setup to prevent credentials being cleared on next restart."
+        )
+
     yield
 
     scheduler.shutdown()
 
 
 app = FastAPI(title="Nestview", version=APP_VERSION, lifespan=lifespan)
+
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # The backend is not port-exposed in docker-compose — only nginx (frontend service)
 # reaches it.  CORS is permissive here so local `npm run dev` works without extra
