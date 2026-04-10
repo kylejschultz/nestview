@@ -14,7 +14,6 @@ services:
       - EXITED_CONTAINER_TTL_HOURS=${EXITED_CONTAINER_TTL_HOURS:-0.083}
       - POLL_INTERVAL=${POLL_INTERVAL:-10}
       - LOG_BATCH_INTERVAL=${LOG_BATCH_INTERVAL:-5}
-      - DISCORD_WEBHOOK_URL=${DISCORD_WEBHOOK_URL:-}
     volumes:
       - nestview_data:/data
       - /var/run/docker.sock:/var/run/docker.sock

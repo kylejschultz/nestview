@@ -21,6 +21,10 @@ Create a `docker-compose.yml` with the following contents:
 ```yaml
 services:
   nestview:
+    container_name: nestview
+    build:
+      context: .
+      dockerfile: Dockerfile
     image: ghcr.io/kylejschultz/nestview:latest
     restart: unless-stopped
     ports:
@@ -28,10 +32,17 @@ services:
     environment:
       - DATABASE_PATH=/data/nestview.db
       - LOG_RETENTION_DAYS=${LOG_RETENTION_DAYS:-7}
-      - DISCORD_WEBHOOK_URL=${DISCORD_WEBHOOK_URL:-}
+      - EXITED_CONTAINER_TTL_HOURS=${EXITED_CONTAINER_TTL_HOURS:-0.083}
+      - POLL_INTERVAL=${POLL_INTERVAL:-10}
+      - LOG_BATCH_INTERVAL=${LOG_BATCH_INTERVAL:-5}
     volumes:
       - nestview_data:/data
       - /var/run/docker.sock:/var/run/docker.sock
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/api/health')"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
 
 volumes:
   nestview_data:
@@ -40,7 +51,7 @@ volumes:
 Then run:
 ```bash
 docker compose up -d
-# Open http://localhost:8484 — the setup wizard will guide you through Discord alerts
+# Open http://localhost:8484 — complete the setup wizard to create your admin account
 ```
 
 That's it. Nestview will find all running and stopped containers immediately.
