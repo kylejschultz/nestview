@@ -1,6 +1,7 @@
 import { Link, useLocation } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../api";
+import { useAuth } from "../AuthContext";
 import type { Container } from "../types";
 
 function StatusDot({ running, total }: { running: number; total: number }) {
@@ -22,15 +23,18 @@ interface HeaderProps {
 
 export default function Header({ onLogout, authMode }: HeaderProps) {
   const location = useLocation();
+  const { isAuthenticated } = useAuth();
   const { data } = useQuery<Container[]>({
     queryKey: ["containers"],
     queryFn: api.containers.list,
+    enabled: isAuthenticated,
   });
   const { data: versionData } = useQuery({
     queryKey: ["version"],
     queryFn: api.version,
     staleTime: Infinity,
     retry: false,
+    enabled: isAuthenticated,
   });
 
   const total = data?.length ?? 0;

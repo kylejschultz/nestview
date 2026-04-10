@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
+import { useAuth } from "../AuthContext";
 import type { AlertEventType, AlertSetting, Container, GeneralSettings } from "../types";
 import WebhookField from "../components/WebhookField";
 import TimezoneSelect from "../components/TimezoneSelect";
@@ -173,10 +174,12 @@ function SettingRow({ label, children, last }: { label: string; children: React.
 
 function GeneralTab({ authMode }: { authMode?: string }) {
   const queryClient = useQueryClient();
+  const { isAuthenticated } = useAuth();
 
   const { data: general, isLoading } = useQuery<GeneralSettings>({
     queryKey: ["settings-general"],
     queryFn: api.settings.general,
+    enabled: isAuthenticated,
   });
 
   const { data: versionData } = useQuery({
@@ -184,11 +187,13 @@ function GeneralTab({ authMode }: { authMode?: string }) {
     queryFn: api.version,
     staleTime: Infinity,
     retry: false,
+    enabled: isAuthenticated,
   });
 
   const { data: allSettings, isLoading: isLoadingAll } = useQuery<Record<string, string>>({
     queryKey: ["settings-all"],
     queryFn: api.settings.getAll,
+    enabled: isAuthenticated,
   });
 
   // General settings drafts
@@ -530,15 +535,18 @@ function GeneralTab({ authMode }: { authMode?: string }) {
 
 function NotificationsTab() {
   const queryClient = useQueryClient();
+  const { isAuthenticated } = useAuth();
 
   const { data: containers = [], isLoading: loadingContainers } = useQuery<Container[]>({
     queryKey: ["containers"],
     queryFn: api.containers.list,
+    enabled: isAuthenticated,
   });
 
   const { data: alertSettings = [], isLoading: loadingSettings } = useQuery<AlertSetting[]>({
     queryKey: ["alert-settings"],
     queryFn: api.settings.alerts,
+    enabled: isAuthenticated,
   });
 
   const { mutate, isPending } = useMutation({
@@ -682,11 +690,13 @@ type Tab = "general" | "notifications";
 
 export default function Settings({ authMode }: { authMode?: string }) {
   const [activeTab, setActiveTab] = useState<Tab>("general");
+  const { isAuthenticated } = useAuth();
   const { data: versionData } = useQuery({
     queryKey: ["version"],
     queryFn: api.version,
     staleTime: Infinity,
     retry: false,
+    enabled: isAuthenticated,
   });
 
   return (

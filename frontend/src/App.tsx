@@ -9,6 +9,7 @@ import Login from "./pages/Login";
 import Header from "./components/Header";
 import SetupWizard from "./components/SetupWizard";
 import { TimezoneProvider } from "./TimezoneContext";
+import { AuthContext } from "./AuthContext";
 import { api } from "./api";
 import type { AuthStatus, MeResponse, WizardStatus } from "./types";
 
@@ -26,11 +27,19 @@ export default function App() {
     retry: false,
   });
 
-  const { data: meData, isLoading: meLoading } = useQuery<MeResponse>({
+  const { data: meData, isLoading: meLoading } = useQuery<MeResponse | null>({
     queryKey: ["auth-me"],
-    queryFn: api.auth.me,
-    staleTime: Infinity,
+    queryFn: async () => {
+      try {
+        return await api.auth.me();
+      } catch {
+        return null;
+      }
+    },
     retry: false,
+    refetchInterval: false,
+    refetchOnWindowFocus: false,
+    staleTime: Infinity,
     enabled: authStatus !== undefined && !authStatus.setup_required,
   });
 
@@ -93,19 +102,21 @@ export default function App() {
 
   // Full app (auth_mode "none" or authenticated)
   return (
-    <TimezoneProvider>
-      <div className="min-h-screen flex flex-col">
-        <Header onLogout={handleLogout} authMode={authStatus?.auth_mode} />
-        <main className="flex-1 px-4 py-6 max-w-7xl mx-auto w-full">
-          <Routes>
-            <Route path="/" element={<Dashboard />} />
-            <Route path="/containers/:id" element={<ContainerDetail />} />
-            <Route path="/settings" element={<Settings authMode={authStatus?.auth_mode} />} />
-            <Route path="/setup" element={<Navigate to="/" replace />} />
-          </Routes>
-        </main>
-        {showWizard && <SetupWizard onDone={() => setWizardDismissed(true)} />}
-      </div>
-    </TimezoneProvider>
+    <AuthContext.Provider value={{ isAuthenticated }}>
+      <TimezoneProvider>
+        <div className="min-h-screen flex flex-col">
+          <Header onLogout={handleLogout} authMode={authStatus?.auth_mode} />
+          <main className="flex-1 px-4 py-6 max-w-7xl mx-auto w-full">
+            <Routes>
+              <Route path="/" element={<Dashboard />} />
+              <Route path="/containers/:id" element={<ContainerDetail />} />
+              <Route path="/settings" element={<Settings authMode={authStatus?.auth_mode} />} />
+              <Route path="/setup" element={<Navigate to="/" replace />} />
+            </Routes>
+          </main>
+          {showWizard && <SetupWizard onDone={() => setWizardDismissed(true)} />}
+        </div>
+      </TimezoneProvider>
+    </AuthContext.Provider>
   );
 }
