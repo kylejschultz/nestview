@@ -23,9 +23,15 @@ export default function App() {
   const { data: authStatus, isLoading: authStatusLoading } = useQuery<AuthStatus>({
     queryKey: ["auth-status"],
     queryFn: api.auth.status,
-    staleTime: Infinity,
     retry: false,
+    refetchInterval: false,
+    refetchOnWindowFocus: false,
+    refetchOnMount: false,
+    refetchOnReconnect: false,
+    staleTime: Infinity,
   });
+
+  const meEnabled = !authStatus?.setup_required && authStatus?.auth_mode === "password";
 
   const { data: meData, isLoading: meLoading } = useQuery<MeResponse | null>({
     queryKey: ["auth-me"],
@@ -36,11 +42,13 @@ export default function App() {
         return null;
       }
     },
+    enabled: meEnabled,
     retry: false,
     refetchInterval: false,
     refetchOnWindowFocus: false,
+    refetchOnMount: false,
+    refetchOnReconnect: false,
     staleTime: Infinity,
-    enabled: authStatus !== undefined && !authStatus.setup_required,
   });
 
   const { data: wizardStatus } = useQuery<WizardStatus>({
@@ -65,8 +73,6 @@ export default function App() {
       navigate("/login", { replace: true });
     }
   }
-
-  const meEnabled = !authStatus?.setup_required && authStatus?.auth_mode === "password";
 
   // Loading: auth status or session check not yet fetched
   if (authStatusLoading || (meEnabled && meLoading)) {

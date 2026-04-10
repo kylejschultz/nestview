@@ -493,6 +493,7 @@ export default function Dashboard() {
   const { data: containers = [], isLoading, isError } = useQuery<Container[]>({
     queryKey: ["containers"],
     queryFn: api.containers.list,
+    refetchInterval: 10_000,
     enabled: isAuthenticated,
   });
 

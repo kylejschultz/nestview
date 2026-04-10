@@ -27,6 +27,7 @@ export default function Header({ onLogout, authMode }: HeaderProps) {
   const { data } = useQuery<Container[]>({
     queryKey: ["containers"],
     queryFn: api.containers.list,
+    refetchInterval: 10_000,
     enabled: isAuthenticated,
   });
   const { data: versionData } = useQuery({
