@@ -6,6 +6,7 @@ from pathlib import Path
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from fastapi import Depends, FastAPI
+from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 from sqlmodel import Session
@@ -170,3 +171,15 @@ def health():
 @app.get("/api/config")
 def config():
     return {"api_key_required": False}
+
+
+@app.get("/{full_path:path}", include_in_schema=False)
+async def spa_fallback(full_path: str):
+    static_dir = Path("/app/static").resolve()
+    requested = (static_dir / full_path).resolve()
+    if requested.is_file() and requested.is_relative_to(static_dir):
+        return FileResponse(requested)
+    index = static_dir / "index.html"
+    if index.exists():
+        return FileResponse(index)
+    return {"error": "Frontend not found"}
