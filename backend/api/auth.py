@@ -47,6 +47,11 @@ class LoginPayload(BaseModel):
     password: str
 
 
+class ChangePasswordPayload(BaseModel):
+    current_password: str
+    new_password: str = Field(min_length=8, max_length=128)
+
+
 # ---------------------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------------------
@@ -151,3 +156,25 @@ def me(
         raise HTTPException(status_code=401, detail="session_expired")
 
     return {"authenticated": True, "username": username, "auth_mode": "password"}
+
+
+@router.post("/change-password")
+def change_password(
+    payload: ChangePasswordPayload,
+    request: Request,
+    session: Session = Depends(get_session),
+) -> dict:
+    """Change the admin password. Requires the current password to verify identity."""
+    stored_hash = get_setting(session, "admin_password_hash") or ""
+
+    if not verify_password(payload.current_password, stored_hash):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Current password is incorrect.",
+        )
+
+    set_setting(session, "admin_password_hash", hash_password(payload.new_password))
+    session.commit()
+
+    logger.info("auth: password changed successfully")
+    return {"ok": True}

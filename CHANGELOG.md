@@ -26,6 +26,7 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 - `POST /api/auth/logout` — clears the session cookie
 - `GET /api/auth/me` — returns current session info; 401 if not authenticated
 - SPA catch-all route — FastAPI now serves `index.html` for all non-API routes, enabling hard refresh on any frontend route
+- Change password in Settings UI — update credentials without restarting the container
 
 ---
 

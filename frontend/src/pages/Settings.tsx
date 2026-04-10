@@ -197,6 +197,10 @@ function GeneralTab({ authMode }: { authMode?: string }) {
   const [ttlDraft, setTtlDraft] = useState<string | null>(null);
   const [timezoneDraft, setTimezoneDraft] = useState<string | null>(null);
   const [sessionExpiryDraft, setSessionExpiryDraft] = useState<string | null>(null);
+  const [currentPw, setCurrentPw] = useState("");
+  const [newPw, setNewPw] = useState("");
+  const [confirmPw, setConfirmPw] = useState("");
+  const [pwError, setPwError] = useState<string | null>(null);
 
   // Image check drafts
   const serverEnabled = (allSettings?.image_check_enabled ?? "true") !== "false";
@@ -254,6 +258,24 @@ function GeneralTab({ authMode }: { authMode?: string }) {
     mutationFn: api.admin.checkImages,
     onSuccess: () => showToast("Image check complete", "success"),
     onError: (err: Error) => showToast(err.message, "error"),
+  });
+
+  const { mutate: changePassword, isPending: isChangingPw } = useMutation({
+    mutationFn: api.auth.changePassword,
+    onSuccess: () => {
+      setCurrentPw("");
+      setNewPw("");
+      setConfirmPw("");
+      setPwError(null);
+      showToast("Password updated", "success");
+    },
+    onError: (err: Error) => {
+      if (err.message === "Current password is incorrect.") {
+        setPwError("Current password is incorrect.");
+      } else {
+        setPwError(err.message);
+      }
+    },
   });
 
   if (isLoading || isLoadingAll) {
@@ -414,7 +436,7 @@ function GeneralTab({ authMode }: { authMode?: string }) {
         {authMode === "password" && (
           <>
             <SectionHeader label="Security" />
-            <SettingRow label="Session expiry" last>
+            <SettingRow label="Session expiry">
               <div className="space-y-2">
                 <div className="flex items-center gap-2">
                   <input
@@ -441,6 +463,57 @@ function GeneralTab({ authMode }: { authMode?: string }) {
                   </button>
                 </div>
                 <p className="text-xs text-slate-500">How long a login session lasts before requiring re-authentication. Changes apply to new logins only.</p>
+              </div>
+            </SettingRow>
+            <SettingRow label="Change password" last>
+              <div className="space-y-2">
+                <div className="space-y-1.5">
+                  <input
+                    type="password"
+                    placeholder="Current password"
+                    value={currentPw}
+                    onChange={(e) => { setCurrentPw(e.target.value); setPwError(null); }}
+                    disabled={isChangingPw}
+                    className="w-full max-w-xs bg-surface-3 border border-border rounded-lg px-3 py-1.5 text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:border-accent disabled:opacity-40"
+                  />
+                  {pwError === "Current password is incorrect." && (
+                    <p className="text-xs text-red-400">{pwError}</p>
+                  )}
+                  <input
+                    type="password"
+                    placeholder="New password (min 8 characters)"
+                    value={newPw}
+                    onChange={(e) => { setNewPw(e.target.value); setPwError(null); }}
+                    disabled={isChangingPw}
+                    className="w-full max-w-xs bg-surface-3 border border-border rounded-lg px-3 py-1.5 text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:border-accent disabled:opacity-40"
+                  />
+                  <input
+                    type="password"
+                    placeholder="Confirm new password"
+                    value={confirmPw}
+                    onChange={(e) => { setConfirmPw(e.target.value); setPwError(null); }}
+                    disabled={isChangingPw}
+                    className="w-full max-w-xs bg-surface-3 border border-border rounded-lg px-3 py-1.5 text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:border-accent disabled:opacity-40"
+                  />
+                  {confirmPw && newPw !== confirmPw && (
+                    <p className="text-xs text-red-400">Passwords do not match.</p>
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    disabled={isChangingPw || !currentPw || !newPw || !confirmPw || newPw !== confirmPw || newPw.length < 8}
+                    onClick={() => {
+                      setPwError(null);
+                      changePassword({ current_password: currentPw, new_password: newPw });
+                    }}
+                    className="px-3 py-1.5 text-xs rounded-lg bg-accent hover:bg-accent-hover text-white font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    {isChangingPw ? "Saving…" : "Change password"}
+                  </button>
+                </div>
+                {pwError && pwError !== "Current password is incorrect." && (
+                  <p className="text-xs text-red-400">{pwError}</p>
+                )}
               </div>
             </SettingRow>
           </>

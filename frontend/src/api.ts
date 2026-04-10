@@ -79,6 +79,8 @@ export const api = {
       post<{ ok: boolean; auth_mode: string }>("/auth/login", body),
     logout: () => post<{ ok: boolean }>("/auth/logout"),
     me: () => get<MeResponse>("/auth/me"),
+    changePassword: (body: { current_password: string; new_password: string }) =>
+      post<{ ok: boolean }>("/auth/change-password", body),
   },
   settings: {
     alerts: () => get<AlertSetting[]>("/settings/alerts"),

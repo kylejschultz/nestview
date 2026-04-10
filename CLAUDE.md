@@ -155,6 +155,7 @@ All endpoints are prefixed `/api/`.
 | `POST` | `/auth/login`   | none | Exchange credentials for session cookie |
 | `POST` | `/auth/logout`  | none | Clear session cookie |
 | `GET`  | `/auth/me`      | none | Current session info (401 if not authenticated) |
+| `POST` | `/auth/change-password` | cookie | Update the admin password (requires current password) |
 | `GET` | `/containers` | cookie | List all containers |
 | `GET` | `/containers/{docker_id}` | cookie | Single container |
 | `POST` | `/containers/batch` | none | Full reconciliation snapshot |
