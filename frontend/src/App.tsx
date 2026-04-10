@@ -79,8 +79,10 @@ export default function App() {
     );
   }
 
-  // Auth mode "password" and not authenticated: redirect to /login
-  if (authStatus?.auth_mode === "password" && !meData?.authenticated) {
+  // Authenticated: auth_mode "none" bypasses auth entirely; "password" requires a valid session
+  const isAuthenticated = authStatus?.auth_mode === "none" || meData?.authenticated === true;
+
+  if (!isAuthenticated) {
     return (
       <Routes>
         <Route path="/login" element={<Login onLogin={handleLogin} />} />
