@@ -118,6 +118,7 @@ export default function App() {
               <Route path="/containers/:id" element={<ContainerDetail />} />
               <Route path="/settings" element={<Settings authMode={authStatus?.auth_mode} />} />
               <Route path="/setup" element={<Navigate to="/" replace />} />
+              <Route path="/login" element={<Navigate to="/" replace />} />
             </Routes>
           </main>
           {showWizard && <SetupWizard onDone={() => setWizardDismissed(true)} />}
