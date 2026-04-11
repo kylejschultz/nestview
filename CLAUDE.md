@@ -223,8 +223,11 @@ After completing any task:
 3. Handle the PR:
    - Check for any open PRs from dev to main: `gh pr list --base main --head dev --state open`
    - If an open PR exists, read its current commit list and evaluate whether the new commit(s) are part of the same logical effort (same feature, same bug, same area of the app). Use commit messages and scopes (e.g. `feat(frontend):`, `fix(collector):`) as the primary signal.
-     - If yes: regenerate the full PR body to reflect all commits currently in the PR. Use a `## Summary` section grouping changes by conventional commit type, and a `## Commits` section with short SHA + message per commit. Apply with `gh pr edit <number> --body "..."`.
+     - If yes: regenerate the full PR body to reflect all commits currently in the PR.
      - If no: open a new PR for the new commit(s) with `gh pr create --base main --title "<descriptive title>" --body "<summary>"`
+   - **PR body content:** Describe outcomes, not the development journey. The PR body should read as a description of what the feature or change delivers — not a log of every iteration, fix, or debugging step taken along the way. Fix commits that exist solely because of mistakes made during the current PR's work should be collapsed into the feature description they belong to. Only fixes that address pre-existing bugs from `main` deserve their own callout.
+
+     Use a `## Summary` section with short prose paragraphs or bullets grouped by area (backend, frontend, docs). Use a `## Commits` section with short SHA + message per commit for the full record. Apply with `gh pr edit <number> --body "..."`.
    - If no open PR exists: create one with `gh pr create --base main --title "<descriptive title>" --body "<summary>"`
 
 Never push directly to `main`. All work happens on `dev` and goes to `main` via PR.
