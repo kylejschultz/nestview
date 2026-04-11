@@ -7,6 +7,14 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.4.1] — 2026-04-11
+
+### Fixed
+
+- Navigating to `/login` while already authenticated now redirects to the dashboard instead of rendering a blank page
+
+---
+
 ## [0.4.0] — 2026-04-10
 
 ### Added
