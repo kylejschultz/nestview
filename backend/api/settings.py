@@ -31,6 +31,7 @@ _ALLOWED_SETTING_KEYS = {
     "wizard_dismissed",
     "image_check_enabled",
     "image_check_time",
+    "session_expiry_days",
 }
 
 

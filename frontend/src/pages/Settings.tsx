@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
+import { useAuth } from "../AuthContext";
 import type { AlertEventType, AlertSetting, Container, GeneralSettings } from "../types";
 import WebhookField from "../components/WebhookField";
 import TimezoneSelect from "../components/TimezoneSelect";
@@ -171,12 +172,14 @@ function SettingRow({ label, children, last }: { label: string; children: React.
   );
 }
 
-function GeneralTab() {
+function GeneralTab({ authMode }: { authMode?: string }) {
   const queryClient = useQueryClient();
+  const { isAuthenticated } = useAuth();
 
   const { data: general, isLoading } = useQuery<GeneralSettings>({
     queryKey: ["settings-general"],
     queryFn: api.settings.general,
+    enabled: isAuthenticated,
   });
 
   const { data: versionData } = useQuery({
@@ -184,11 +187,13 @@ function GeneralTab() {
     queryFn: api.version,
     staleTime: Infinity,
     retry: false,
+    enabled: isAuthenticated,
   });
 
   const { data: allSettings, isLoading: isLoadingAll } = useQuery<Record<string, string>>({
     queryKey: ["settings-all"],
     queryFn: api.settings.getAll,
+    enabled: isAuthenticated,
   });
 
   // General settings drafts
@@ -196,6 +201,11 @@ function GeneralTab() {
   const [retentionDraft, setRetentionDraft] = useState<string | null>(null);
   const [ttlDraft, setTtlDraft] = useState<string | null>(null);
   const [timezoneDraft, setTimezoneDraft] = useState<string | null>(null);
+  const [sessionExpiryDraft, setSessionExpiryDraft] = useState<string | null>(null);
+  const [currentPw, setCurrentPw] = useState("");
+  const [newPw, setNewPw] = useState("");
+  const [confirmPw, setConfirmPw] = useState("");
+  const [pwError, setPwError] = useState<string | null>(null);
 
   // Image check drafts
   const serverEnabled = (allSettings?.image_check_enabled ?? "true") !== "false";
@@ -239,10 +249,38 @@ function GeneralTab() {
     onError: (err: Error) => showToast(err.message, "error"),
   });
 
+  const { mutate: saveRaw, isPending: isSavingRaw } = useMutation({
+    mutationFn: (body: Record<string, string>) => api.settings.save(body),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["settings-all"] });
+      setSessionExpiryDraft(null);
+      showToast("Settings saved", "success");
+    },
+    onError: (err: Error) => showToast(err.message, "error"),
+  });
+
   const { mutate: checkNow, isPending: isChecking } = useMutation({
     mutationFn: api.admin.checkImages,
     onSuccess: () => showToast("Image check complete", "success"),
     onError: (err: Error) => showToast(err.message, "error"),
+  });
+
+  const { mutate: changePassword, isPending: isChangingPw } = useMutation({
+    mutationFn: api.auth.changePassword,
+    onSuccess: () => {
+      setCurrentPw("");
+      setNewPw("");
+      setConfirmPw("");
+      setPwError(null);
+      showToast("Password updated", "success");
+    },
+    onError: (err: Error) => {
+      if (err.message === "Current password is incorrect.") {
+        setPwError("Current password is incorrect.");
+      } else {
+        setPwError(err.message);
+      }
+    },
   });
 
   if (isLoading || isLoadingAll) {
@@ -399,6 +437,93 @@ function GeneralTab() {
           </div>
         </SettingRow>
 
+        {/* SECURITY */}
+        {authMode === "password" && (
+          <>
+            <SectionHeader label="Security" />
+            <SettingRow label="Session expiry">
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    min={1}
+                    max={365}
+                    value={sessionExpiryDraft ?? (allSettings?.session_expiry_days ?? "7")}
+                    onChange={(e) => setSessionExpiryDraft(e.target.value)}
+                    className="w-20 bg-surface-3 border border-border rounded-lg px-3 py-1.5 text-sm text-slate-200 focus:outline-none focus:border-accent"
+                  />
+                  <span className="text-sm text-slate-500">days</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    disabled={isSavingRaw || sessionExpiryDraft === null}
+                    onClick={() => {
+                      if (sessionExpiryDraft !== null) {
+                        saveRaw({ session_expiry_days: sessionExpiryDraft });
+                      }
+                    }}
+                    className="px-3 py-1.5 text-xs rounded-lg bg-accent hover:bg-accent-hover text-white font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    Save
+                  </button>
+                </div>
+                <p className="text-xs text-slate-500">How long a login session lasts before requiring re-authentication. Changes apply to new logins only.</p>
+              </div>
+            </SettingRow>
+            <SettingRow label="Change password" last>
+              <div className="space-y-2">
+                <div className="space-y-1.5">
+                  <input
+                    type="password"
+                    placeholder="Current password"
+                    value={currentPw}
+                    onChange={(e) => { setCurrentPw(e.target.value); setPwError(null); }}
+                    disabled={isChangingPw}
+                    className="w-full max-w-xs bg-surface-3 border border-border rounded-lg px-3 py-1.5 text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:border-accent disabled:opacity-40"
+                  />
+                  {pwError === "Current password is incorrect." && (
+                    <p className="text-xs text-red-400">{pwError}</p>
+                  )}
+                  <input
+                    type="password"
+                    placeholder="New password (min 8 characters)"
+                    value={newPw}
+                    onChange={(e) => { setNewPw(e.target.value); setPwError(null); }}
+                    disabled={isChangingPw}
+                    className="w-full max-w-xs bg-surface-3 border border-border rounded-lg px-3 py-1.5 text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:border-accent disabled:opacity-40"
+                  />
+                  <input
+                    type="password"
+                    placeholder="Confirm new password"
+                    value={confirmPw}
+                    onChange={(e) => { setConfirmPw(e.target.value); setPwError(null); }}
+                    disabled={isChangingPw}
+                    className="w-full max-w-xs bg-surface-3 border border-border rounded-lg px-3 py-1.5 text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:border-accent disabled:opacity-40"
+                  />
+                  {confirmPw && newPw !== confirmPw && (
+                    <p className="text-xs text-red-400">Passwords do not match.</p>
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    disabled={isChangingPw || !currentPw || !newPw || !confirmPw || newPw !== confirmPw || newPw.length < 8}
+                    onClick={() => {
+                      setPwError(null);
+                      changePassword({ current_password: currentPw, new_password: newPw });
+                    }}
+                    className="px-3 py-1.5 text-xs rounded-lg bg-accent hover:bg-accent-hover text-white font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    {isChangingPw ? "Saving…" : "Change password"}
+                  </button>
+                </div>
+                {pwError && pwError !== "Current password is incorrect." && (
+                  <p className="text-xs text-red-400">{pwError}</p>
+                )}
+              </div>
+            </SettingRow>
+          </>
+        )}
+
       </div>
 
       <AboutSection version={versionData?.version} />
@@ -410,15 +535,18 @@ function GeneralTab() {
 
 function NotificationsTab() {
   const queryClient = useQueryClient();
+  const { isAuthenticated } = useAuth();
 
   const { data: containers = [], isLoading: loadingContainers } = useQuery<Container[]>({
     queryKey: ["containers"],
     queryFn: api.containers.list,
+    enabled: isAuthenticated,
   });
 
   const { data: alertSettings = [], isLoading: loadingSettings } = useQuery<AlertSetting[]>({
     queryKey: ["alert-settings"],
     queryFn: api.settings.alerts,
+    enabled: isAuthenticated,
   });
 
   const { mutate, isPending } = useMutation({
@@ -560,13 +688,15 @@ function NotificationsTab() {
 
 type Tab = "general" | "notifications";
 
-export default function Settings() {
+export default function Settings({ authMode }: { authMode?: string }) {
   const [activeTab, setActiveTab] = useState<Tab>("general");
+  const { isAuthenticated } = useAuth();
   const { data: versionData } = useQuery({
     queryKey: ["version"],
     queryFn: api.version,
     staleTime: Infinity,
     retry: false,
+    enabled: isAuthenticated,
   });
 
   return (
@@ -597,7 +727,7 @@ export default function Settings() {
         ))}
       </div>
 
-      {activeTab === "general" ? <GeneralTab /> : <NotificationsTab />}
+      {activeTab === "general" ? <GeneralTab authMode={authMode} /> : <NotificationsTab />}
     </div>
   );
 }

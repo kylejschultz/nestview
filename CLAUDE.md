@@ -67,7 +67,7 @@ nestview/
 - **FastAPI routers** are in `backend/api/`. Each file owns one domain and registers its own `APIRouter`. Routers are mounted in `main.py`.
 - **Models** live in `backend/models.py` — four tables: `Container`, `ContainerLog`, `ContainerEvent`, `ContainerAlertSetting`.
 - **No Alembic.** `create_db_and_tables()` auto-creates on startup. If you add a column to a model, the existing DB will not have it — drop and recreate, or write a one-off migration with raw SQLite.
-- **Collector-facing POST endpoints** (`/api/containers/batch`, `/api/collector/logs`, `/api/collector/events`) have no auth — the collector runs in-process as daemon threads and writes directly to the DB.
+- The collector runs in-process as daemon threads and writes directly to the DB via SQLModel — there are no HTTP endpoints for collector ingest.
 - **Container state reconciliation** happens in `_apply_batch()` in `services/collector.py`. The stats loop sends a full `docker ps -a` snapshot; anything not in the batch is deleted. Ghost detection (same name/project, old container exited + new one running) also fires here.
 - **Ports, volumes, networks** are stored as JSON strings in SQLite and parsed to lists on read. Don't change this without updating the batch ingest and `list_containers` / `get_container` responses.
 - **Event types tracked by the collector:** `start`, `stop`, `die`, `kill`, `restart`, `oom`. `die` with non-zero exit code is mapped to `crash`. The `die` event reuses the `crash` alert setting key.
@@ -87,7 +87,7 @@ nestview/
 - **Tailwind CSS** with a custom dark theme. CSS variables are defined in the global stylesheet (`bg-surface-2`, `bg-surface-3`, `bg-accent`, `border-border`, etc.). Use these — don't hardcode colors.
 - **Compose project grouping** is handled in `Dashboard.tsx` (`ComposeGroup`) and `Settings.tsx`. Collapsed state is persisted to `localStorage` under `nestview:stack_collapsed`.
 - **No form elements.** Use `onClick`/`onChange` handlers directly. Avoid `<form>` tags.
-- **Routing:** React Router v6. Pages: `/` (Dashboard), `/logs` (Logs), `/settings` (Settings).
+- **Routing:** React Router v6. Pages: `/` (Dashboard), `/logs` (Logs), `/settings` (Settings), `/login` (Login), `/setup` (First-run setup). The app gates all routes behind `/setup` if `setup_required` is true, and behind `/login` if the session is invalid.
 - `npm run build` produces static files; the Dockerfile copies `dist/` to `/app/static` and FastAPI serves them via `StaticFiles`.
 
 ---
@@ -104,8 +104,10 @@ All config is in `.env` (copy from `.env.example`). Docker Compose auto-loads it
 | `EXITED_CONTAINER_TTL_HOURS` | `0.083` (~5 min) | TTL for stale exited/dead container rows; set to `0` to disable |
 | `POLL_INTERVAL` | `10` | Seconds between Docker stats polls |
 | `LOG_BATCH_INTERVAL` | `5` | Seconds between log flushes |
+| `SECRET_KEY` | _(auto-generated)_ | Optional override for the session signing key. Auto-generated and persisted in `AppSetting` if not set. |
+| `RESET_ADMIN_PASSWORD` | _(unset)_ | Set to `true` to clear stored credentials and re-trigger setup wizard on next start. |
 
-> **Authentication:** User-facing endpoints are unauthenticated in v0.3.x (trusted-network mode). Proper auth is planned for a future release.
+> **Authentication:** v0.4.0 introduces mandatory auth. On first run, the setup wizard requires a username and password before the dashboard is accessible. Credentials are bcrypt-hashed and stored in `AppSetting`. Sessions use a signed httpOnly cookie via `itsdangerous`. A `RESET_ADMIN_PASSWORD=true` env var clears credentials and re-triggers the wizard. An "auth_mode = none" escape hatch is available for users behind an external auth proxy.
 
 **Never commit `.env`.** It is in `.gitignore`. It may contain a Discord webhook URL.
 
@@ -148,25 +150,28 @@ All endpoints are prefixed `/api/`.
 | Method | Path | Auth | Description |
 |---|---|---|---|
 | `GET` | `/health` | none | Liveness probe |
-| `GET` | `/containers` | none | List all containers |
-| `GET` | `/containers/{docker_id}` | none | Single container |
-| `POST` | `/containers/batch` | none | Full reconciliation snapshot |
-| `POST` | `/containers/{docker_id}/start` | none | Start container |
-| `POST` | `/containers/{docker_id}/stop` | none | Stop container |
-| `POST` | `/containers/{docker_id}/restart` | none | Restart container |
-| `POST` | `/containers/{docker_id}/pull-restart` | none | Pull latest image and restart container |
-| `GET` | `/containers/{docker_id}/logs` | none | Container logs (paginated, searchable) |
-| `GET` | `/logs` | none | All logs (paginated, searchable) |
-| `POST` | `/collector/logs` | none | Batch log ingest |
-| `GET` | `/collector/events` | none | Event timeline |
-| `POST` | `/collector/events` | none | Ingest a single event |
-| `GET` | `/settings/alerts` | none | List alert settings |
-| `PATCH` | `/settings/alerts` | none | Enable/disable an alert type per container |
-| `POST` | `/stacks/{compose_project}/stop` | none | Stop all containers in a compose stack |
-| `POST` | `/stacks/{compose_project}/start` | none | Start all containers in a compose stack |
-| `POST` | `/stacks/{compose_project}/restart` | none | Restart all containers in a compose stack |
-| `POST` | `/stacks/{compose_project}/pull-restart` | none | Pull latest images and restart a compose stack |
-| `POST` | `/admin/check-images` | none | Trigger an immediate image update check |
+| `GET`  | `/auth/status`  | none | Setup status and auth mode |
+| `POST` | `/auth/setup`   | none | First-run credential setup (409 if already done) |
+| `POST` | `/auth/login`   | none | Exchange credentials for session cookie |
+| `POST` | `/auth/logout`  | none | Clear session cookie |
+| `GET`  | `/auth/me`      | none | Current session info (401 if not authenticated) |
+| `POST` | `/auth/change-password` | cookie | Update the admin password (requires current password) |
+| `GET` | `/containers` | cookie | List all containers |
+| `GET` | `/containers/{docker_id}` | cookie | Single container |
+| `POST` | `/containers/{docker_id}/start` | cookie | Start container |
+| `POST` | `/containers/{docker_id}/stop` | cookie | Stop container |
+| `POST` | `/containers/{docker_id}/restart` | cookie | Restart container |
+| `POST` | `/containers/{docker_id}/pull-restart` | cookie | Pull latest image and restart container |
+| `GET` | `/containers/{docker_id}/logs` | cookie | Container logs (paginated, searchable) |
+| `GET` | `/logs` | cookie | All logs (paginated, searchable) |
+| `GET` | `/collector/events` | cookie | Event timeline |
+| `GET` | `/settings/alerts` | cookie | List alert settings |
+| `PATCH` | `/settings/alerts` | cookie | Enable/disable an alert type per container |
+| `POST` | `/stacks/{compose_project}/stop` | cookie | Stop all containers in a compose stack |
+| `POST` | `/stacks/{compose_project}/start` | cookie | Start all containers in a compose stack |
+| `POST` | `/stacks/{compose_project}/restart` | cookie | Restart all containers in a compose stack |
+| `POST` | `/stacks/{compose_project}/pull-restart` | cookie | Pull latest images and restart a compose stack |
+| `POST` | `/admin/check-images` | cookie | Trigger an immediate image update check |
 
 ---
 
@@ -218,8 +223,11 @@ After completing any task:
 3. Handle the PR:
    - Check for any open PRs from dev to main: `gh pr list --base main --head dev --state open`
    - If an open PR exists, read its current commit list and evaluate whether the new commit(s) are part of the same logical effort (same feature, same bug, same area of the app). Use commit messages and scopes (e.g. `feat(frontend):`, `fix(collector):`) as the primary signal.
-     - If yes: regenerate the full PR body to reflect all commits currently in the PR. Use a `## Summary` section grouping changes by conventional commit type, and a `## Commits` section with short SHA + message per commit. Apply with `gh pr edit <number> --body "..."`.
+     - If yes: regenerate the full PR body to reflect all commits currently in the PR.
      - If no: open a new PR for the new commit(s) with `gh pr create --base main --title "<descriptive title>" --body "<summary>"`
+   - **PR body content:** Describe outcomes, not the development journey. The PR body should read as a description of what the feature or change delivers — not a log of every iteration, fix, or debugging step taken along the way. Fix commits that exist solely because of mistakes made during the current PR's work should be collapsed into the feature description they belong to. Only fixes that address pre-existing bugs from `main` deserve their own callout.
+
+     Use a `## Summary` section with short prose paragraphs or bullets grouped by area (backend, frontend, docs). Use a `## Commits` section with short SHA + message per commit for the full record. Apply with `gh pr edit <number> --body "..."`.
    - If no open PR exists: create one with `gh pr create --base main --title "<descriptive title>" --body "<summary>"`
 
 Never push directly to `main`. All work happens on `dev` and goes to `main` via PR.
@@ -229,7 +237,9 @@ Never push directly to `main`. All work happens on `dev` and goes to `main` via 
 ## Common Pitfalls
 
 - **Schema changes** are not auto-migrated. Drop the volume and restart, or write raw SQL.
-- **Empty collector batch** — the batch endpoint has a guard: if `seen_ids` is empty, reconciliation is skipped to avoid wiping the table when Docker is temporarily unreachable.
+- **Empty collector batch** — `_apply_batch()` in `services/collector.py` has a guard: if `seen_ids` is empty, reconciliation is skipped to avoid wiping the table when Docker is temporarily unreachable.
 - **`die` vs `crash`** — the collector maps `die` + non-zero exit to `crash`, but both share the `crash` alert setting. Don't add a separate `die` setting without updating `_SETTING_KEY` in both `events.py` and `services/collector.py`.
 - **Single writable Docker socket mount** — the socket is mounted writable for both container actions and the in-process collector stats polling.
 - **macOS/Colima/OrbStack** all expose the socket at `/var/run/docker.sock` — no config changes needed. Only non-standard socket paths require updating the volume mount in `docker-compose.yml`.
+- **Collector writes directly to DB** — there are no HTTP endpoints for collector ingest. The collector runs in-process and uses SQLModel sessions directly.
+- **`RESET_ADMIN_PASSWORD` must be removed after use** — leaving it set means every restart clears credentials. Document this clearly when advising users.

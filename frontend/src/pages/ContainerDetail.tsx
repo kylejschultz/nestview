@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { useParams, Link } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
+import { useAuth } from "../AuthContext";
 import type { Container } from "../types";
 import StatusBadge from "../components/StatusBadge";
 import MetricBar from "../components/MetricBar";
@@ -410,6 +411,7 @@ function InfoRow({ label, value }: { label: string; value: React.ReactNode }) {
 export default function ContainerDetail() {
   const { id } = useParams<{ id: string }>();
   const tz = useTimezone();
+  const { isAuthenticated } = useAuth();
 
   const { data: container, isLoading, isError } = useQuery<Container>({
     queryKey: ["container", id],
@@ -419,7 +421,7 @@ export default function ContainerDetail() {
       if (state && ["restarting", "created"].includes(state)) return 2_000;
       return 10_000;
     },
-    enabled: !!id,
+    enabled: !!id && isAuthenticated,
   });
 
   if (isLoading) {

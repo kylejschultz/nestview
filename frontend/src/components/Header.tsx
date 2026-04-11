@@ -1,6 +1,7 @@
 import { Link, useLocation } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../api";
+import { useAuth } from "../AuthContext";
 import type { Container } from "../types";
 
 function StatusDot({ running, total }: { running: number; total: number }) {
@@ -15,17 +16,26 @@ function StatusDot({ running, total }: { running: number; total: number }) {
   );
 }
 
-export default function Header() {
+interface HeaderProps {
+  onLogout?: () => void;
+  authMode?: string;
+}
+
+export default function Header({ onLogout, authMode }: HeaderProps) {
   const location = useLocation();
+  const { isAuthenticated } = useAuth();
   const { data } = useQuery<Container[]>({
     queryKey: ["containers"],
     queryFn: api.containers.list,
+    refetchInterval: 10_000,
+    enabled: isAuthenticated,
   });
   const { data: versionData } = useQuery({
     queryKey: ["version"],
     queryFn: api.version,
     staleTime: Infinity,
     retry: false,
+    enabled: isAuthenticated,
   });
 
   const total = data?.length ?? 0;
@@ -78,6 +88,19 @@ export default function Header() {
               <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
             </svg>
           </Link>
+
+          {authMode === "password" && onLogout && (
+            <button
+              onClick={onLogout}
+              aria-label="Sign out"
+              className="p-1.5 rounded-lg text-slate-500 hover:text-slate-300 hover:bg-surface-2 transition-colors"
+              title="Sign out"
+            >
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+              </svg>
+            </button>
+          )}
         </div>
       </div>
     </header>

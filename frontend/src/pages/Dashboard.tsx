@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
+import { useAuth } from "../AuthContext";
 import type { Container } from "../types";
 import ContainerCard from "../components/ContainerCard";
 import EventTimeline from "../components/EventTimeline";
@@ -468,6 +469,7 @@ const LIMIT_OPTIONS = [5, 10, 20];
 const EVENT_LIMIT_KEY = "nestview.eventLimit";
 
 export default function Dashboard() {
+  const { isAuthenticated } = useAuth();
   const [filter, setFilter] = useState<Filter>("all");
   const [search, setSearch] = useState("");
   const [eventLimit, setEventLimit] = useState<number>(() => {
@@ -491,6 +493,8 @@ export default function Dashboard() {
   const { data: containers = [], isLoading, isError } = useQuery<Container[]>({
     queryKey: ["containers"],
     queryFn: api.containers.list,
+    refetchInterval: 10_000,
+    enabled: isAuthenticated,
   });
 
   const filtered = containers

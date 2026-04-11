@@ -5,8 +5,11 @@ from datetime import datetime
 from pathlib import Path
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
+from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
 from sqlalchemy import text
 from sqlmodel import Session
 
@@ -17,9 +20,12 @@ APP_VERSION = _version_file.read_text().strip() if _version_file.exists() else "
 
 from database import create_db_and_tables, engine
 from api import containers, logs, events, settings, actions, admin, stack_actions
+from api import auth as auth_router
+from limiter import limiter
 from services.cleanup import run_cleanup
 from services.app_settings import get_setting, set_setting
 from services.image_checker import run_image_check
+from services.auth import require_auth
 
 
 def _seed_settings_from_env():
@@ -65,6 +71,27 @@ async def lifespan(app: FastAPI):
 
     _seed_settings_from_env()
 
+    # Handle RESET_ADMIN_PASSWORD env var — clears credentials so setup wizard re-triggers
+    if os.getenv("RESET_ADMIN_PASSWORD", "").strip().lower() == "true":
+        with Session(engine) as _reset_session:
+            from services.app_settings import set_setting as _set
+            from sqlmodel import select as _select
+            from models import AppSetting as _AppSetting
+            for _key in ("admin_username", "admin_password_hash"):
+                _row = _reset_session.exec(_select(_AppSetting).where(_AppSetting.key == _key)).first()
+                if _row:
+                    _reset_session.delete(_row)
+            _reset_session.commit()
+        logger.warning(
+            "auth: RESET_ADMIN_PASSWORD=true — credentials cleared. "
+            "Remove this env var after completing setup."
+        )
+
+    # Ensure session_secret exists (creates one if not present)
+    with Session(engine) as _secret_session:
+        from services.auth import _load_or_create_secret
+        _load_or_create_secret(_secret_session)
+
     # Read scheduler settings after seeding so the values are guaranteed in the DB.
     with Session(engine) as _s:
         raw_time = get_setting(_s, "image_check_time") or "03:00"
@@ -106,12 +133,21 @@ async def lifespan(app: FastAPI):
     else:
         logger.info("No static dir found at %s — frontend not served (dev mode)", static_dir)
 
+    if os.getenv("RESET_ADMIN_PASSWORD", "").strip().lower() == "true":
+        logger.warning(
+            "auth: RESET_ADMIN_PASSWORD is still set in your environment. "
+            "Remove it after completing setup to prevent credentials being cleared on next restart."
+        )
+
     yield
 
     scheduler.shutdown()
 
 
 app = FastAPI(title="Nestview", version=APP_VERSION, lifespan=lifespan)
+
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # The backend is not port-exposed in docker-compose — only nginx (frontend service)
 # reaches it.  CORS is permissive here so local `npm run dev` works without extra
@@ -124,13 +160,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(containers.router)
-app.include_router(logs.router)
-app.include_router(events.router)
-app.include_router(settings.router)
-app.include_router(actions.router)
-app.include_router(admin.router)
-app.include_router(stack_actions.router)
+app.include_router(auth_router.router)
+app.include_router(containers.router,    dependencies=[Depends(require_auth)])
+app.include_router(logs.router,          dependencies=[Depends(require_auth)])
+app.include_router(events.router,        dependencies=[Depends(require_auth)])
+app.include_router(settings.router,      dependencies=[Depends(require_auth)])
+app.include_router(actions.router,       dependencies=[Depends(require_auth)])
+app.include_router(admin.router,         dependencies=[Depends(require_auth)])
+app.include_router(stack_actions.router, dependencies=[Depends(require_auth)])
 
 
 @app.get("/api/version")
@@ -146,3 +183,15 @@ def health():
 @app.get("/api/config")
 def config():
     return {"api_key_required": False}
+
+
+@app.get("/{full_path:path}", include_in_schema=False)
+async def spa_fallback(full_path: str):
+    static_dir = Path("/app/static").resolve()
+    requested = (static_dir / full_path).resolve()
+    if requested.is_file() and requested.is_relative_to(static_dir):
+        return FileResponse(requested)
+    index = static_dir / "index.html"
+    if index.exists():
+        return FileResponse(index)
+    return {"error": "Frontend not found"}

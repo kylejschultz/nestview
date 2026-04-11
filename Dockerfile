@@ -1,5 +1,5 @@
 # ── Stage 1: Build React frontend ─────────────────────────────────────────
-FROM node:20-alpine AS frontend-build
+FROM node:25-alpine AS frontend-build
 
 WORKDIR /app/frontend
 COPY frontend/package*.json ./
@@ -8,7 +8,7 @@ COPY frontend/ .
 RUN npm run build
 
 # ── Stage 2: Python backend + embedded frontend ───────────────────────────
-FROM python:3.12-slim
+FROM python:3.14-slim
 
 RUN pip install --upgrade pip
 

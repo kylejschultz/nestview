@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../api";
+import { useAuth } from "../AuthContext";
 import type { ContainerEvent } from "../types";
 import { formatDateTime } from "../utils";
 import { useTimezone } from "../TimezoneContext";
@@ -48,10 +49,12 @@ function EventRow({ event, tz }: { event: ContainerEvent; tz: string }) {
 
 export default function EventTimeline({ dockerId, limit = 30 }: Props) {
   const tz = useTimezone();
+  const { isAuthenticated } = useAuth();
   const { data: events = [] } = useQuery<ContainerEvent[]>({
     queryKey: ["events", dockerId, limit],
     queryFn: () => api.events.list(dockerId, limit),
     refetchInterval: 15_000,
+    enabled: isAuthenticated,
   });
 
   if (events.length === 0) {

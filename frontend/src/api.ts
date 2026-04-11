@@ -1,4 +1,4 @@
-import type { AlertEventType, AlertSetting, Container, ContainerLog, ContainerEvent, GeneralSettings, WizardStatus } from "./types";
+import type { AlertEventType, AlertSetting, AuthStatus, Container, ContainerLog, ContainerEvent, GeneralSettings, MeResponse, WizardStatus } from "./types";
 
 const BASE = "/api";
 
@@ -70,6 +70,17 @@ export const api = {
   },
   admin: {
     checkImages: () => post<{ ok: boolean }>("/admin/check-images"),
+  },
+  auth: {
+    status: () => get<AuthStatus>("/auth/status"),
+    setup: (body: { username: string; password: string; auth_mode: "password" | "none" }) =>
+      post<{ ok: boolean }>("/auth/setup", body),
+    login: (body: { username: string; password: string }) =>
+      post<{ ok: boolean; auth_mode: string }>("/auth/login", body),
+    logout: () => post<{ ok: boolean }>("/auth/logout"),
+    me: () => get<MeResponse>("/auth/me"),
+    changePassword: (body: { current_password: string; new_password: string }) =>
+      post<{ ok: boolean }>("/auth/change-password", body),
   },
   settings: {
     alerts: () => get<AlertSetting[]>("/settings/alerts"),

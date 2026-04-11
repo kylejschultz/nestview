@@ -63,3 +63,14 @@ export interface GeneralSettings {
 export interface WizardStatus {
   completed: boolean;
 }
+
+export interface AuthStatus {
+  setup_required: boolean;
+  auth_mode: "password" | "none";
+}
+
+export interface MeResponse {
+  authenticated: boolean;
+  username: string | null;
+  auth_mode: string;
+}
