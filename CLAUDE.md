@@ -16,7 +16,7 @@ nestview (FastAPI + SQLModel + SQLite + embedded React)
   └── runs collector threads in-process (stats poll, log stream, event watcher)
 ```
 
-**No migrations.** SQLModel calls `SQLModel.metadata.create_all(engine)` on startup. Schema changes require manual handling or a full reset.
+**Schema migrations** are handled by `backend/migrations.py` — a lightweight custom system, not Alembic. There is no alembic package or dependency. `create_db_and_tables()` handles fresh installs via SQLModel's `create_all`. Upgrades are handled by a sequential list of versioned migration functions in `migrations.py`, with the current version tracked in the `AppSetting` table under key `schema_version`. To add a column: add it to the model as `Optional` with a default, then append a new `(version_str, fn)` entry to the `MIGRATIONS` list in `migrations.py`. Failures raise loudly — do not swallow migration exceptions.
 
 ---
 
@@ -66,7 +66,7 @@ nestview/
 
 - **FastAPI routers** are in `backend/api/`. Each file owns one domain and registers its own `APIRouter`. Routers are mounted in `main.py`.
 - **Models** live in `backend/models.py` — four tables: `Container`, `ContainerLog`, `ContainerEvent`, `ContainerAlertSetting`.
-- **No Alembic.** `create_db_and_tables()` auto-creates on startup. If you add a column to a model, the existing DB will not have it — drop and recreate, or write a one-off migration with raw SQLite.
+- **Schema migrations** are handled by `backend/migrations.py` — a lightweight custom system, not Alembic. There is no alembic package or dependency. `create_db_and_tables()` handles fresh installs via SQLModel's `create_all`. Upgrades are handled by a sequential list of versioned migration functions in `migrations.py`, with the current version tracked in the `AppSetting` table under key `schema_version`. To add a column: add it to the model as `Optional` with a default, then append a new `(version_str, fn)` entry to the `MIGRATIONS` list in `migrations.py`. Failures raise loudly — do not swallow migration exceptions.
 - The collector runs in-process as daemon threads and writes directly to the DB via SQLModel — there are no HTTP endpoints for collector ingest.
 - **Container state reconciliation** happens in `_apply_batch()` in `services/collector.py`. The stats loop sends a full `docker ps -a` snapshot; anything not in the batch is deleted. Ghost detection (same name/project, old container exited + new one running) also fires here.
 - **Ports, volumes, networks** are stored as JSON strings in SQLite and parsed to lists on read. Don't change this without updating the batch ingest and `list_containers` / `get_container` responses.
@@ -236,7 +236,7 @@ Never push directly to `main`. All work happens on `dev` and goes to `main` via 
 
 ## Common Pitfalls
 
-- **Schema changes** are not auto-migrated. Drop the volume and restart, or write raw SQL.
+- **Schema changes** require a new entry in `backend/migrations.py`. Add the column to the model as `Optional` with a default, then append a `(version_str, fn)` tuple to `MIGRATIONS`. Do not drop the volume — migrations run at startup and apply the change in place.
 - **Empty collector batch** — `_apply_batch()` in `services/collector.py` has a guard: if `seen_ids` is empty, reconciliation is skipped to avoid wiping the table when Docker is temporarily unreachable.
 - **`die` vs `crash`** — the collector maps `die` + non-zero exit to `crash`, but both share the `crash` alert setting. Don't add a separate `die` setting without updating `_SETTING_KEY` in both `events.py` and `services/collector.py`.
 - **Single writable Docker socket mount** — the socket is mounted writable for both container actions and the in-process collector stats polling.
