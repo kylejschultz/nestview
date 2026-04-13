@@ -10,7 +10,6 @@ from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
-from sqlalchemy import text
 from sqlmodel import Session
 
 logger = logging.getLogger(__name__)
@@ -47,28 +46,11 @@ def _seed_settings_from_env():
         session.commit()
 
 
-_NEW_CONTAINER_COLUMNS = [
-    ("image_digest",            "TEXT"),
-    ("registry_digest",         "TEXT"),
-    ("update_available",        "INTEGER NOT NULL DEFAULT 0"),
-    ("last_digest_check",       "TEXT"),
-    ("image_size",              "INTEGER"),
-    ("update_alert_sent_digest","TEXT"),
-]
-
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     create_db_and_tables()
-
-    with Session(engine) as _s:
-        for col_name, col_type in _NEW_CONTAINER_COLUMNS:
-            try:
-                _s.exec(text(f"ALTER TABLE container ADD COLUMN {col_name} {col_type}"))
-                _s.commit()
-            except Exception:
-                pass  # column already exists
-
+    from migrations import run_migrations
+    run_migrations(engine)
     _seed_settings_from_env()
 
     # Handle RESET_ADMIN_PASSWORD env var — clears credentials so setup wizard re-triggers
