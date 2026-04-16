@@ -28,7 +28,7 @@ function Spinner() {
 
 // ── Action buttons ────────────────────────────────────────────────────────────
 
-type ActionType = "stop" | "restart" | "start" | "pull-restart";
+type ActionType = "stop" | "restart" | "start" | "update-and-restart";
 
 interface ActionButtonsProps {
   container: Container;
@@ -48,18 +48,18 @@ const STEP_DEFINITIONS: Record<ActionType, ProgressStep[]> = {
     { id: "starting",  label: "Starting container…", status: "pending" },
     { id: "confirmed", label: "Container running",   status: "pending" },
   ],
-  "pull-restart": [
-    { id: "pulling",    label: "Pulling latest image…", status: "pending" },
-    { id: "restarting", label: "Restarting container…", status: "pending" },
-    { id: "confirming", label: "Confirming running…",   status: "pending" },
-    { id: "checking",   label: "Checking for updates…", status: "pending" },
-    { id: "complete",   label: "Complete",              status: "pending" },
+  "update-and-restart": [
+    { id: "fetching",   label: "Fetching latest image…", status: "pending" },
+    { id: "restarting", label: "Restarting container…",  status: "pending" },
+    { id: "confirming", label: "Confirming running…",    status: "pending" },
+    { id: "complete",   label: "Complete",               status: "pending" },
   ],
 };
 
 function ActionButtons({ container }: ActionButtonsProps) {
   const queryClient = useQueryClient();
   const [pendingAction, setPendingAction] = useState<ActionType | null>(null);
+  const [isCheckingUpdates, setIsCheckingUpdates] = useState(false);
   const { toastState, showToast, dismissToast } = useToast();
 
   // Progress state
@@ -77,10 +77,10 @@ function ActionButtons({ container }: ActionButtonsProps) {
   const initialStartedAtRef = useRef<string | null>(null);
 
   const ACTION_SUCCESS_MESSAGES: Record<ActionType, string> = {
-    stop:           "Container stopped",
-    start:          "Container started",
-    restart:        "Container restarted",
-    "pull-restart": "Pull & Restart complete",
+    stop:                 "Container stopped",
+    start:                "Container started",
+    restart:              "Container restarted",
+    "update-and-restart": "Update & Restart complete",
   };
 
   function updateSteps(steps: ProgressStep[]) {
@@ -163,10 +163,9 @@ function ActionButtons({ container }: ActionButtonsProps) {
           setIsComplete(true);
         }
       }
-    } else if (action === "pull-restart") {
+    } else if (action === "update-and-restart") {
       const restartingDone = progressStepsRef.current.find(s => s.id === "restarting")?.status === "done";
       const confirmingDone = progressStepsRef.current.find(s => s.id === "confirming")?.status === "done";
-      const checkingDone   = progressStepsRef.current.find(s => s.id === "checking")?.status === "done";
 
       if (!restartingDone) {
         const restarted =
@@ -183,11 +182,6 @@ function ActionButtons({ container }: ActionButtonsProps) {
       } else if (!confirmingDone) {
         if (fresh.state === "running") {
           setStepStatus("confirming", "done");
-          setStepStatus("checking", "active");
-        }
-      } else if (!checkingDone) {
-        if (fresh.last_digest_check !== initialDigestCheck) {
-          setStepStatus("checking", "done");
           setStepStatus("complete", "done");
           stopPolling();
           setIsComplete(true);
@@ -240,9 +234,26 @@ function ActionButtons({ container }: ActionButtonsProps) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hasError]);
 
+  // Separate lightweight mutation for Check for Updates (no progress modal, just toast)
+  const { mutate: runCheckForUpdates } = useMutation({
+    mutationFn: () => api.containers.checkForUpdates(container.docker_id),
+    onMutate: () => setIsCheckingUpdates(true),
+    onSuccess: (data) => {
+      setIsCheckingUpdates(false);
+      const msg = data.update_available ? "Update available" : "Already up to date";
+      showToast(msg, "success");
+      queryClient.invalidateQueries({ queryKey: ["container", container.docker_id] });
+      queryClient.invalidateQueries({ queryKey: ["containers"] });
+    },
+    onError: (err: Error) => {
+      setIsCheckingUpdates(false);
+      showToast(err.message, "error");
+    },
+  });
+
   const { mutate, isPending: mutationIsPending } = useMutation({
     mutationFn: (action: ActionType) => {
-      if (action === "pull-restart") return api.containers.pullRestart(container.docker_id);
+      if (action === "update-and-restart") return api.containers.updateAndRestart(container.docker_id);
       return api.containers[action](container.docker_id);
     },
     onMutate: (action: ActionType) => {
@@ -253,9 +264,19 @@ function ActionButtons({ container }: ActionButtonsProps) {
       steps[0] = { ...steps[0], status: "active" };
       updateSteps(steps);
     },
-    onSuccess: (_data, action) => {
-      if (action === "pull-restart") {
-        setStepStatus("pulling", "done");
+    onSuccess: (data, action) => {
+      if (action === "update-and-restart") {
+        setStepStatus("fetching", "done");
+        const result = data as { restarted: boolean };
+        if (!result.restarted) {
+          // Image was already up to date — no restart needed
+          setStepStatus("restarting", "done");
+          setStepStatus("confirming", "done");
+          setStepStatus("complete", "done");
+          stopPolling();
+          setIsComplete(true);
+          return;
+        }
         setStepStatus("restarting", "active");
       }
       startPolling(action, initialDigestCheckRef.current);
@@ -282,26 +303,23 @@ function ActionButtons({ container }: ActionButtonsProps) {
 
   // Determine which buttons to show
   const state = container.state;
-  const showStop    = state === "running" || state === "restarting" || state === "paused";
-  const showRestart = showStop;
-  const showStart   = state === "exited" || state === "created" || state === "dead";
-
-  if (!showStop && !showStart) return null;
+  const showStop             = state === "running" || state === "restarting" || state === "paused";
+  const showRestart          = showStop;
+  const showStart            = state === "exited" || state === "created" || state === "dead";
+  const showUpdateAndRestart = showStop && container.update_available;
 
   const BUTTON_STYLES: Record<ActionType, string> = {
-    stop:           "border-red-500/50 text-red-400 hover:bg-red-500/10 hover:border-red-400",
-    restart:        "border-yellow-500/50 text-yellow-400 hover:bg-yellow-500/10 hover:border-yellow-400",
-    start:          "border-green-500/50 text-green-400 hover:bg-green-500/10 hover:border-green-400",
-    "pull-restart": container.update_available
-      ? "border-blue-400 text-blue-400 hover:bg-blue-500/10"
-      : "border-blue-500/50 text-blue-400 hover:bg-blue-500/10 hover:border-blue-400",
+    stop:                 "border-red-500/50 text-red-400 hover:bg-red-500/10 hover:border-red-400",
+    restart:              "border-yellow-500/50 text-yellow-400 hover:bg-yellow-500/10 hover:border-yellow-400",
+    start:                "border-green-500/50 text-green-400 hover:bg-green-500/10 hover:border-green-400",
+    "update-and-restart": "border-blue-400 text-blue-400 hover:bg-blue-500/10",
   };
 
   const modalMessages: Record<ActionType, string> = {
-    stop:           `Are you sure you want to stop ${container.name}?`,
-    restart:        `Are you sure you want to restart ${container.name}?`,
-    start:          `Are you sure you want to start ${container.name}?`,
-    "pull-restart": `Pull the latest image and restart ${container.name}? This may take a moment.`,
+    stop:                 `Are you sure you want to stop ${container.name}?`,
+    restart:              `Are you sure you want to restart ${container.name}?`,
+    start:                `Are you sure you want to start ${container.name}?`,
+    "update-and-restart": `Update ${container.name} to the latest image and restart? The container will only restart if a new image is available.`,
   };
 
   return (
@@ -333,7 +351,7 @@ function ActionButtons({ container }: ActionButtonsProps) {
         <div className="flex flex-wrap gap-2">
           {showRestart && (
             <button
-              disabled={isPending}
+              disabled={isPending || isCheckingUpdates}
               onClick={() => requestAction("restart")}
               className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg border transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${BUTTON_STYLES.restart}`}
             >
@@ -345,23 +363,9 @@ function ActionButtons({ container }: ActionButtonsProps) {
               Restart
             </button>
           )}
-          {showRestart && (
-            <button
-              disabled={isPending}
-              onClick={() => requestAction("pull-restart")}
-              className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg border transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${BUTTON_STYLES["pull-restart"]}`}
-            >
-              {isPending && pendingAction === "pull-restart" ? <Spinner /> : (
-                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                </svg>
-              )}
-              Pull &amp; Restart
-            </button>
-          )}
           {showStop && (
             <button
-              disabled={isPending}
+              disabled={isPending || isCheckingUpdates}
               onClick={() => requestAction("stop")}
               className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg border transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${BUTTON_STYLES.stop}`}
             >
@@ -376,7 +380,7 @@ function ActionButtons({ container }: ActionButtonsProps) {
           )}
           {showStart && (
             <button
-              disabled={isPending}
+              disabled={isPending || isCheckingUpdates}
               onClick={() => requestAction("start")}
               className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg border transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${BUTTON_STYLES.start}`}
             >
@@ -387,6 +391,32 @@ function ActionButtons({ container }: ActionButtonsProps) {
                 </svg>
               )}
               Start
+            </button>
+          )}
+          <button
+            disabled={isPending || isCheckingUpdates}
+            onClick={() => runCheckForUpdates()}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg border transition-colors disabled:opacity-50 disabled:cursor-not-allowed border-slate-600 text-slate-400 hover:bg-surface-3 hover:border-slate-500"
+          >
+            {isCheckingUpdates ? <Spinner /> : (
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            )}
+            Check for Updates
+          </button>
+          {showUpdateAndRestart && (
+            <button
+              disabled={isPending || isCheckingUpdates}
+              onClick={() => requestAction("update-and-restart")}
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg border transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${BUTTON_STYLES["update-and-restart"]}`}
+            >
+              {isPending && pendingAction === "update-and-restart" ? <Spinner /> : (
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+              )}
+              Update &amp; Restart
             </button>
           )}
         </div>
