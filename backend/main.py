@@ -15,7 +15,9 @@ from sqlmodel import Session
 logger = logging.getLogger(__name__)
 
 _version_file = Path("/app/VERSION")
-APP_VERSION = _version_file.read_text().strip() if _version_file.exists() else "dev"
+_raw_version = _version_file.read_text().strip() if _version_file.exists() else "dev"
+_build_channel = os.environ.get("BUILD_CHANNEL", "")
+APP_VERSION = f"{_raw_version}-dev" if _build_channel == "dev" else _raw_version
 
 from database import create_db_and_tables, engine
 from api import containers, logs, events, settings, actions, admin, stack_actions
