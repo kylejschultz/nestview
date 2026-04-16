@@ -43,6 +43,14 @@ export default function ContainerCard({ container: c }: Props) {
                 : formatBytes(c.mem_usage)
             }
           />
+          {(c.net_rx_bytes != null || c.net_tx_bytes != null) && (
+            <div className="flex items-center justify-between text-xs text-slate-400">
+              <span className="text-slate-500">Net I/O</span>
+              <span>
+                ↓ {formatBytes(c.net_rx_bytes ?? 0)} / ↑ {formatBytes(c.net_tx_bytes ?? 0)}
+              </span>
+            </div>
+          )}
         </div>
       )}
 

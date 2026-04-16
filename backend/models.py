@@ -40,6 +40,8 @@ class Container(SQLModel, table=True):
     image_size: Optional[int] = None
     last_pulled: Optional[datetime] = None
     update_alert_sent_digest: Optional[str] = None
+    net_rx_bytes: Optional[int] = 0
+    net_tx_bytes: Optional[int] = 0
 
 
 class ContainerLog(SQLModel, table=True):

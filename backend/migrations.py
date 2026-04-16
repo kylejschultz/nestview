@@ -67,9 +67,34 @@ def _migrate_002(engine: Engine) -> None:
         conn.commit()
 
 
+def _migrate_003(engine: Engine) -> None:
+    """Add net_rx_bytes and net_tx_bytes columns to container table."""
+    inspector = inspect(engine)
+    existing_cols = {col["name"] for col in inspector.get_columns("container")}
+
+    columns_to_add = [
+        ("net_rx_bytes", "INTEGER NOT NULL DEFAULT 0"),
+        ("net_tx_bytes", "INTEGER NOT NULL DEFAULT 0"),
+    ]
+
+    with engine.connect() as conn:
+        for col_name, col_type in columns_to_add:
+            if col_name in existing_cols:
+                logger.info("migration 003: column %s already present, skipping", col_name)
+                continue
+            try:
+                conn.execute(text(f"ALTER TABLE container ADD COLUMN {col_name} {col_type}"))
+                logger.info("migration 003: added column %s", col_name)
+            except Exception as e:
+                logger.warning("migration 003: could not add column %s: %s", col_name, e)
+                raise
+        conn.commit()
+
+
 MIGRATIONS: list[tuple[str, Callable]] = [
     ("001", _migrate_001),
     ("002", _migrate_002),
+    ("003", _migrate_003),
 ]
 
 

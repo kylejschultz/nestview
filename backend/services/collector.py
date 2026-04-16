@@ -71,6 +71,15 @@ def _mem_bytes(stats: dict) -> tuple[int, int]:
     return max(0, usage - cache), limit
 
 
+def _net_bytes(stats: dict) -> tuple[int, int]:
+    """Return (rx_bytes, tx_bytes) summed across all network interfaces."""
+    rx, tx = 0, 0
+    for iface in stats.get("networks", {}).values():
+        rx += iface.get("rx_bytes", 0)
+        tx += iface.get("tx_bytes", 0)
+    return rx, tx
+
+
 # ── Container data collection ──────────────────────────────────────────────────
 
 
@@ -81,6 +90,7 @@ def _collect_one(container) -> Optional[dict]:
 
         cpu = _cpu_percent(raw_stats)
         mem_usage, mem_limit = _mem_bytes(raw_stats)
+        net_rx, net_tx = _net_bytes(raw_stats)
 
         labels = container.labels or {}
         ports_map = container.ports or {}
@@ -122,6 +132,8 @@ def _collect_one(container) -> Optional[dict]:
             "compose_service": labels.get("com.docker.compose.service"),
             "created_at": container.attrs.get("Created"),
             "started_at": container.attrs.get("State", {}).get("StartedAt"),
+            "net_rx_bytes": net_rx,
+            "net_tx_bytes": net_tx,
         }
     except Exception as exc:
         name = _safe_name(getattr(container, "name", "?"))
@@ -167,6 +179,8 @@ def _apply_batch(containers_data: list[dict]) -> None:
                 existing.compose_project = c["compose_project"]
                 existing.compose_service = c["compose_service"]
                 existing.started_at = _parse_dt(c["started_at"])
+                existing.net_rx_bytes = c["net_rx_bytes"]
+                existing.net_tx_bytes = c["net_tx_bytes"]
                 existing.last_seen = datetime.utcnow()
                 session.add(existing)
             else:
@@ -188,6 +202,8 @@ def _apply_batch(containers_data: list[dict]) -> None:
                     compose_service=c["compose_service"],
                     created_at=_parse_dt(c["created_at"]),
                     started_at=_parse_dt(c["started_at"]),
+                    net_rx_bytes=c["net_rx_bytes"],
+                    net_tx_bytes=c["net_tx_bytes"],
                     last_seen=datetime.utcnow(),
                 )
                 session.add(new_container)
