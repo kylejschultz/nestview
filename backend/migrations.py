@@ -48,8 +48,28 @@ def _migrate_001(engine: Engine) -> None:
         conn.commit()
 
 
+def _migrate_002(engine: Engine) -> None:
+    """Add last_pulled column to container table (missed from initial image-update schema)."""
+    inspector = inspect(engine)
+    existing_cols = {col["name"] for col in inspector.get_columns("container")}
+
+    if "last_pulled" in existing_cols:
+        logger.info("migration 002: column last_pulled already present, skipping")
+        return
+
+    with engine.connect() as conn:
+        try:
+            conn.execute(text("ALTER TABLE container ADD COLUMN last_pulled TEXT"))
+            logger.info("migration 002: added column last_pulled")
+        except Exception as e:
+            logger.warning("migration 002: could not add column last_pulled: %s", e)
+            raise
+        conn.commit()
+
+
 MIGRATIONS: list[tuple[str, Callable]] = [
     ("001", _migrate_001),
+    ("002", _migrate_002),
 ]
 
 
