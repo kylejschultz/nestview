@@ -81,20 +81,76 @@ def _fetch_dockerhub_digest(namespace: str, repo: str, tag: str) -> Optional[str
     return data.get("digest")
 
 
-def _fetch_ghcr_digest(namespace: str, repo: str, tag: str) -> Optional[str]:
-    url = f"https://ghcr.io/v2/{namespace}/{repo}/manifests/{tag}"
-    headers = {"Accept": "application/vnd.docker.distribution.manifest.v2+json"}
-    resp = requests.get(url, headers=headers, timeout=15)
+def _fetch_oci_digest(registry: str, namespace: str, repo: str, tag: str) -> Optional[str]:
+    """
+    Fetch a manifest digest from any OCI Distribution Spec registry that uses
+    bearer token auth (e.g. ghcr.io, lscr.io).
+
+    Flow:
+      1. Request the manifest endpoint unauthenticated.
+      2. If the registry returns 401 with a WWW-Authenticate bearer challenge,
+         obtain an anonymous token from the realm URL and retry with it.
+      3. Read the digest from the Docker-Content-Digest response header.
+    """
+    manifest_url = f"https://{registry}/v2/{namespace}/{repo}/manifests/{tag}"
+    accept_header = "application/vnd.docker.distribution.manifest.v2+json"
+    headers = {"Accept": accept_header}
+
+    resp = requests.get(manifest_url, headers=headers, timeout=15)
+
+    if resp.status_code == 401:
+        www_auth = resp.headers.get("WWW-Authenticate", "")
+        token = _resolve_bearer_token(www_auth)
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
+            resp = requests.get(manifest_url, headers=headers, timeout=15)
+
     resp.raise_for_status()
-    digest = resp.headers.get("Docker-Content-Digest")
-    return digest
+    return resp.headers.get("Docker-Content-Digest")
+
+
+def _resolve_bearer_token(www_authenticate: str) -> Optional[str]:
+    """
+    Parse a WWW-Authenticate: Bearer header and fetch an anonymous token.
+
+    Example header:
+      Bearer realm="https://ghcr.io/token",service="ghcr.io",scope="repository:owner/repo:pull"
+    """
+    if not www_authenticate.lower().startswith("bearer "):
+        return None
+
+    params: dict = {}
+    for part in www_authenticate[7:].split(","):
+        part = part.strip()
+        if "=" in part:
+            key, _, value = part.partition("=")
+            params[key.strip()] = value.strip().strip('"')
+
+    realm = params.get("realm")
+    if not realm:
+        return None
+
+    query: dict = {}
+    if "service" in params:
+        query["service"] = params["service"]
+    if "scope" in params:
+        query["scope"] = params["scope"]
+
+    try:
+        token_resp = requests.get(realm, params=query, timeout=15)
+        token_resp.raise_for_status()
+        data = token_resp.json()
+        return data.get("token") or data.get("access_token")
+    except Exception as exc:
+        logger.debug("image_checker: bearer token fetch failed: %s", exc)
+        return None
 
 
 def _fetch_registry_digest(registry: str, namespace: str, repo: str, tag: str) -> Optional[str]:
     if registry == "docker.io":
         return _fetch_dockerhub_digest(namespace, repo, tag)
-    if registry == "ghcr.io":
-        return _fetch_ghcr_digest(namespace, repo, tag)
+    if registry in ("ghcr.io", "lscr.io"):
+        return _fetch_oci_digest(registry, namespace, repo, tag)
     logger.debug("image_checker: unsupported registry %r — skipping", registry)
     return None
 
