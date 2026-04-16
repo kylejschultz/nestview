@@ -9,7 +9,7 @@ uvicorn[standard]==0.44.0
 sqlmodel==0.0.38
 apscheduler==3.11.2
 httpx==0.28.1
-pydantic==2.12.5
+pydantic==2.13.1
 docker==7.1.0
 # Explicit requests pin to fix CVE GHSA-gc5v-m9x4-r6x2 (transitive via docker SDK).
 requests>=2.33.0
