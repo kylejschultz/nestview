@@ -4,6 +4,65 @@ import StatusBadge from "./StatusBadge";
 import MetricBar from "./MetricBar";
 import { formatBytes, formatUptime } from "../utils";
 
+interface ImageRef {
+  registry: string;
+  shortName: string;
+  tag: string;
+}
+
+function parseImageRef(image: string): ImageRef {
+  // Strip digest suffix
+  if (image.includes("@")) {
+    image = image.split("@")[0];
+  }
+
+  // Split tag
+  let tag = "latest";
+  const lastSlashIdx = image.lastIndexOf("/");
+  const afterLastSlash = image.slice(lastSlashIdx + 1);
+  if (afterLastSlash.includes(":")) {
+    const colonIdx = image.lastIndexOf(":");
+    tag = image.slice(colonIdx + 1);
+    image = image.slice(0, colonIdx);
+  }
+
+  const parts = image.split("/");
+
+  // A part containing a dot or colon is a registry host
+  let registry: string;
+  let rest: string[];
+  if (parts.length >= 2 && (parts[0].includes(".") || parts[0].includes(":"))) {
+    registry = parts[0];
+    rest = parts.slice(1);
+  } else {
+    registry = "docker.io";
+    rest = parts;
+  }
+
+  // Short name is the last path segment (repo name without namespace)
+  const shortName = rest[rest.length - 1] || image;
+
+  // Friendly label for Docker Hub
+  const registryLabel = registry === "docker.io" ? "hub" : registry;
+
+  return { registry: registryLabel, shortName, tag };
+}
+
+function ImageSubtitle({ image }: { image: string }) {
+  const { registry, shortName, tag } = parseImageRef(image);
+  return (
+    <div className="flex items-center gap-1 mt-0.5 flex-wrap">
+      <span className="inline-flex px-1 py-0.5 rounded text-[10px] font-mono bg-surface-3 text-slate-400 border border-border">
+        {registry}
+      </span>
+      <span className="text-xs text-slate-400 font-mono">{shortName}</span>
+      <span className="inline-flex px-1 py-0.5 rounded text-[10px] font-mono bg-surface-3 text-slate-400 border border-border">
+        {tag}
+      </span>
+    </div>
+  );
+}
+
 interface Props {
   container: Container;
 }
@@ -19,7 +78,7 @@ export default function ContainerCard({ container: c }: Props) {
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <p className="font-medium text-slate-100 truncate">{c.name}</p>
-          <p className="text-xs text-slate-500 font-mono truncate mt-0.5">{c.image}</p>
+          <ImageSubtitle image={c.image} />
         </div>
         <div className="flex items-center gap-2 shrink-0">
           {c.update_available && (
