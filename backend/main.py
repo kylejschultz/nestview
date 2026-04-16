@@ -50,7 +50,8 @@ def _seed_settings_from_env():
 async def lifespan(app: FastAPI):
     create_db_and_tables()
     from migrations import run_migrations
-    run_migrations(engine)
+    with Session(engine) as _migration_session:
+        run_migrations(engine, _migration_session)
     _seed_settings_from_env()
 
     # Handle RESET_ADMIN_PASSWORD env var — clears credentials so setup wizard re-triggers
