@@ -16,8 +16,6 @@ nestview (FastAPI + SQLModel + SQLite + embedded React)
   └── runs collector threads in-process (stats poll, log stream, event watcher)
 ```
 
-**Schema migrations** are handled by `backend/migrations.py` — a lightweight custom system, not Alembic. There is no alembic package or dependency. `create_db_and_tables()` handles fresh installs via SQLModel's `create_all`. Upgrades are handled by a sequential list of versioned migration functions in `migrations.py`, with the current version tracked in the `AppSetting` table under key `schema_version`. To add a column: add it to the model as `Optional` with a default, then append a new `(version_str, fn)` entry to the `MIGRATIONS` list in `migrations.py`. Failures raise loudly — do not swallow migration exceptions.
-
 ---
 
 ## Repository Layout
@@ -113,74 +111,10 @@ All config is in `.env` (copy from `.env.example`). Docker Compose auto-loads it
 
 ---
 
-## Local Development
-
-**Backend** (requires Python 3.11+):
-```bash
-cd backend
-python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-DATABASE_PATH=./dev.db uvicorn main:app --reload
-# API available at http://localhost:8000
-# Swagger UI at http://localhost:8000/docs
-```
-
-**Frontend:**
-```bash
-cd frontend
-npm install
-npm run dev
-# Vite proxies /api/ to localhost:8000
-# UI at http://localhost:5173
-```
-
-**Full stack via Compose** (single service):
-```bash
-cp .env.example .env   # edit as needed
-docker compose up --build
-# UI at http://localhost:8484
-```
-
----
-
 ## API Endpoints
 
-All endpoints are prefixed `/api/`.
+All endpoints are prefixed `/api/`. See `backend/api/` for route definitions.
 
-| Method | Path | Auth | Description |
-|---|---|---|---|
-| `GET` | `/health` | none | Liveness probe |
-| `GET`  | `/auth/status`  | none | Setup status and auth mode |
-| `POST` | `/auth/setup`   | none | First-run credential setup (409 if already done) |
-| `POST` | `/auth/login`   | none | Exchange credentials for session cookie |
-| `POST` | `/auth/logout`  | none | Clear session cookie |
-| `GET`  | `/auth/me`      | none | Current session info (401 if not authenticated) |
-| `POST` | `/auth/change-password` | cookie | Update the admin password (requires current password) |
-| `GET` | `/containers` | cookie | List all containers |
-| `GET` | `/containers/{docker_id}` | cookie | Single container |
-| `POST` | `/containers/{docker_id}/start` | cookie | Start container |
-| `POST` | `/containers/{docker_id}/stop` | cookie | Stop container |
-| `POST` | `/containers/{docker_id}/restart` | cookie | Restart container |
-| `POST` | `/containers/{docker_id}/pull-restart` | cookie | Pull latest image and restart container |
-| `GET` | `/containers/{docker_id}/logs` | cookie | Container logs (paginated, searchable) |
-| `GET` | `/logs` | cookie | All logs (paginated, searchable) |
-| `GET` | `/collector/events` | cookie | Event timeline |
-| `GET` | `/settings/alerts` | cookie | List alert settings |
-| `PATCH` | `/settings/alerts` | cookie | Enable/disable an alert type per container |
-| `POST` | `/stacks/{compose_project}/stop` | cookie | Stop all containers in a compose stack |
-| `POST` | `/stacks/{compose_project}/start` | cookie | Start all containers in a compose stack |
-| `POST` | `/stacks/{compose_project}/restart` | cookie | Restart all containers in a compose stack |
-| `POST` | `/stacks/{compose_project}/pull-restart` | cookie | Pull latest images and restart a compose stack |
-| `POST` | `/admin/check-images` | cookie | Trigger an immediate image update check |
-
----
-
-## Data Notes
-
-- **SQLite DB** lives in the `nestview_data` Docker volume at `/data/nestview.db`.
-- **Backup:** `docker compose cp nestview:/data/nestview.db ./nestview-backup.db`
-- **Full reset:** `docker compose down -v`
-- Ports, volumes, and networks are JSON-encoded strings in the DB. They are decoded to arrays in all GET responses. The frontend receives them as `string[]`.
 
 ---
 
@@ -220,15 +154,7 @@ Common types: `feat`, `fix`, `chore`, `docs`, `refactor`, `test`, `style`.
 After completing any task:
 1. Commit all changes using conventional commit format
 2. Push to `dev`
-3. Handle the PR:
-   - Check for any open PRs from dev to main: `gh pr list --base main --head dev --state open`
-   - If an open PR exists, read its current commit list and evaluate whether the new commit(s) are part of the same logical effort (same feature, same bug, same area of the app). Use commit messages and scopes (e.g. `feat(frontend):`, `fix(collector):`) as the primary signal.
-     - If yes: regenerate the full PR body to reflect all commits currently in the PR.
-     - If no: open a new PR for the new commit(s) with `gh pr create --base main --title "<descriptive title>" --body "<summary>"`
-   - **PR body content:** Describe outcomes, not the development journey. The PR body should read as a description of what the feature or change delivers — not a log of every iteration, fix, or debugging step taken along the way. Fix commits that exist solely because of mistakes made during the current PR's work should be collapsed into the feature description they belong to. Only fixes that address pre-existing bugs from `main` deserve their own callout.
-
-     Use a `## Summary` section with short prose paragraphs or bullets grouped by area (backend, frontend, docs). Use a `## Commits` section with short SHA + message per commit for the full record. Apply with `gh pr edit <number> --body "..."`.
-   - If no open PR exists: create one with `gh pr create --base main --title "<descriptive title>" --body "<summary>"`
+3. Do not open or update a PR. A separate prompt handles PR creation when the work is ready to merge.
 
 Never push directly to `main`. All work happens on `dev` and goes to `main` via PR.
 
@@ -243,3 +169,25 @@ Never push directly to `main`. All work happens on `dev` and goes to `main` via 
 - **macOS/Colima/OrbStack** all expose the socket at `/var/run/docker.sock` — no config changes needed. Only non-standard socket paths require updating the volume mount in `docker-compose.yml`.
 - **Collector writes directly to DB** — there are no HTTP endpoints for collector ingest. The collector runs in-process and uses SQLModel sessions directly.
 - **`RESET_ADMIN_PASSWORD` must be removed after use** — leaving it set means every restart clears credentials. Document this clearly when advising users.
+
+## Validation
+
+Claude Code should not run validation commands as part of task completion — it does not have access to the Docker build environment, and lightweight checks like `curl` may unintentionally hit the live local stack.
+
+Validation is always performed manually by the developer. The chat session that generated the implementation prompt will provide a validation checklist alongside the prompt.
+
+---
+
+## Prompt Generation Guidelines
+
+When generating implementation prompts for phases, fixes, or features:
+
+- Describe **intent and constraints**, not implementation details
+- Reference relevant files or modules for context, but do not pre-write code
+- Include clear acceptance criteria (what "done" looks like)
+- Define explicit scope boundaries (what is out of scope for this prompt)
+- Reserve code blocks only for values that must be exact: env var names, API route paths, config keys, specific error messages
+- Let Claude Code read the repo and make locally-coherent implementation decisions based on existing patterns and CLAUDE.md conventions
+- Do not include validation steps in the prompt — the chat session that generated the prompt will provide a validation checklist separately
+
+The goal is a prompt that reads like a senior eng handing off a ticket — specific enough to prevent wandering, open enough to allow good local judgment.
