@@ -93,7 +93,13 @@ def _fetch_oci_digest(registry: str, namespace: str, repo: str, tag: str) -> Opt
       3. Read the digest from the Docker-Content-Digest response header.
     """
     manifest_url = f"https://{registry}/v2/{namespace}/{repo}/manifests/{tag}"
-    accept_header = "application/vnd.docker.distribution.manifest.v2+json"
+    # Include all common manifest media types so registries like lscr.io don't 404.
+    accept_header = ", ".join([
+        "application/vnd.docker.distribution.manifest.v2+json",
+        "application/vnd.docker.distribution.manifest.list.v2+json",
+        "application/vnd.oci.image.manifest.v1+json",
+        "application/vnd.oci.image.index.v1+json",
+    ])
     headers = {"Accept": accept_header}
 
     resp = requests.get(manifest_url, headers=headers, timeout=15)
