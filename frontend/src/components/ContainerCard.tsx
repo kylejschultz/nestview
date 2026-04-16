@@ -49,16 +49,19 @@ function parseImageRef(image: string): ImageRef {
 }
 
 function ImageSubtitle({ image }: { image: string }) {
-  const { registry, shortName, tag } = parseImageRef(image);
+  const { registry, tag } = parseImageRef(image);
   return (
-    <div className="flex items-center gap-1 mt-0.5 flex-wrap">
-      <span className="inline-flex px-1 py-0.5 rounded text-[10px] font-mono bg-surface-3 text-slate-400 border border-border">
-        {registry}
-      </span>
-      <span className="text-xs text-slate-400 font-mono">{shortName}</span>
-      <span className="inline-flex px-1 py-0.5 rounded text-[10px] font-mono bg-surface-3 text-slate-400 border border-border">
-        {tag}
-      </span>
+    <div className="flex items-center justify-between gap-2 mt-0.5">
+      {registry ? (
+        <span className="text-xs text-slate-500 font-mono">{registry}</span>
+      ) : (
+        <span />
+      )}
+      {tag && (
+        <span className="inline-flex px-1 py-0.5 rounded text-[10px] font-mono bg-surface-3 text-slate-400 border border-border">
+          {tag}
+        </span>
+      )}
     </div>
   );
 }
