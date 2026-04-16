@@ -10,6 +10,9 @@ RUN npm run build
 # ── Stage 2: Python backend + embedded frontend ───────────────────────────
 FROM python:3.14-slim
 
+ARG BUILD_CHANNEL
+ENV BUILD_CHANNEL=${BUILD_CHANNEL}
+
 RUN pip install --upgrade pip
 
 WORKDIR /app
