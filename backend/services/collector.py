@@ -11,19 +11,23 @@ import re
 import threading
 import time
 from collections import defaultdict
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 import docker
 from sqlmodel import Session, delete, select
 
 from database import engine
-from models import Container, ContainerAlertSetting, ContainerEvent, ContainerLog
+from models import Container, ContainerAlertSetting, ContainerEvent, ContainerLog, ContainerNetworkHistory
 from services import discord
 from services.app_settings import get_setting
 
 POLL_INTERVAL = 10       # overridden by env var at startup
 LOG_BATCH_INTERVAL = 5   # overridden by env var at startup
+
+# Number of history points to retain per container.
+# At the default 10s poll interval this covers exactly 1 hour.
+_MAX_HISTORY_POINTS = 360
 
 client = docker.from_env()
 
@@ -33,6 +37,9 @@ _log_threads: dict[str, threading.Thread] = {}
 # container_id → list of log dicts (flushed periodically)
 _log_buffer: dict[str, list] = defaultdict(list)
 _log_lock = threading.Lock()
+
+# container_id → last known started_at string (used to detect restarts)
+_container_started_at: dict[str, Optional[str]] = {}
 
 
 def _safe_name(name: str) -> str:
@@ -159,9 +166,24 @@ def _apply_batch(containers_data: list[dict]) -> None:
     seen_ids = set()
     with Session(engine) as session:
         for c in containers_data:
-            seen_ids.add(c["docker_id"])
+            docker_id = c["docker_id"]
+            seen_ids.add(docker_id)
+
+            # Restart detection: if started_at changed, the container has restarted
+            # since the last poll — clear its network history so the chart starts fresh.
+            new_started = c["started_at"]
+            prev_started = _container_started_at.get(docker_id)
+            if prev_started is not None and prev_started != new_started:
+                session.exec(
+                    delete(ContainerNetworkHistory).where(
+                        ContainerNetworkHistory.container_id == docker_id
+                    )
+                )
+                print(f"[collector] Cleared network history for {c['name']} (restart detected)")
+            _container_started_at[docker_id] = new_started
+
             existing = session.exec(
-                select(Container).where(Container.docker_id == c["docker_id"])
+                select(Container).where(Container.docker_id == docker_id)
             ).first()
 
             if existing:
@@ -185,7 +207,7 @@ def _apply_batch(containers_data: list[dict]) -> None:
                 session.add(existing)
             else:
                 new_container = Container(
-                    docker_id=c["docker_id"],
+                    docker_id=docker_id,
                     short_id=c["short_id"],
                     name=c["name"],
                     image=c["image"],
@@ -233,6 +255,35 @@ def _apply_batch(containers_data: list[dict]) -> None:
             ghost = session.get(Container, gid)
             if ghost:
                 session.delete(ghost)
+
+        session.commit()
+
+
+def _write_network_history(containers_data: list[dict]) -> None:
+    """Write one rx/tx snapshot per running container, then prune old records."""
+    now = datetime.utcnow()
+    cutoff = now - timedelta(seconds=POLL_INTERVAL * _MAX_HISTORY_POINTS)
+
+    with Session(engine) as session:
+        for c in containers_data:
+            if c.get("state") != "running":
+                continue
+
+            docker_id = c["docker_id"]
+            session.add(ContainerNetworkHistory(
+                container_id=docker_id,
+                rx_bytes=c["net_rx_bytes"],
+                tx_bytes=c["net_tx_bytes"],
+                recorded_at=now,
+            ))
+
+            # Prune records outside the rolling retention window for this container
+            session.exec(
+                delete(ContainerNetworkHistory).where(
+                    ContainerNetworkHistory.container_id == docker_id,
+                    ContainerNetworkHistory.recorded_at < cutoff,
+                )
+            )
 
         session.commit()
 
@@ -369,6 +420,17 @@ def _watch_events() -> None:
                             alerted=False,
                         )
                         session.add(db_event)
+
+                        # Clear network history when a container stops — the history
+                        # only represents the current run, so stale points are removed
+                        # here rather than waiting for the stats loop to detect it.
+                        if action in {"stop", "die", "kill"}:
+                            session.exec(
+                                delete(ContainerNetworkHistory).where(
+                                    ContainerNetworkHistory.container_id == container_id
+                                )
+                            )
+
                         session.commit()
                         session.refresh(db_event)
 
@@ -434,6 +496,7 @@ def _stats_loop() -> None:
 
             if container_data:
                 _apply_batch(container_data)
+                _write_network_history(container_data)
 
             if time.time() - last_flush >= LOG_BATCH_INTERVAL:
                 _flush_logs()

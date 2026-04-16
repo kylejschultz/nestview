@@ -91,10 +91,40 @@ def _migrate_003(engine: Engine) -> None:
         conn.commit()
 
 
+def _migrate_004(engine: Engine) -> None:
+    """Create container_network_history table for per-container network I/O history."""
+    inspector = inspect(engine)
+    if "container_network_history" in inspector.get_table_names():
+        logger.info("migration 004: table container_network_history already present, skipping")
+        return
+
+    with engine.connect() as conn:
+        conn.execute(text("""
+            CREATE TABLE container_network_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                container_id TEXT NOT NULL,
+                rx_bytes INTEGER NOT NULL DEFAULT 0,
+                tx_bytes INTEGER NOT NULL DEFAULT 0,
+                recorded_at TEXT NOT NULL
+            )
+        """))
+        conn.execute(text(
+            "CREATE INDEX ix_container_network_history_container_id "
+            "ON container_network_history (container_id)"
+        ))
+        conn.execute(text(
+            "CREATE INDEX ix_container_network_history_recorded_at "
+            "ON container_network_history (recorded_at)"
+        ))
+        conn.commit()
+    logger.info("migration 004: created table container_network_history")
+
+
 MIGRATIONS: list[tuple[str, Callable]] = [
     ("001", _migrate_001),
     ("002", _migrate_002),
     ("003", _migrate_003),
+    ("004", _migrate_004),
 ]
 
 
