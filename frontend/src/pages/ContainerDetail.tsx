@@ -267,7 +267,7 @@ function ActionButtons({ container }: ActionButtonsProps) {
     onSuccess: (data, action) => {
       if (action === "update-and-restart") {
         setStepStatus("fetching", "done");
-        const result = data as { restarted: boolean };
+        const result = data as unknown as { restarted: boolean };
         if (!result.restarted) {
           // Image was already up to date — no restart needed
           setStepStatus("restarting", "done");
