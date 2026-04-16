@@ -468,6 +468,9 @@ export default function ContainerDetail() {
   }
 
   const memPct = container.mem_limit > 0 ? (container.mem_usage / container.mem_limit) * 100 : 0;
+  const netRx = container.net_rx_bytes ?? 0;
+  const netTx = container.net_tx_bytes ?? 0;
+  const netPeak = Math.max(netRx, netTx, 1);
 
   return (
     <div className="space-y-6">
@@ -513,6 +516,8 @@ export default function ContainerDetail() {
                   : formatBytes(container.mem_usage)
               }
             />
+            <MetricBar label="Net RX" value={(netRx / netPeak) * 100} display={formatBytes(netRx)} />
+            <MetricBar label="Net TX" value={(netTx / netPeak) * 100} display={formatBytes(netTx)} />
             <div className="pt-2 space-y-1 text-sm">
               <div className="flex justify-between text-slate-400">
                 <span>Uptime</span>

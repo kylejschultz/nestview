@@ -45,6 +45,8 @@ function StackActionSpinner() {
 interface ComposeGroupProps {
   project: string;
   members: Container[];
+  peakNetRx: number;
+  peakNetTx: number;
 }
 
 const STACK_SUCCESS_MESSAGES: Record<StackAction, string> = {
@@ -53,7 +55,7 @@ const STACK_SUCCESS_MESSAGES: Record<StackAction, string> = {
   restart: "Stack restarted",
 };
 
-function ComposeGroup({ project, members }: ComposeGroupProps) {
+function ComposeGroup({ project, members, peakNetRx, peakNetTx }: ComposeGroupProps) {
   const queryClient = useQueryClient();
   const [collapsed, setCollapsed] = useState<boolean>(() => !!loadCollapsed()[project]);
   const [pendingAction, setPendingAction] = useState<StackAction | null>(null);
@@ -433,7 +435,7 @@ function ComposeGroup({ project, members }: ComposeGroupProps) {
         <div className="overflow-hidden">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 p-4">
             {members.map((c) => (
-              <ContainerCard key={c.docker_id} container={c} />
+              <ContainerCard key={c.docker_id} container={c} peakNetRx={peakNetRx} peakNetTx={peakNetTx} />
             ))}
           </div>
         </div>
@@ -495,6 +497,9 @@ export default function Dashboard() {
   const running = containers.filter((c) => c.state === "running").length;
   const stopped = containers.filter((c) => c.state !== "running").length;
 
+  const peakNetRx = Math.max(0, ...filtered.map((c) => c.net_rx_bytes ?? 0));
+  const peakNetTx = Math.max(0, ...filtered.map((c) => c.net_tx_bytes ?? 0));
+
   const groups: Record<string, Container[]> = {};
   const ungrouped: Container[] = [];
   for (const c of filtered) {
@@ -552,7 +557,7 @@ export default function Dashboard() {
 
         {/* Compose groups — each manages its own collapsed state + localStorage */}
         {Object.entries(groups).map(([project, members]) => (
-          <ComposeGroup key={project} project={project} members={members} />
+          <ComposeGroup key={project} project={project} members={members} peakNetRx={peakNetRx} peakNetTx={peakNetTx} />
         ))}
 
         {/* Ungrouped containers */}
@@ -563,7 +568,7 @@ export default function Dashboard() {
             )}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
               {ungrouped.map((c) => (
-                <ContainerCard key={c.docker_id} container={c} />
+                <ContainerCard key={c.docker_id} container={c} peakNetRx={peakNetRx} peakNetTx={peakNetTx} />
               ))}
             </div>
           </section>
