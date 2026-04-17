@@ -60,6 +60,7 @@ export interface GeneralSettings {
   log_retention_days: number;
   exited_container_ttl_hours: number;
   timezone: string;
+  network_history_retention_hours: number;
 }
 
 export interface WizardStatus {

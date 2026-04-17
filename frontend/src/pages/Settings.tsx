@@ -200,6 +200,7 @@ function GeneralTab({ authMode }: { authMode?: string }) {
   const [webhookDraft, setWebhookDraft] = useState<string | null>(null);
   const [retentionDraft, setRetentionDraft] = useState<string | null>(null);
   const [ttlDraft, setTtlDraft] = useState<string | null>(null);
+  const [netRetentionDraft, setNetRetentionDraft] = useState<number | null>(null);
   const [timezoneDraft, setTimezoneDraft] = useState<string | null>(null);
   const [sessionExpiryDraft, setSessionExpiryDraft] = useState<string | null>(null);
   const [currentPw, setCurrentPw] = useState("");
@@ -217,6 +218,7 @@ function GeneralTab({ authMode }: { authMode?: string }) {
   const webhook = webhookDraft ?? general?.discord_webhook_url ?? "";
   const retention = retentionDraft ?? String(general?.log_retention_days ?? 7);
   const ttl = ttlDraft ?? String(general?.exited_container_ttl_hours ?? 0.083);
+  const netRetention = netRetentionDraft ?? general?.network_history_retention_hours ?? 6;
   const timezone = timezoneDraft ?? general?.timezone ?? "UTC";
   const imageEnabled = enabledDraft ?? serverEnabled;
   const imageTime = timeDraft ?? serverTime;
@@ -232,6 +234,7 @@ function GeneralTab({ authMode }: { authMode?: string }) {
         setRetentionDraft(null);
         setTtlDraft(null);
       }
+      if ("network_history_retention_hours" in variables) setNetRetentionDraft(null);
       if ("timezone" in variables) setTimezoneDraft(null);
       showToast("Settings saved", "success");
     },
@@ -286,6 +289,8 @@ function GeneralTab({ authMode }: { authMode?: string }) {
   if (isLoading || isLoadingAll) {
     return <div className="py-12 text-center text-slate-500">Loading…</div>;
   }
+
+  const NET_RETENTION_OPTIONS = [1, 3, 6, 12, 24];
 
   const retentionNum = parseInt(retention, 10);
   const retentionValid = !isNaN(retentionNum) && retentionNum >= 1 && retentionNum <= 365;
@@ -368,6 +373,31 @@ function GeneralTab({ authMode }: { authMode?: string }) {
                   if (ttlDraft !== null) body.exited_container_ttl_hours = ttlNum;
                   save(body);
                 }}
+                className="px-3 py-1.5 text-xs rounded-lg bg-accent hover:bg-accent-hover text-white font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                Save
+              </button>
+            </div>
+          </div>
+        </SettingRow>
+        <SettingRow label="Network I/O history">
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <select
+                value={netRetention}
+                onChange={(e) => setNetRetentionDraft(parseInt(e.target.value, 10))}
+                disabled={isSaving}
+                className="bg-surface-3 border border-border rounded-lg px-3 py-1.5 text-sm text-slate-200 focus:outline-none focus:border-accent disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {NET_RETENTION_OPTIONS.map((h) => (
+                  <option key={h} value={h}>{h}h</option>
+                ))}
+              </select>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                disabled={isSaving || netRetentionDraft === null}
+                onClick={() => save({ network_history_retention_hours: netRetention })}
                 className="px-3 py-1.5 text-xs rounded-lg bg-accent hover:bg-accent-hover text-white font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 Save

@@ -18,8 +18,9 @@ ALERT_EVENT_TYPES = ("crash", "restart", "oom", "update_available")
 
 _DEFAULT_LOG_RETENTION_DAYS = 7
 _DEFAULT_EXITED_CONTAINER_TTL_HOURS = 0.083
+_DEFAULT_NETWORK_HISTORY_RETENTION_HOURS = 6
 
-_NUMERIC_SETTING_KEYS = {"log_retention_days", "exited_container_ttl_hours"}
+_NUMERIC_SETTING_KEYS = {"log_retention_days", "exited_container_ttl_hours", "network_history_retention_hours"}
 
 # Allowlist of keys that may be written via the generic PATCH /api/settings endpoint.
 # Prevents arbitrary key injection into the AppSetting table.
@@ -32,6 +33,7 @@ _ALLOWED_SETTING_KEYS = {
     "image_check_enabled",
     "image_check_time",
     "session_expiry_days",
+    "network_history_retention_hours",
 }
 
 
@@ -111,11 +113,15 @@ def patch_settings(
 
 # ── General settings ───────────────────────────────────────────────────────────
 
+_VALID_NET_RETENTION_HOURS = {1, 3, 6, 12, 24}
+
+
 class GeneralSettingsPatch(BaseModel):
     discord_webhook_url: str | None = None
     log_retention_days: int | None = None
     exited_container_ttl_hours: float | None = None
     timezone: str | None = None
+    network_history_retention_hours: int | None = None
 
     @field_validator("timezone")
     @classmethod
@@ -157,6 +163,15 @@ class GeneralSettingsPatch(BaseModel):
             raise ValueError("exited_container_ttl_hours must be >= 0")
         return v
 
+    @field_validator("network_history_retention_hours")
+    @classmethod
+    def validate_net_retention(cls, v: int | None) -> int | None:
+        if v is None:
+            return v
+        if v not in _VALID_NET_RETENTION_HOURS:
+            raise ValueError(f"network_history_retention_hours must be one of {sorted(_VALID_NET_RETENTION_HOURS)}")
+        return v
+
 
 @router.get("/general")
 def get_general_settings(session: Session = Depends(get_session)) -> dict:
@@ -166,11 +181,14 @@ def get_general_settings(session: Session = Depends(get_session)) -> dict:
     ttl_str = get_setting(session, "exited_container_ttl_hours")
     ttl = float(ttl_str) if ttl_str else _DEFAULT_EXITED_CONTAINER_TTL_HOURS
     timezone = get_setting(session, "timezone") or "UTC"
+    net_retention_str = get_setting(session, "network_history_retention_hours")
+    net_retention = int(net_retention_str) if net_retention_str else _DEFAULT_NETWORK_HISTORY_RETENTION_HOURS
     return {
         "discord_webhook_url": webhook,
         "log_retention_days": retention,
         "exited_container_ttl_hours": ttl,
         "timezone": timezone,
+        "network_history_retention_hours": net_retention,
     }
 
 
@@ -187,6 +205,8 @@ def patch_general_settings(
         set_setting(session, "exited_container_ttl_hours", str(payload.exited_container_ttl_hours))
     if payload.timezone is not None:
         set_setting(session, "timezone", payload.timezone)
+    if payload.network_history_retention_hours is not None:
+        set_setting(session, "network_history_retention_hours", str(payload.network_history_retention_hours))
     session.commit()
 
     # Return updated values
@@ -196,11 +216,14 @@ def patch_general_settings(
     ttl_str = get_setting(session, "exited_container_ttl_hours")
     ttl = float(ttl_str) if ttl_str else _DEFAULT_EXITED_CONTAINER_TTL_HOURS
     timezone = get_setting(session, "timezone") or "UTC"
+    net_retention_str = get_setting(session, "network_history_retention_hours")
+    net_retention = int(net_retention_str) if net_retention_str else _DEFAULT_NETWORK_HISTORY_RETENTION_HOURS
     return {
         "discord_webhook_url": webhook,
         "log_retention_days": retention,
         "exited_container_ttl_hours": ttl,
         "timezone": timezone,
+        "network_history_retention_hours": net_retention,
     }
 
 

@@ -25,10 +25,6 @@ from services.app_settings import get_setting
 POLL_INTERVAL = 10       # overridden by env var at startup
 LOG_BATCH_INTERVAL = 5   # overridden by env var at startup
 
-# Number of history points to retain per container.
-# At the default 10s poll interval this covers exactly 1 hour.
-_MAX_HISTORY_POINTS = 360
-
 client = docker.from_env()
 
 # container_id → active Thread
@@ -260,11 +256,18 @@ def _apply_batch(containers_data: list[dict]) -> None:
 
 
 def _write_network_history(containers_data: list[dict]) -> None:
-    """Write one rx/tx snapshot per running container, then prune old records."""
+    """Write one rx/tx snapshot per running container, then prune old records.
+
+    The retention window is read from the DB on each call so that changes made
+    in Settings take effect without a container restart.
+    """
     now = datetime.utcnow()
-    cutoff = now - timedelta(seconds=POLL_INTERVAL * _MAX_HISTORY_POINTS)
 
     with Session(engine) as session:
+        retention_str = get_setting(session, "network_history_retention_hours")
+        retention_hours = float(retention_str) if retention_str else 6.0
+        cutoff = now - timedelta(hours=retention_hours)
+
         for c in containers_data:
             if c.get("state") != "running":
                 continue

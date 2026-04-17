@@ -120,11 +120,23 @@ def _migrate_004(engine: Engine) -> None:
     logger.info("migration 004: created table container_network_history")
 
 
+def _migrate_005(engine: Engine) -> None:
+    """Insert default network_history_retention_hours setting if not already present."""
+    with engine.connect() as conn:
+        conn.execute(text(
+            "INSERT OR IGNORE INTO app_setting (key, value, updated_at) "
+            "VALUES ('network_history_retention_hours', '6', datetime('now'))"
+        ))
+        conn.commit()
+    logger.info("migration 005: inserted default network_history_retention_hours = 6")
+
+
 MIGRATIONS: list[tuple[str, Callable]] = [
     ("001", _migrate_001),
     ("002", _migrate_002),
     ("003", _migrate_003),
     ("004", _migrate_004),
+    ("005", _migrate_005),
 ]
 
 
