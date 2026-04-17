@@ -58,7 +58,7 @@ export interface ContainerEvent {
 export interface GeneralSettings {
   discord_webhook_url: string;
   log_retention_days: number;
-  exited_container_ttl_hours: number;
+  exited_container_ttl_seconds: number;
   timezone: string;
   network_history_retention_hours: number;
 }

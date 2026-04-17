@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 # Env-var bootstrap defaults; DB values (set via Settings UI) take precedence
 # at runtime once the service has started for the first time.
 _DEFAULT_LOG_RETENTION_DAYS = int(os.getenv("LOG_RETENTION_DAYS", "7"))
-_DEFAULT_EXITED_CONTAINER_TTL_HOURS = float(os.getenv("EXITED_CONTAINER_TTL_HOURS", "0.083"))
+_DEFAULT_EXITED_CONTAINER_TTL_SECONDS = 300
 
 _TERMINAL_STATES = ("exited", "dead")
 
@@ -30,8 +30,8 @@ def run_cleanup():
             delete(ContainerEvent).where(ContainerEvent.timestamp < log_cutoff)
         )
 
-        ttl_str = get_setting(session, "exited_container_ttl_hours")
-        exited_ttl = float(ttl_str) if ttl_str else _DEFAULT_EXITED_CONTAINER_TTL_HOURS
+        ttl_str = get_setting(session, "exited_container_ttl_seconds")
+        exited_ttl = int(ttl_str) if ttl_str else _DEFAULT_EXITED_CONTAINER_TTL_SECONDS
 
         # TTL-based purge of stale exited/dead container rows.  This is a
         # safety net for containers that disappeared while the collector was
@@ -39,7 +39,7 @@ def run_cleanup():
         purged_containers = 0
         if exited_ttl > 0:
             container_cutoff = datetime.utcnow() - timedelta(
-                hours=exited_ttl
+                seconds=exited_ttl
             )
             c_result = session.exec(
                 delete(Container).where(
@@ -60,6 +60,6 @@ def run_cleanup():
         )
     if purged_containers:
         logger.info(
-            "Purged %d stale exited/dead container records (last_seen > %sh ago)",
+            "Purged %d stale exited/dead container records (last_seen > %ds ago)",
             purged_containers, exited_ttl,
         )

@@ -6,6 +6,7 @@ import type { AlertEventType, AlertSetting, Container, GeneralSettings } from ".
 import WebhookField from "../components/WebhookField";
 import TimezoneSelect from "../components/TimezoneSelect";
 import Toast from "../components/Toast";
+import InfoPopover from "../components/InfoPopover";
 import { useToast } from "../hooks/useToast";
 
 // ── Toggle ────────────────────────────────────────────────────────────────────
@@ -163,10 +164,13 @@ function SectionHeader({ label }: { label: string }) {
   );
 }
 
-function SettingRow({ label, children, last }: { label: string; children: React.ReactNode; last?: boolean }) {
+function SettingRow({ label, info, children, last }: { label: string; info?: string; children: React.ReactNode; last?: boolean }) {
   return (
     <div className={`flex items-start gap-4 px-5 py-3 ${last ? "" : "border-b border-border"}`}>
-      <span className="w-44 shrink-0 text-sm text-slate-400 pt-0.5">{label}</span>
+      <div className="w-44 shrink-0 flex items-center gap-1.5 pt-0.5">
+        <span className="text-sm text-slate-400">{label}</span>
+        {info && <InfoPopover content={info} />}
+      </div>
       <div className="flex-1 min-w-0">{children}</div>
     </div>
   );
@@ -217,7 +221,7 @@ function GeneralTab({ authMode }: { authMode?: string }) {
   // Computed values
   const webhook = webhookDraft ?? general?.discord_webhook_url ?? "";
   const retention = retentionDraft ?? String(general?.log_retention_days ?? 7);
-  const ttl = ttlDraft ?? String(general?.exited_container_ttl_hours ?? 0.083);
+  const ttl = ttlDraft ?? String(general?.exited_container_ttl_seconds ?? 300);
   const netRetention = netRetentionDraft ?? general?.network_history_retention_hours ?? 6;
   const timezone = timezoneDraft ?? general?.timezone ?? "UTC";
   const imageEnabled = enabledDraft ?? serverEnabled;
@@ -230,7 +234,7 @@ function GeneralTab({ authMode }: { authMode?: string }) {
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ["settings-general"] });
       if ("discord_webhook_url" in variables) setWebhookDraft(null);
-      if ("log_retention_days" in variables || "exited_container_ttl_hours" in variables) {
+      if ("log_retention_days" in variables || "exited_container_ttl_seconds" in variables) {
         setRetentionDraft(null);
         setTtlDraft(null);
       }
@@ -290,11 +294,9 @@ function GeneralTab({ authMode }: { authMode?: string }) {
     return <div className="py-12 text-center text-slate-500">Loading…</div>;
   }
 
-  const NET_RETENTION_OPTIONS = [1, 3, 6, 12, 24];
-
   const retentionNum = parseInt(retention, 10);
   const retentionValid = !isNaN(retentionNum) && retentionNum >= 1 && retentionNum <= 365;
-  const ttlNum = parseFloat(ttl);
+  const ttlNum = parseInt(ttl, 10);
   const ttlValid = !isNaN(ttlNum) && ttlNum >= 0;
   const imageHasDraft = enabledDraft !== null || timeDraft !== null;
 
@@ -314,7 +316,7 @@ function GeneralTab({ authMode }: { authMode?: string }) {
 
         {/* DISCORD */}
         <SectionHeader label="Discord" />
-        <SettingRow label="Webhook URL">
+        <SettingRow label="Webhook URL" info="The Discord webhook URL used to send container event alerts. Leave blank to disable Discord notifications.">
           <div className="space-y-2">
             <WebhookField
               value={webhook}
@@ -337,7 +339,7 @@ function GeneralTab({ authMode }: { authMode?: string }) {
 
         {/* RETENTION */}
         <SectionHeader label="Retention" />
-        <SettingRow label="Log retention">
+        <SettingRow label="Log retention" info="How many days of container log history to keep. Older logs are pruned automatically. Default is 7 days.">
           <div className="flex items-center gap-2">
             <input
               type="number"
@@ -350,19 +352,18 @@ function GeneralTab({ authMode }: { authMode?: string }) {
             <span className="text-sm text-slate-500">days</span>
           </div>
         </SettingRow>
-        <SettingRow label="Container TTL">
+        <SettingRow label="Exited container TTL" info="How long an exited container remains visible in the dashboard before being removed. Default is 300 seconds (5 minutes). Set to 0 to disable.">
           <div className="space-y-2">
             <div className="flex items-center gap-2">
               <input
                 type="number"
                 min={0}
-                step={0.001}
+                step={1}
                 value={ttl}
                 onChange={(e) => setTtlDraft(e.target.value)}
-                className="w-20 bg-surface-3 border border-border rounded-lg px-3 py-1.5 text-sm text-slate-200 focus:outline-none focus:border-accent"
+                className="w-24 bg-surface-3 border border-border rounded-lg px-3 py-1.5 text-sm text-slate-200 focus:outline-none focus:border-accent"
               />
-              <span className="text-sm text-slate-500">hours</span>
-              <span className="text-xs text-slate-600">(0 = disabled)</span>
+              <span className="text-sm text-slate-500">seconds</span>
             </div>
             <div className="flex items-center gap-2">
               <button
@@ -370,7 +371,7 @@ function GeneralTab({ authMode }: { authMode?: string }) {
                 onClick={() => {
                   const body: Partial<GeneralSettings> = {};
                   if (retentionDraft !== null) body.log_retention_days = retentionNum;
-                  if (ttlDraft !== null) body.exited_container_ttl_hours = ttlNum;
+                  if (ttlDraft !== null) body.exited_container_ttl_seconds = ttlNum;
                   save(body);
                 }}
                 className="px-3 py-1.5 text-xs rounded-lg bg-accent hover:bg-accent-hover text-white font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
@@ -380,19 +381,20 @@ function GeneralTab({ authMode }: { authMode?: string }) {
             </div>
           </div>
         </SettingRow>
-        <SettingRow label="Network I/O history">
+        <SettingRow label="Network I/O history" info="How many hours of network I/O history to retain per container. Affects the time range shown in the detail panel chart. Default is 6 hours.">
           <div className="space-y-2">
-            <div className="flex items-center gap-2">
-              <select
+            <div className="flex items-center gap-3">
+              <input
+                type="range"
+                min={1}
+                max={48}
+                step={1}
                 value={netRetention}
                 onChange={(e) => setNetRetentionDraft(parseInt(e.target.value, 10))}
                 disabled={isSaving}
-                className="bg-surface-3 border border-border rounded-lg px-3 py-1.5 text-sm text-slate-200 focus:outline-none focus:border-accent disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                {NET_RETENTION_OPTIONS.map((h) => (
-                  <option key={h} value={h}>{h}h</option>
-                ))}
-              </select>
+                className="w-36 accent-accent disabled:opacity-40 disabled:cursor-not-allowed"
+              />
+              <span className="text-sm text-slate-400 w-16">{netRetention} {netRetention === 1 ? "hour" : "hours"}</span>
             </div>
             <div className="flex items-center gap-2">
               <button
@@ -408,7 +410,7 @@ function GeneralTab({ authMode }: { authMode?: string }) {
 
         {/* TIMEZONE */}
         <SectionHeader label="Timezone" />
-        <SettingRow label="Timezone" last>
+        <SettingRow label="Timezone" info="The timezone used for displaying log and event timestamps in the UI. Does not affect how data is stored." last>
           <div className="space-y-2">
             <TimezoneSelect value={timezone} onChange={setTimezoneDraft} disabled={isSaving} />
             <div className="flex items-center gap-2">
@@ -425,7 +427,7 @@ function GeneralTab({ authMode }: { authMode?: string }) {
 
         {/* IMAGE UPDATES */}
         <SectionHeader label="Image Updates" />
-        <SettingRow label="Auto-check">
+        <SettingRow label="Auto-check" info="When enabled, Nestview automatically checks for container image updates once per day at the configured time.">
           <div className="flex items-center">
             <Toggle
               checked={imageEnabled}
@@ -434,7 +436,7 @@ function GeneralTab({ authMode }: { authMode?: string }) {
             />
           </div>
         </SettingRow>
-        <SettingRow label="Daily check time" last>
+        <SettingRow label="Daily check time" info="The time of day to run the automatic image update check. Uses 24-hour format in the configured timezone." last>
           <div className="space-y-2">
             <input
               type="time"
@@ -471,7 +473,7 @@ function GeneralTab({ authMode }: { authMode?: string }) {
         {authMode === "password" && (
           <>
             <SectionHeader label="Security" />
-            <SettingRow label="Session expiry">
+            <SettingRow label="Session expiry" info="How long a login session stays active before requiring re-authentication. Changes apply to new logins only — existing sessions are unaffected.">
               <div className="space-y-2">
                 <div className="flex items-center gap-2">
                   <input
@@ -497,7 +499,6 @@ function GeneralTab({ authMode }: { authMode?: string }) {
                     Save
                   </button>
                 </div>
-                <p className="text-xs text-slate-500">How long a login session lasts before requiring re-authentication. Changes apply to new logins only.</p>
               </div>
             </SettingRow>
             <SettingRow label="Change password" last>

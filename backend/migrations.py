@@ -131,12 +131,44 @@ def _migrate_005(engine: Engine) -> None:
     logger.info("migration 005: inserted default network_history_retention_hours = 6")
 
 
+def _migrate_006(engine: Engine) -> None:
+    """Rename exited_container_ttl_hours to exited_container_ttl_seconds, converting hours → seconds."""
+    with engine.connect() as conn:
+        row = conn.execute(
+            text("SELECT value FROM app_setting WHERE key = 'exited_container_ttl_hours'")
+        ).fetchone()
+
+        if row is not None:
+            try:
+                seconds = round(float(row[0]) * 3600)
+            except (ValueError, TypeError):
+                seconds = 300
+        else:
+            seconds = 300
+
+        conn.execute(text(
+            "INSERT OR REPLACE INTO app_setting (key, value, updated_at) "
+            "VALUES ('exited_container_ttl_seconds', :val, datetime('now'))"
+        ), {"val": str(seconds)})
+
+        conn.execute(text(
+            "DELETE FROM app_setting WHERE key = 'exited_container_ttl_hours'"
+        ))
+
+        conn.commit()
+    logger.info(
+        "migration 006: renamed exited_container_ttl_hours → exited_container_ttl_seconds (%d seconds)",
+        seconds,
+    )
+
+
 MIGRATIONS: list[tuple[str, Callable]] = [
     ("001", _migrate_001),
     ("002", _migrate_002),
     ("003", _migrate_003),
     ("004", _migrate_004),
     ("005", _migrate_005),
+    ("006", _migrate_006),
 ]
 
 

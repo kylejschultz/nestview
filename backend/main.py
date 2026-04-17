@@ -38,7 +38,7 @@ def _seed_settings_from_env():
     """
     seeds = {
         "log_retention_days": os.getenv("LOG_RETENTION_DAYS", "7"),
-        "exited_container_ttl_hours": os.getenv("EXITED_CONTAINER_TTL_HOURS", "0.083"),
+        "exited_container_ttl_seconds": "300",
         "timezone": os.getenv("TZ", "UTC"),
         "image_check_time": "03:00",
         "image_check_enabled": "true",
