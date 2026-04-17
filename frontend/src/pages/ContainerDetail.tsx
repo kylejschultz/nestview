@@ -427,10 +427,45 @@ function ActionButtons({ container }: ActionButtonsProps) {
 
 // ── Network I/O chart ─────────────────────────────────────────────────────────
 
+const TIER_STEPS = [
+  100_000,         // 100 KB
+  250_000,         // 250 KB
+  500_000,         // 500 KB
+  1_000_000,       // 1 MB
+  5_000_000,       // 5 MB
+  10_000_000,      // 10 MB
+  25_000_000,      // 25 MB
+  50_000_000,      // 50 MB
+  100_000_000,     // 100 MB
+  250_000_000,     // 250 MB
+  500_000_000,     // 500 MB
+  1_000_000_000,   // 1 GB
+  2_500_000_000,   // 2.5 GB
+  5_000_000_000,   // 5 GB
+  10_000_000_000,  // 10 GB
+];
+
+function tieredCeiling(rawMax: number): number {
+  for (const t of TIER_STEPS) {
+    if (rawMax <= t) return t;
+  }
+  return TIER_STEPS[TIER_STEPS.length - 1];
+}
+
+function fmtTooltipBytes(bytes: number): string {
+  if (bytes === 0) return "0 B";
+  const k = 1024;
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return `${(bytes / Math.pow(k, i)).toFixed(2)} ${units[i]}`;
+}
+
 function NetworkIOChart({ data }: { data: NetworkHistoryPoint[] }) {
+  const [hoverIdx, setHoverIdx] = useState<number | null>(null);
+
   if (data.length === 0) {
     return (
-      <div className="flex items-center justify-center h-32 text-slate-500 text-sm">
+      <div className="flex items-center justify-center h-20 text-slate-500 text-sm">
         No network history available yet
       </div>
     );
@@ -443,7 +478,8 @@ function NetworkIOChart({ data }: { data: NetworkHistoryPoint[] }) {
   const cH = H - PAD.top - PAD.bottom;
 
   const allValues = [...data.map((d) => d.rx_bytes), ...data.map((d) => d.tx_bytes)];
-  const maxVal = Math.max(...allValues, 1);
+  const rawMax = Math.max(...allValues, 1);
+  const maxVal = tieredCeiling(rawMax);
 
   const toX = (i: number) =>
     data.length === 1 ? PAD.left + cW / 2 : PAD.left + (i / (data.length - 1)) * cW;
@@ -452,70 +488,116 @@ function NetworkIOChart({ data }: { data: NetworkHistoryPoint[] }) {
   const rxPoints = data.map((d, i) => `${toX(i)},${toY(d.rx_bytes)}`).join(" ");
   const txPoints = data.map((d, i) => `${toX(i)},${toY(d.tx_bytes)}`).join(" ");
 
-  const yTicks = [0, 0.33, 0.66, 1].map((f) => ({
+  const yTicks = [0, 0.25, 0.5, 0.75, 1].map((f) => ({
     val: maxVal * f,
     y: PAD.top + (1 - f) * cH,
   }));
 
-  const xTickCount = 4;
-  const xTickIndices = Array.from({ length: xTickCount }, (_, i) =>
-    Math.round((i / (xTickCount - 1)) * (data.length - 1))
-  );
+  const xTickIndices = data.length === 1
+    ? [0]
+    : Array.from({ length: 4 }, (_, i) => Math.round((i / 3) * (data.length - 1)));
+
+  function handleMouseMove(e: React.MouseEvent<SVGSVGElement>) {
+    const svg = e.currentTarget;
+    const rect = svg.getBoundingClientRect();
+    const scaleX = W / rect.width;
+    const svgX = (e.clientX - rect.left) * scaleX;
+
+    if (data.length === 1) { setHoverIdx(0); return; }
+    const chartX = svgX - PAD.left;
+    const rawIdxF = (chartX / cW) * (data.length - 1);
+    setHoverIdx(Math.max(0, Math.min(data.length - 1, Math.round(rawIdxF))));
+  }
+
+  const hovered = hoverIdx !== null ? data[hoverIdx] : null;
+
+  // Tooltip box dimensions and clamped x position
+  const TW = 126;
+  const TH = 44;
+  const tx = hoverIdx !== null
+    ? Math.max(PAD.left, Math.min(W - PAD.right - TW, toX(hoverIdx) - TW / 2))
+    : 0;
+  const ty = PAD.top + 4;
 
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ height: H }}>
-      {/* Grid lines + Y axis labels */}
-      {yTicks.map(({ val, y }) => (
-        <g key={y}>
-          <line
-            x1={PAD.left}
-            y1={y}
-            x2={PAD.left + cW}
-            y2={y}
-            stroke="#1e293b"
-            strokeWidth={1}
-          />
-          <text x={PAD.left - 6} y={y + 4} textAnchor="end" fontSize={10} fill="#64748b">
-            {formatBytes(Math.round(val))}
-          </text>
-        </g>
-      ))}
+    <div>
+      {/* Legend — outside plot area, above chart */}
+      <div className="flex gap-4 mb-1.5 text-xs text-slate-400">
+        <span className="flex items-center gap-1.5">
+          <svg width="16" height="2" aria-hidden="true">
+            <line x1="0" y1="1" x2="16" y2="1" stroke="#22d3ee" strokeWidth="2" />
+          </svg>
+          RX
+        </span>
+        <span className="flex items-center gap-1.5">
+          <svg width="16" height="2" aria-hidden="true">
+            <line x1="0" y1="1" x2="16" y2="1" stroke="#f97316" strokeWidth="2" />
+          </svg>
+          TX
+        </span>
+      </div>
 
-      {/* X axis time labels */}
-      {xTickIndices.map((idx) => {
-        const ts = new Date(
-          data[idx].recorded_at.endsWith("Z") ? data[idx].recorded_at : data[idx].recorded_at + "Z"
-        );
-        const label = ts.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
-        return (
-          <text key={idx} x={toX(idx)} y={H - 6} textAnchor="middle" fontSize={10} fill="#64748b">
-            {label}
-          </text>
-        );
-      })}
+      <svg
+        viewBox={`0 0 ${W} ${H}`}
+        className="w-full"
+        style={{ height: H }}
+        onMouseMove={handleMouseMove}
+        onMouseLeave={() => setHoverIdx(null)}
+      >
+        {/* Grid lines + Y axis labels */}
+        {yTicks.map(({ val, y }) => (
+          <g key={y}>
+            <line x1={PAD.left} y1={y} x2={PAD.left + cW} y2={y} stroke="#1e293b" strokeWidth={1} />
+            <text x={PAD.left - 6} y={y + 4} textAnchor="end" fontSize={10} fill="#64748b">
+              {formatBytes(Math.round(val))}
+            </text>
+          </g>
+        ))}
 
-      {/* Series lines or dots for single-point data */}
-      {data.length === 1 ? (
-        <>
-          <circle cx={toX(0)} cy={toY(data[0].rx_bytes)} r={3} fill="#22d3ee" />
-          <circle cx={toX(0)} cy={toY(data[0].tx_bytes)} r={3} fill="#f97316" />
-        </>
-      ) : (
-        <>
-          <polyline points={rxPoints} fill="none" stroke="#22d3ee" strokeWidth={1.5} strokeLinejoin="round" />
-          <polyline points={txPoints} fill="none" stroke="#f97316" strokeWidth={1.5} strokeLinejoin="round" />
-        </>
-      )}
+        {/* X axis time labels */}
+        {xTickIndices.map((idx) => {
+          const raw = data[idx].recorded_at;
+          const ts = new Date(raw.endsWith("Z") ? raw : raw + "Z");
+          const label = ts.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+          return (
+            <text key={idx} x={toX(idx)} y={H - 6} textAnchor="middle" fontSize={10} fill="#64748b">
+              {label}
+            </text>
+          );
+        })}
 
-      {/* Legend */}
-      <g transform={`translate(${PAD.left + cW - 62}, ${PAD.top + 2})`}>
-        <rect x={0} y={0} width={62} height={32} rx={4} fill="#0f172a" opacity={0.85} />
-        <line x1={6} y1={11} x2={18} y2={11} stroke="#22d3ee" strokeWidth={1.5} />
-        <text x={22} y={15} fontSize={10} fill="#94a3b8">RX</text>
-        <line x1={6} y1={23} x2={18} y2={23} stroke="#f97316" strokeWidth={1.5} />
-        <text x={22} y={27} fontSize={10} fill="#94a3b8">TX</text>
-      </g>
-    </svg>
+        {/* Series lines or dots for single-point data */}
+        {data.length === 1 ? (
+          <>
+            <circle cx={toX(0)} cy={toY(data[0].rx_bytes)} r={3} fill="#22d3ee" />
+            <circle cx={toX(0)} cy={toY(data[0].tx_bytes)} r={3} fill="#f97316" />
+          </>
+        ) : (
+          <>
+            <polyline points={rxPoints} fill="none" stroke="#22d3ee" strokeWidth={1.5} strokeLinejoin="round" />
+            <polyline points={txPoints} fill="none" stroke="#f97316" strokeWidth={1.5} strokeLinejoin="round" />
+          </>
+        )}
+
+        {/* Hover crosshair + tooltip */}
+        {hovered && hoverIdx !== null && (
+          <>
+            <line
+              x1={toX(hoverIdx)} y1={PAD.top}
+              x2={toX(hoverIdx)} y2={PAD.top + cH}
+              stroke="#475569" strokeWidth={1} strokeDasharray="3,3"
+            />
+            <circle cx={toX(hoverIdx)} cy={toY(hovered.rx_bytes)} r={3} fill="#22d3ee" />
+            <circle cx={toX(hoverIdx)} cy={toY(hovered.tx_bytes)} r={3} fill="#f97316" />
+            <rect x={tx} y={ty} width={TW} height={TH} rx={4} fill="#0f172a" stroke="#334155" strokeWidth={1} />
+            <line x1={tx + 8} y1={ty + 14} x2={tx + 20} y2={ty + 14} stroke="#22d3ee" strokeWidth={1.5} />
+            <text x={tx + 24} y={ty + 18} fontSize={10} fill="#94a3b8">{fmtTooltipBytes(hovered.rx_bytes)}</text>
+            <line x1={tx + 8} y1={ty + 30} x2={tx + 20} y2={ty + 30} stroke="#f97316" strokeWidth={1.5} />
+            <text x={tx + 24} y={ty + 34} fontSize={10} fill="#94a3b8">{fmtTooltipBytes(hovered.tx_bytes)}</text>
+          </>
+        )}
+      </svg>
+    </div>
   );
 }
 
@@ -642,6 +724,12 @@ export default function ContainerDetail() {
                 </div>
               )}
             </div>
+
+            {/* Network I/O chart */}
+            <div className="pt-2 border-t border-border space-y-2">
+              <h3 className="text-xs font-medium text-slate-400">Network I/O</h3>
+              <NetworkIOChart data={networkHistory} />
+            </div>
           </div>
         )}
 
@@ -713,14 +801,6 @@ export default function ContainerDetail() {
           )}
         </div>
       </div>
-
-      {/* Network I/O */}
-      <section className="space-y-3">
-        <h2 className="text-sm font-medium text-slate-300">Network I/O</h2>
-        <div className="card p-4">
-          <NetworkIOChart data={networkHistory} />
-        </div>
-      </section>
 
       {/* Logs */}
       <section className="space-y-3">
