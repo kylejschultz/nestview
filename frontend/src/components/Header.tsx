@@ -65,7 +65,10 @@ export default function Header({ onLogout, authMode }: HeaderProps) {
         <div className="flex items-center gap-4">
           <StatusDot running={running} total={total} />
           {versionData && (
-            <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-accent/10 text-accent border border-accent/30">
+            <span
+              className="text-xs font-medium px-2 py-0.5 rounded-full bg-accent/10 text-accent border border-accent/30"
+              title={versionData.build_sha ? `SHA: ${versionData.build_sha}` : undefined}
+            >
               v{versionData.version}
             </span>
           )}

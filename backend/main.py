@@ -18,6 +18,8 @@ _version_file = Path("/app/VERSION")
 _raw_version = _version_file.read_text().strip() if _version_file.exists() else "dev"
 _build_channel = os.environ.get("BUILD_CHANNEL", "")
 APP_VERSION = f"{_raw_version}-dev" if _build_channel == "dev" else _raw_version
+_raw_sha = os.environ.get("BUILD_SHA", "")
+BUILD_SHA: str | None = _raw_sha if _raw_sha and _raw_sha != "unknown" else None
 
 from database import create_db_and_tables, engine
 from api import containers, logs, events, settings, actions, admin, stack_actions
@@ -157,7 +159,7 @@ app.include_router(stack_actions.router, dependencies=[Depends(require_auth)])
 
 @app.get("/api/version")
 def version():
-    return {"version": APP_VERSION}
+    return {"version": APP_VERSION, "build_sha": BUILD_SHA}
 
 
 @app.get("/api/health")

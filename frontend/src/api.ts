@@ -32,7 +32,7 @@ async function post<T>(path: string, body?: unknown): Promise<T> {
 }
 
 export const api = {
-  version: () => fetch(`${BASE}/version`).then((r) => r.json()) as Promise<{ version: string }>,
+  version: () => fetch(`${BASE}/version`).then((r) => r.json()) as Promise<{ version: string; build_sha: string | null }>,
   containers: {
     list: () => get<Container[]>("/containers"),
     get: (id: string) => get<Container>(`/containers/${id}`),

@@ -32,10 +32,15 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Set short SHA
+        id: sha
+        run: echo "short=$(echo ${{ github.sha }} | cut -c1-7)" >> $GITHUB_OUTPUT
+
       - name: Build and push
         run: |
           docker build --platform ${{ matrix.platform }} \
             --build-arg BUILD_CHANNEL=dev \
+            --build-arg GIT_SHA=${{ steps.sha.outputs.short }} \
             -t ghcr.io/kylejschultz/nestview:dev-${{ matrix.suffix }} \
             -f Dockerfile \
             .
