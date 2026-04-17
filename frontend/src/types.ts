@@ -76,3 +76,9 @@ export interface MeResponse {
   username: string | null;
   auth_mode: string;
 }
+
+export interface NetworkHistoryPoint {
+  rx_bytes: number;
+  tx_bytes: number;
+  recorded_at: string;
+}

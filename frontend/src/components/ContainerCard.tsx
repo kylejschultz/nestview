@@ -6,14 +6,10 @@ import { formatBytes, formatUptime } from "../utils";
 
 interface Props {
   container: Container;
-  peakNetRx?: number;
-  peakNetTx?: number;
 }
 
-export default function ContainerCard({ container: c, peakNetRx = 0, peakNetTx = 0 }: Props) {
+export default function ContainerCard({ container: c }: Props) {
   const memPct = c.mem_limit > 0 ? (c.mem_usage / c.mem_limit) * 100 : 0;
-  const rxPct = peakNetRx > 0 ? ((c.net_rx_bytes ?? 0) / peakNetRx) * 100 : 0;
-  const txPct = peakNetTx > 0 ? ((c.net_tx_bytes ?? 0) / peakNetTx) * 100 : 0;
 
   return (
     <Link
@@ -47,8 +43,6 @@ export default function ContainerCard({ container: c, peakNetRx = 0, peakNetTx =
                 : formatBytes(c.mem_usage)
             }
           />
-          <MetricBar label="Net RX" value={rxPct} display={formatBytes(c.net_rx_bytes ?? 0)} />
-          <MetricBar label="Net TX" value={txPct} display={formatBytes(c.net_tx_bytes ?? 0)} />
         </div>
       )}
 

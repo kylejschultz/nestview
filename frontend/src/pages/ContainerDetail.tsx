@@ -3,7 +3,7 @@ import { useParams, Link } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
 import { useAuth } from "../AuthContext";
-import type { Container } from "../types";
+import type { Container, NetworkHistoryPoint } from "../types";
 import StatusBadge from "../components/StatusBadge";
 import MetricBar from "../components/MetricBar";
 import LogViewer from "../components/LogViewer";
@@ -425,6 +425,100 @@ function ActionButtons({ container }: ActionButtonsProps) {
   );
 }
 
+// ── Network I/O chart ─────────────────────────────────────────────────────────
+
+function NetworkIOChart({ data }: { data: NetworkHistoryPoint[] }) {
+  if (data.length === 0) {
+    return (
+      <div className="flex items-center justify-center h-32 text-slate-500 text-sm">
+        No network history available yet
+      </div>
+    );
+  }
+
+  const PAD = { top: 12, right: 16, bottom: 28, left: 56 };
+  const W = 500;
+  const H = 160;
+  const cW = W - PAD.left - PAD.right;
+  const cH = H - PAD.top - PAD.bottom;
+
+  const allValues = [...data.map((d) => d.rx_bytes), ...data.map((d) => d.tx_bytes)];
+  const maxVal = Math.max(...allValues, 1);
+
+  const toX = (i: number) =>
+    data.length === 1 ? PAD.left + cW / 2 : PAD.left + (i / (data.length - 1)) * cW;
+  const toY = (v: number) => PAD.top + (1 - v / maxVal) * cH;
+
+  const rxPoints = data.map((d, i) => `${toX(i)},${toY(d.rx_bytes)}`).join(" ");
+  const txPoints = data.map((d, i) => `${toX(i)},${toY(d.tx_bytes)}`).join(" ");
+
+  const yTicks = [0, 0.33, 0.66, 1].map((f) => ({
+    val: maxVal * f,
+    y: PAD.top + (1 - f) * cH,
+  }));
+
+  const xTickCount = 4;
+  const xTickIndices = Array.from({ length: xTickCount }, (_, i) =>
+    Math.round((i / (xTickCount - 1)) * (data.length - 1))
+  );
+
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ height: H }}>
+      {/* Grid lines + Y axis labels */}
+      {yTicks.map(({ val, y }) => (
+        <g key={y}>
+          <line
+            x1={PAD.left}
+            y1={y}
+            x2={PAD.left + cW}
+            y2={y}
+            stroke="#1e293b"
+            strokeWidth={1}
+          />
+          <text x={PAD.left - 6} y={y + 4} textAnchor="end" fontSize={10} fill="#64748b">
+            {formatBytes(Math.round(val))}
+          </text>
+        </g>
+      ))}
+
+      {/* X axis time labels */}
+      {xTickIndices.map((idx) => {
+        const ts = new Date(
+          data[idx].recorded_at.endsWith("Z") ? data[idx].recorded_at : data[idx].recorded_at + "Z"
+        );
+        const label = ts.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+        return (
+          <text key={idx} x={toX(idx)} y={H - 6} textAnchor="middle" fontSize={10} fill="#64748b">
+            {label}
+          </text>
+        );
+      })}
+
+      {/* Series lines or dots for single-point data */}
+      {data.length === 1 ? (
+        <>
+          <circle cx={toX(0)} cy={toY(data[0].rx_bytes)} r={3} fill="#22d3ee" />
+          <circle cx={toX(0)} cy={toY(data[0].tx_bytes)} r={3} fill="#f97316" />
+        </>
+      ) : (
+        <>
+          <polyline points={rxPoints} fill="none" stroke="#22d3ee" strokeWidth={1.5} strokeLinejoin="round" />
+          <polyline points={txPoints} fill="none" stroke="#f97316" strokeWidth={1.5} strokeLinejoin="round" />
+        </>
+      )}
+
+      {/* Legend */}
+      <g transform={`translate(${PAD.left + cW - 62}, ${PAD.top + 2})`}>
+        <rect x={0} y={0} width={62} height={32} rx={4} fill="#0f172a" opacity={0.85} />
+        <line x1={6} y1={11} x2={18} y2={11} stroke="#22d3ee" strokeWidth={1.5} />
+        <text x={22} y={15} fontSize={10} fill="#94a3b8">RX</text>
+        <line x1={6} y1={23} x2={18} y2={23} stroke="#f97316" strokeWidth={1.5} />
+        <text x={22} y={27} fontSize={10} fill="#94a3b8">TX</text>
+      </g>
+    </svg>
+  );
+}
+
 // ── Info row ──────────────────────────────────────────────────────────────────
 
 function InfoRow({ label, value }: { label: string; value: React.ReactNode }) {
@@ -454,6 +548,15 @@ export default function ContainerDetail() {
     enabled: !!id && isAuthenticated,
   });
 
+  const { data: networkHistory = [] } = useQuery<NetworkHistoryPoint[]>({
+    queryKey: ["network-history", id],
+    queryFn: () => api.containers.networkHistory(id!),
+    enabled: !!id && isAuthenticated,
+    staleTime: Infinity,
+    refetchOnMount: false,
+    refetchOnReconnect: false,
+  });
+
   if (isLoading) {
     return <div className="text-center py-16 text-slate-500">Loading…</div>;
   }
@@ -468,9 +571,6 @@ export default function ContainerDetail() {
   }
 
   const memPct = container.mem_limit > 0 ? (container.mem_usage / container.mem_limit) * 100 : 0;
-  const netRx = container.net_rx_bytes ?? 0;
-  const netTx = container.net_tx_bytes ?? 0;
-  const netPeak = Math.max(netRx, netTx, 1);
 
   return (
     <div className="space-y-6">
@@ -516,8 +616,6 @@ export default function ContainerDetail() {
                   : formatBytes(container.mem_usage)
               }
             />
-            <MetricBar label="Net RX" value={(netRx / netPeak) * 100} display={formatBytes(netRx)} />
-            <MetricBar label="Net TX" value={(netTx / netPeak) * 100} display={formatBytes(netTx)} />
             <div className="pt-2 space-y-1 text-sm">
               <div className="flex justify-between text-slate-400">
                 <span>Uptime</span>
@@ -615,6 +713,14 @@ export default function ContainerDetail() {
           )}
         </div>
       </div>
+
+      {/* Network I/O */}
+      <section className="space-y-3">
+        <h2 className="text-sm font-medium text-slate-300">Network I/O</h2>
+        <div className="card p-4">
+          <NetworkIOChart data={networkHistory} />
+        </div>
+      </section>
 
       {/* Logs */}
       <section className="space-y-3">

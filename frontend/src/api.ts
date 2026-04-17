@@ -1,4 +1,4 @@
-import type { AlertEventType, AlertSetting, AuthStatus, Container, ContainerLog, ContainerEvent, GeneralSettings, MeResponse, WizardStatus } from "./types";
+import type { AlertEventType, AlertSetting, AuthStatus, Container, ContainerLog, ContainerEvent, GeneralSettings, MeResponse, NetworkHistoryPoint, WizardStatus } from "./types";
 
 const BASE = "/api";
 
@@ -41,6 +41,7 @@ export const api = {
     start:            (dockerId: string) => post<{ ok: boolean; action: string; container: string }>(`/containers/${dockerId}/start`),
     checkForUpdates:  (dockerId: string) => post<{ ok: boolean; action: string; container: string; update_available: boolean }>(`/containers/${dockerId}/check-for-updates`),
     updateAndRestart: (dockerId: string) => post<{ ok: boolean; action: string; container: string; update_available: boolean; restarted: boolean }>(`/containers/${dockerId}/update-and-restart`),
+    networkHistory:   (dockerId: string) => get<NetworkHistoryPoint[]>(`/containers/${dockerId}/network-history`),
   },
   stacks: {
     stop:            (project: string) => post<{ ok: boolean; project: string; action: string; affected: number }>(`/stacks/${encodeURIComponent(project)}/stop`),
