@@ -27,16 +27,13 @@ services:
     ports:
       - "${NESTVIEW_PORT:-8484}:8080"
     volumes:
-      - nestview_data:/data
+      - ./data:/data
       - /var/run/docker.sock:/var/run/docker.sock
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/api/health')"]
       interval: 15s
       timeout: 5s
       retries: 3
-
-volumes:
-  nestview_data:
 ```
 
 Then run:
@@ -53,10 +50,17 @@ docker run -d \
   --name nestview \
   --restart unless-stopped \
   -p 8484:8080 \
-  -v nestview_data:/data \
+  -v $(pwd)/data:/data \
   -v /var/run/docker.sock:/var/run/docker.sock \
   ghcr.io/kylejschultz/nestview:latest
 ```
+
+> **Data storage:** Nestview stores its SQLite database in `./data/` on your host. This directory is created automatically on first run and is safe to back up directly.
+>
+> **Upgrading from a named volume (pre-0.5):** If you were previously using a `nestview_data` named volume, migrate your data before starting the new version:
+> ```bash
+> docker run --rm -v nestview_data:/source -v $(pwd)/data:/dest alpine cp -r /source/. /dest/
+> ```
 
 ---
 

@@ -6,13 +6,10 @@ services:
     ports:
       - "${NESTVIEW_PORT:-8484}:8080"
     volumes:
-      - nestview_data:/data
+      - ./data:/data
       - /var/run/docker.sock:/var/run/docker.sock
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/api/health')"]
       interval: 15s
       timeout: 5s
       retries: 3
-
-volumes:
-  nestview_data:
