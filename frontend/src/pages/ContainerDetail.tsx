@@ -428,9 +428,14 @@ function ActionButtons({ container }: ActionButtonsProps) {
 // ── Network I/O chart ─────────────────────────────────────────────────────────
 
 const TIER_STEPS = [
-  100_000,         // 100 KB
-  250_000,         // 250 KB
-  500_000,         // 500 KB
+  1_024,           // 1 KB
+  5_120,           // 5 KB
+  10_240,          // 10 KB
+  25_600,          // 25 KB
+  51_200,          // 50 KB
+  102_400,         // 100 KB
+  256_000,         // 250 KB
+  512_000,         // 500 KB
   1_000_000,       // 1 MB
   5_000_000,       // 5 MB
   10_000_000,      // 10 MB
@@ -473,7 +478,7 @@ function NetworkIOChart({ data }: { data: NetworkHistoryPoint[] }) {
 
   const PAD = { top: 12, right: 16, bottom: 32, left: 64 };
   const W = 500;
-  const H = 160;
+  const H = 220;
   const cW = W - PAD.left - PAD.right;
   const cH = H - PAD.top - PAD.bottom;
 
