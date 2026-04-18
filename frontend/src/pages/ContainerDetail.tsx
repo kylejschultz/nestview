@@ -466,17 +466,6 @@ function fmtTooltipBytes(bytes: number): string {
   return `${(bytes / Math.pow(k, i)).toFixed(2)} ${units[i]}`;
 }
 
-// X-axis tick intervals keyed by approximate time span (seconds).
-// Returns interval in seconds to use for tick generation.
-function xTickInterval(spanSec: number): number {
-  if (spanSec <= 10 * 60)   return 2 * 60;    // ≤10 min  → every 2 min
-  if (spanSec <= 30 * 60)   return 5 * 60;    // ≤30 min  → every 5 min
-  if (spanSec <= 2 * 3600)  return 15 * 60;   // ≤2 h     → every 15 min
-  if (spanSec <= 6 * 3600)  return 60 * 60;   // ≤6 h     → every 1 h
-  if (spanSec <= 24 * 3600) return 4 * 3600;  // ≤24 h    → every 4 h
-  if (spanSec <= 48 * 3600) return 8 * 3600;  // ≤48 h    → every 8 h
-  return 24 * 3600;                            // >48 h    → every 24 h
-}
 
 function NetworkIOChart({ data }: { data: NetworkHistoryPoint[] }) {
   const [hoverIdx, setHoverIdx] = useState<number | null>(null);
@@ -510,18 +499,7 @@ function NetworkIOChart({ data }: { data: NetworkHistoryPoint[] }) {
     );
   }
 
-  // Detect whether the data spans more than one calendar day so tick labels
-  // can include the date when the retention window crosses midnight.
-  const spansMultipleDays = (() => {
-    if (data.length < 2) return false;
-    const norm = (s: string) => (s.endsWith("Z") ? s : s + "Z");
-    const d0 = new Date(norm(data[0].recorded_at));
-    const d1 = new Date(norm(data[data.length - 1].recorded_at));
-    return d0.toLocaleDateString() !== d1.toLocaleDateString();
-  })();
-
-  // Extra bottom padding for two-line tick labels when spanning multiple days.
-  const PAD = { top: 12, right: 16, bottom: spansMultipleDays ? 46 : 32, left: 64 };
+  const PAD = { top: 12, right: 16, bottom: 32, left: 64 };
   // W tracks the real rendered pixel width so viewBox always matches — no scaling distortion.
   const W = containerWidth || 500;
   const H = 220;
@@ -544,28 +522,27 @@ function NetworkIOChart({ data }: { data: NetworkHistoryPoint[] }) {
     y: PAD.top + (1 - f) * cH,
   }));
 
-  // Build X-axis ticks from the data's actual time span.
+  // Build X-axis ticks: 5 positions evenly distributed across [t0, t1] so
+  // labels are visually equidistant regardless of how data points are spaced.
   const xTickIndices: number[] = (() => {
     if (data.length === 1) return [0];
-    const t0 = new Date(data[0].recorded_at.endsWith("Z") ? data[0].recorded_at : data[0].recorded_at + "Z").getTime();
-    const t1 = new Date(data[data.length - 1].recorded_at.endsWith("Z") ? data[data.length - 1].recorded_at : data[data.length - 1].recorded_at + "Z").getTime();
-    const spanSec = (t1 - t0) / 1000;
-    if (spanSec <= 0) return [0, data.length - 1];
-    const intervalMs = xTickInterval(spanSec) * 1000;
-    const firstTick = Math.ceil(t0 / intervalMs) * intervalMs;
-    const indices = new Set<number>([0]);
-    for (let tick = firstTick; tick <= t1; tick += intervalMs) {
-      // Find the data point closest to this tick time.
+    const norm = (s: string) => (s.endsWith("Z") ? s : s + "Z");
+    const t0 = new Date(norm(data[0].recorded_at)).getTime();
+    const t1 = new Date(norm(data[data.length - 1].recorded_at)).getTime();
+    if (t1 <= t0) return [0, data.length - 1];
+    const N = 5;
+    const indices = new Set<number>();
+    for (let i = 0; i < N; i++) {
+      const tickTime = t0 + (i / (N - 1)) * (t1 - t0);
       let best = 0;
       let bestDist = Infinity;
-      for (let i = 0; i < data.length; i++) {
-        const pt = new Date(data[i].recorded_at.endsWith("Z") ? data[i].recorded_at : data[i].recorded_at + "Z").getTime();
-        const d = Math.abs(pt - tick);
-        if (d < bestDist) { bestDist = d; best = i; }
+      for (let j = 0; j < data.length; j++) {
+        const pt = new Date(norm(data[j].recorded_at)).getTime();
+        const dist = Math.abs(pt - tickTime);
+        if (dist < bestDist) { bestDist = dist; best = j; }
       }
       indices.add(best);
     }
-    indices.add(data.length - 1);
     return Array.from(indices).sort((a, b) => a - b);
   })();
 
@@ -609,28 +586,13 @@ function NetworkIOChart({ data }: { data: NetworkHistoryPoint[] }) {
           </g>
         ))}
 
-        {/* X axis time labels — two lines when data spans multiple calendar days */}
+        {/* X axis time labels — time only; date appears in the hover tooltip */}
         {xTickIndices.map((idx) => {
           const raw = data[idx].recorded_at;
           const ts = new Date(raw.endsWith("Z") ? raw : raw + "Z");
-          if (spansMultipleDays) {
-            const datePart = ts.toLocaleDateString(undefined, { month: "short", day: "numeric" });
-            const timePart = ts.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
-            return (
-              <g key={idx}>
-                <text x={toX(idx)} y={H - 28} textAnchor="middle" fontSize={11} fill="#64748b">
-                  {datePart}
-                </text>
-                <text x={toX(idx)} y={H - 12} textAnchor="middle" fontSize={11} fill="#64748b">
-                  {timePart}
-                </text>
-              </g>
-            );
-          }
-          const label = ts.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
           return (
             <text key={idx} x={toX(idx)} y={H - 6} textAnchor="middle" fontSize={12} fill="#64748b">
-              {label}
+              {ts.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}
             </text>
           );
         })}
@@ -667,7 +629,9 @@ function NetworkIOChart({ data }: { data: NetworkHistoryPoint[] }) {
               {(() => {
                 const raw = hovered.recorded_at;
                 const ts = new Date(raw.endsWith("Z") ? raw : raw + "Z");
-                return ts.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+                const date = ts.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+                const time = ts.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+                return `${date}, ${time}`;
               })()}
             </text>
           </>
