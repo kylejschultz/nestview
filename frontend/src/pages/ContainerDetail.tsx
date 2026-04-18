@@ -538,6 +538,7 @@ function NetworkIOChart({ data }: { data: NetworkHistoryPoint[] }) {
               return time;
             }}
             interval="preserveStartEnd"
+            minTickGap={32}
           />
           <YAxis
             domain={[0, maxVal]}
