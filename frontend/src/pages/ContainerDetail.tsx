@@ -1,6 +1,15 @@
 import { useState, useEffect, useRef } from "react";
 import { useParams, Link } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import {
+  ResponsiveContainer,
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+} from "recharts";
 import { api } from "../api";
 import { useAuth } from "../AuthContext";
 import type { Container, NetworkHistoryPoint } from "../types";
@@ -458,18 +467,35 @@ function tieredCeiling(rawMax: number): number {
   return TIER_STEPS[TIER_STEPS.length - 1];
 }
 
-function fmtTooltipBytes(bytes: number): string {
-  if (bytes === 0) return "0 B";
-  const k = 1024;
-  const units = ["B", "KB", "MB", "GB", "TB"];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return `${(bytes / Math.pow(k, i)).toFixed(2)} ${units[i]}`;
+interface NetIOTooltipProps {
+  active?: boolean;
+  payload?: { dataKey?: string; value?: number; payload?: NetworkHistoryPoint }[];
 }
 
+function NetIOTooltip({ active, payload }: NetIOTooltipProps) {
+  if (!active || !payload?.length) return null;
+  const raw = payload[0].payload?.recorded_at ?? "";
+  const ts = new Date(raw.endsWith("Z") ? raw : raw + "Z");
+  const date = ts.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  const time = ts.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+  const rx = payload.find((p) => p.dataKey === "rx_bytes")?.value ?? 0;
+  const tx = payload.find((p) => p.dataKey === "tx_bytes")?.value ?? 0;
+  return (
+    <div className="rounded border border-slate-700 bg-[#0f172a] px-3 py-2 text-xs space-y-1">
+      <div className="flex items-center gap-2">
+        <span className="inline-block w-4 border-t-2 border-[#22d3ee]" />
+        <span className="text-slate-300">{formatBytes(rx as number)}</span>
+      </div>
+      <div className="flex items-center gap-2">
+        <span className="inline-block w-4 border-t-2 border-[#f97316]" />
+        <span className="text-slate-300">{formatBytes(tx as number)}</span>
+      </div>
+      <div className="text-slate-500 pt-0.5">{date}, {time}</div>
+    </div>
+  );
+}
 
 function NetworkIOChart({ data }: { data: NetworkHistoryPoint[] }) {
-  const [hoverIdx, setHoverIdx] = useState<number | null>(null);
-
   if (data.length === 0) {
     return (
       <div className="flex items-center justify-center h-20 text-slate-500 text-sm">
@@ -478,146 +504,57 @@ function NetworkIOChart({ data }: { data: NetworkHistoryPoint[] }) {
     );
   }
 
-  const PAD = { top: 12, right: 48, bottom: 32, left: 64 };
-  // Fixed coordinate-space width; SVG stretches to fill its CSS container via width="100%".
-  const W = 1000;
-  const H = 200;
-  const cW = W - PAD.left - PAD.right;
-  const cH = H - PAD.top - PAD.bottom;
-
   const allValues = [...data.map((d) => d.rx_bytes), ...data.map((d) => d.tx_bytes)];
   const rawMax = Math.max(...allValues, 1);
   const maxVal = tieredCeiling(rawMax);
 
-  const toX = (i: number) =>
-    data.length === 1 ? PAD.left + cW / 2 : PAD.left + (i / (data.length - 1)) * cW;
-  const toY = (v: number) => PAD.top + (1 - v / maxVal) * cH;
-
-  const rxPoints = data.map((d, i) => `${toX(i)},${toY(d.rx_bytes)}`).join(" ");
-  const txPoints = data.map((d, i) => `${toX(i)},${toY(d.tx_bytes)}`).join(" ");
-
-  const yTicks = [0, 0.25, 0.5, 0.75, 1].map((f) => ({
-    val: maxVal * f,
-    y: PAD.top + (1 - f) * cH,
-  }));
-
-  // Build X-axis ticks: 5 positions evenly distributed across [t0, t1] so
-  // labels are visually equidistant regardless of how data points are spaced.
-  const xTickIndices: number[] = (() => {
-    if (data.length === 1) return [0];
-    const norm = (s: string) => (s.endsWith("Z") ? s : s + "Z");
-    const t0 = new Date(norm(data[0].recorded_at)).getTime();
-    const t1 = new Date(norm(data[data.length - 1].recorded_at)).getTime();
-    if (t1 <= t0) return [0, data.length - 1];
-    const N = 5;
-    const indices = new Set<number>();
-    for (let i = 0; i < N; i++) {
-      const tickTime = t0 + (i / (N - 1)) * (t1 - t0);
-      let best = 0;
-      let bestDist = Infinity;
-      for (let j = 0; j < data.length; j++) {
-        const pt = new Date(norm(data[j].recorded_at)).getTime();
-        const dist = Math.abs(pt - tickTime);
-        if (dist < bestDist) { bestDist = dist; best = j; }
-      }
-      indices.add(best);
-    }
-    return Array.from(indices).sort((a, b) => a - b);
-  })();
-
-  function handleMouseMove(e: React.MouseEvent<SVGSVGElement>) {
-    const svg = e.currentTarget;
-    const rect = svg.getBoundingClientRect();
-    // Convert CSS-pixel position to viewBox units in case the viewport
-    // and viewBox widths differ (preserveAspectRatio="none" stretches,
-    // but the mouse event is always in CSS pixels).
-    const svgX = (e.clientX - rect.left) * (W / rect.width);
-
-    if (data.length === 1) { setHoverIdx(0); return; }
-    const chartX = svgX - PAD.left;
-    const rawIdxF = (chartX / cW) * (data.length - 1);
-    setHoverIdx(Math.max(0, Math.min(data.length - 1, Math.round(rawIdxF))));
-  }
-
-  const hovered = hoverIdx !== null ? data[hoverIdx] : null;
-
-  // Tooltip box dimensions and clamped x position (all in real px == SVG units).
-  const TW = 126;
-  const TH = 68;
-  const tx = hoverIdx !== null
-    ? Math.max(PAD.left, Math.min(W - PAD.right - TW, toX(hoverIdx) - TW / 2))
-    : 0;
-  const ty = PAD.top + 4;
-
   return (
-    <div className="w-full">
-      <svg
-        width="100%"
-        height={200}
-        viewBox={`0 0 1000 200`}
-        preserveAspectRatio="none"
-      >
-        {/* Grid lines + Y axis labels */}
-        {yTicks.map(({ val, y }) => (
-          <g key={y}>
-            <line x1={PAD.left} y1={y} x2={PAD.left + cW} y2={y} stroke="#1e293b" strokeWidth={1} />
-            <text x={PAD.left - 6} y={y + 4} textAnchor="end" fontSize={12} fill="#64748b">
-              {formatBytes(Math.round(val))}
-            </text>
-          </g>
-        ))}
-
-        {/* X axis time labels — time only; date appears in the hover tooltip */}
-        {xTickIndices.map((idx) => {
-          const raw = data[idx].recorded_at;
-          const ts = new Date(raw.endsWith("Z") ? raw : raw + "Z");
-          return (
-            <text key={idx} x={toX(idx)} y={H - 6} textAnchor="middle" fontSize={12} fill="#64748b">
-              {ts.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}
-            </text>
-          );
-        })}
-
-        {/* Series lines or dots for single-point data */}
-        {data.length === 1 ? (
-          <>
-            <circle cx={toX(0)} cy={toY(data[0].rx_bytes)} r={3} fill="#22d3ee" />
-            <circle cx={toX(0)} cy={toY(data[0].tx_bytes)} r={3} fill="#f97316" />
-          </>
-        ) : (
-          <>
-            <polyline points={rxPoints} fill="none" stroke="#22d3ee" strokeWidth={1.5} strokeLinejoin="round" />
-            <polyline points={txPoints} fill="none" stroke="#f97316" strokeWidth={1.5} strokeLinejoin="round" />
-          </>
-        )}
-
-        {/* Hover crosshair + tooltip */}
-        {hovered && hoverIdx !== null && (
-          <>
-            <line
-              x1={toX(hoverIdx)} y1={PAD.top}
-              x2={toX(hoverIdx)} y2={PAD.top + cH}
-              stroke="#475569" strokeWidth={1} strokeDasharray="3,3"
-            />
-            <circle cx={toX(hoverIdx)} cy={toY(hovered.rx_bytes)} r={3} fill="#22d3ee" />
-            <circle cx={toX(hoverIdx)} cy={toY(hovered.tx_bytes)} r={3} fill="#f97316" />
-            <rect x={tx} y={ty} width={TW} height={TH} rx={4} fill="#0f172a" stroke="#334155" strokeWidth={1} />
-            <line x1={tx + 8} y1={ty + 14} x2={tx + 20} y2={ty + 14} stroke="#22d3ee" strokeWidth={1.5} />
-            <text x={tx + 24} y={ty + 18} fontSize={10} fill="#94a3b8">{fmtTooltipBytes(hovered.rx_bytes)}</text>
-            <line x1={tx + 8} y1={ty + 30} x2={tx + 20} y2={ty + 30} stroke="#f97316" strokeWidth={1.5} />
-            <text x={tx + 24} y={ty + 34} fontSize={10} fill="#94a3b8">{fmtTooltipBytes(hovered.tx_bytes)}</text>
-            <text x={tx + 8} y={ty + 60} fontSize={9} fill="#475569">
-              {(() => {
-                const raw = hovered.recorded_at;
-                const ts = new Date(raw.endsWith("Z") ? raw : raw + "Z");
-                const date = ts.toLocaleDateString(undefined, { month: "short", day: "numeric" });
-                const time = ts.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
-                return `${date}, ${time}`;
-              })()}
-            </text>
-          </>
-        )}
-      </svg>
+    <div className="w-full px-4">
+      <ResponsiveContainer width="100%" height={200}>
+        <LineChart data={data} margin={{ top: 8, right: 8, bottom: 8, left: 8 }}>
+          <CartesianGrid stroke="#1e293b" vertical={false} />
+          <XAxis
+            dataKey="recorded_at"
+            tickLine={false}
+            axisLine={false}
+            tick={{ fontSize: 11, fill: "#64748b" }}
+            tickFormatter={(val: string) => {
+              const ts = new Date(val.endsWith("Z") ? val : val + "Z");
+              return ts.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+            }}
+            interval="preserveStartEnd"
+            minTickGap={48}
+          />
+          <YAxis
+            domain={[0, maxVal]}
+            tickLine={false}
+            axisLine={false}
+            tick={{ fontSize: 11, fill: "#64748b" }}
+            tickFormatter={(v: number) => formatBytes(v)}
+            width={60}
+            ticks={[0, maxVal * 0.25, maxVal * 0.5, maxVal * 0.75, maxVal]}
+          />
+          <Tooltip content={<NetIOTooltip />} cursor={{ stroke: "#475569", strokeWidth: 1, strokeDasharray: "3 3" }} />
+          <Line
+            type="monotone"
+            dataKey="rx_bytes"
+            stroke="#22d3ee"
+            strokeWidth={1.5}
+            dot={data.length === 1 ? { r: 3, fill: "#22d3ee" } : false}
+            activeDot={{ r: 3, fill: "#22d3ee" }}
+            isAnimationActive={false}
+          />
+          <Line
+            type="monotone"
+            dataKey="tx_bytes"
+            stroke="#f97316"
+            strokeWidth={1.5}
+            dot={data.length === 1 ? { r: 3, fill: "#f97316" } : false}
+            activeDot={{ r: 3, fill: "#f97316" }}
+            isAnimationActive={false}
+          />
+        </LineChart>
+      </ResponsiveContainer>
     </div>
   );
 }
