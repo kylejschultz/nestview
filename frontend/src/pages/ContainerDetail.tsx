@@ -427,6 +427,7 @@ function ActionButtons({ container }: ActionButtonsProps) {
 
 // ── Network I/O chart ─────────────────────────────────────────────────────────
 
+// All values are IEC (1024-based) so formatBytes() displays clean round numbers.
 const TIER_STEPS = [
   1_024,           // 1 KB
   5_120,           // 5 KB
@@ -436,18 +437,18 @@ const TIER_STEPS = [
   102_400,         // 100 KB
   256_000,         // 250 KB
   512_000,         // 500 KB
-  1_000_000,       // 1 MB
-  5_000_000,       // 5 MB
-  10_000_000,      // 10 MB
-  25_000_000,      // 25 MB
-  50_000_000,      // 50 MB
-  100_000_000,     // 100 MB
-  250_000_000,     // 250 MB
-  500_000_000,     // 500 MB
-  1_000_000_000,   // 1 GB
-  2_500_000_000,   // 2.5 GB
-  5_000_000_000,   // 5 GB
-  10_000_000_000,  // 10 GB
+  1_048_576,       // 1 MB
+  5_242_880,       // 5 MB
+  10_485_760,      // 10 MB
+  26_214_400,      // 25 MB
+  52_428_800,      // 50 MB
+  104_857_600,     // 100 MB
+  262_144_000,     // 250 MB
+  524_288_000,     // 500 MB
+  1_073_741_824,   // 1 GB
+  2_684_354_560,   // 2.5 GB
+  5_368_709_120,   // 5 GB
+  10_737_418_240,  // 10 GB
 ];
 
 function tieredCeiling(rawMax: number): number {
@@ -518,7 +519,7 @@ function NetworkIOChart({ data }: { data: NetworkHistoryPoint[] }) {
 
   // Tooltip box dimensions and clamped x position
   const TW = 126;
-  const TH = 44;
+  const TH = 56;
   const tx = hoverIdx !== null
     ? Math.max(PAD.left, Math.min(W - PAD.right - TW, toX(hoverIdx) - TW / 2))
     : 0;
@@ -528,6 +529,7 @@ function NetworkIOChart({ data }: { data: NetworkHistoryPoint[] }) {
     <div>
       <svg
         viewBox={`0 0 ${W} ${H}`}
+        preserveAspectRatio="none"
         className="w-full"
         style={{ height: H }}
         onMouseMove={handleMouseMove}
@@ -583,6 +585,13 @@ function NetworkIOChart({ data }: { data: NetworkHistoryPoint[] }) {
             <text x={tx + 24} y={ty + 18} fontSize={10} fill="#94a3b8">{fmtTooltipBytes(hovered.rx_bytes)}</text>
             <line x1={tx + 8} y1={ty + 30} x2={tx + 20} y2={ty + 30} stroke="#f97316" strokeWidth={1.5} />
             <text x={tx + 24} y={ty + 34} fontSize={10} fill="#94a3b8">{fmtTooltipBytes(hovered.tx_bytes)}</text>
+            <text x={tx + 8} y={ty + 50} fontSize={9} fill="#475569">
+              {(() => {
+                const raw = hovered.recorded_at;
+                const ts = new Date(raw.endsWith("Z") ? raw : raw + "Z");
+                return ts.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+              })()}
+            </text>
           </>
         )}
       </svg>
