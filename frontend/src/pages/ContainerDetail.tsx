@@ -508,6 +508,16 @@ function NetworkIOChart({ data }: { data: NetworkHistoryPoint[] }) {
   const rawMax = Math.max(...allValues, 1);
   const maxVal = tieredCeiling(rawMax);
 
+  const dayBreaks = new Set(
+    data.reduce<number[]>((acc, d, i) => {
+      if (i === 0) return acc;
+      const prev = new Date((data[i-1].recorded_at.endsWith("Z") ? data[i-1].recorded_at : data[i-1].recorded_at + "Z"));
+      const curr = new Date((d.recorded_at.endsWith("Z") ? d.recorded_at : d.recorded_at + "Z"));
+      if (curr.getDate() !== prev.getDate()) acc.push(i);
+      return acc;
+    }, [])
+  );
+
   return (
     <div className="w-full px-4">
       <ResponsiveContainer width="100%" height={200}>
@@ -518,12 +528,16 @@ function NetworkIOChart({ data }: { data: NetworkHistoryPoint[] }) {
             tickLine={false}
             axisLine={false}
             tick={{ fontSize: 11, fill: "#64748b" }}
-            tickFormatter={(val: string) => {
+            tickFormatter={(val: string, index: number) => {
               const ts = new Date(val.endsWith("Z") ? val : val + "Z");
-              return ts.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+              const time = ts.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+              if (dayBreaks.has(index)) {
+                const date = ts.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+                return `${date} ${time}`;
+              }
+              return time;
             }}
             interval="preserveStartEnd"
-            minTickGap={48}
           />
           <YAxis
             domain={[0, maxVal]}
