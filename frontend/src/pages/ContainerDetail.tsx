@@ -562,7 +562,7 @@ function NetworkIOChart({ data }: { data: NetworkHistoryPoint[] }) {
 
   // Tooltip box dimensions and clamped x position (all in real px == SVG units).
   const TW = 126;
-  const TH = 56;
+  const TH = 68;
   const tx = hoverIdx !== null
     ? Math.max(PAD.left, Math.min(W - PAD.right - TW, toX(hoverIdx) - TW / 2))
     : 0;
@@ -625,7 +625,7 @@ function NetworkIOChart({ data }: { data: NetworkHistoryPoint[] }) {
             <text x={tx + 24} y={ty + 18} fontSize={10} fill="#94a3b8">{fmtTooltipBytes(hovered.rx_bytes)}</text>
             <line x1={tx + 8} y1={ty + 30} x2={tx + 20} y2={ty + 30} stroke="#f97316" strokeWidth={1.5} />
             <text x={tx + 24} y={ty + 34} fontSize={10} fill="#94a3b8">{fmtTooltipBytes(hovered.tx_bytes)}</text>
-            <text x={tx + 8} y={ty + 50} fontSize={9} fill="#475569">
+            <text x={tx + 8} y={ty + 60} fontSize={9} fill="#475569">
               {(() => {
                 const raw = hovered.recorded_at;
                 const ts = new Date(raw.endsWith("Z") ? raw : raw + "Z");
@@ -853,8 +853,8 @@ export default function ContainerDetail() {
           </svg>
         </button>
         {netExpanded && (
-          <div className="px-4 pb-4 space-y-3">
-            <div className="flex gap-4 text-xs text-slate-400">
+          <div className="pb-4 space-y-3">
+            <div className="flex gap-4 text-xs text-slate-400 px-4">
               <span className="flex items-center gap-1.5">
                 <svg width="16" height="2" aria-hidden="true">
                   <line x1="0" y1="1" x2="16" y2="1" stroke="#22d3ee" strokeWidth="2" />
