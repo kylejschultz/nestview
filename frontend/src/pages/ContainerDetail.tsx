@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useLayoutEffect } from "react";
 import { useParams, Link } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
@@ -481,7 +481,15 @@ function xTickInterval(spanSec: number): number {
 function NetworkIOChart({ data }: { data: NetworkHistoryPoint[] }) {
   const [hoverIdx, setHoverIdx] = useState<number | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const [containerWidth, setContainerWidth] = useState(500);
+  const [containerWidth, setContainerWidth] = useState(0);
+
+  // Synchronously read width before first paint to avoid a flash with wrong viewBox.
+  useLayoutEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const w = el.getBoundingClientRect().width;
+    if (w > 0) setContainerWidth(w);
+  }, []);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -502,9 +510,20 @@ function NetworkIOChart({ data }: { data: NetworkHistoryPoint[] }) {
     );
   }
 
-  const PAD = { top: 12, right: 16, bottom: 32, left: 64 };
+  // Detect whether the data spans more than one calendar day so tick labels
+  // can include the date when the retention window crosses midnight.
+  const spansMultipleDays = (() => {
+    if (data.length < 2) return false;
+    const norm = (s: string) => (s.endsWith("Z") ? s : s + "Z");
+    const d0 = new Date(norm(data[0].recorded_at));
+    const d1 = new Date(norm(data[data.length - 1].recorded_at));
+    return d0.toLocaleDateString() !== d1.toLocaleDateString();
+  })();
+
+  // Extra bottom padding for two-line tick labels when spanning multiple days.
+  const PAD = { top: 12, right: 16, bottom: spansMultipleDays ? 46 : 32, left: 64 };
   // W tracks the real rendered pixel width so viewBox always matches — no scaling distortion.
-  const W = containerWidth;
+  const W = containerWidth || 500;
   const H = 220;
   const cW = W - PAD.left - PAD.right;
   const cH = H - PAD.top - PAD.bottom;
@@ -573,11 +592,10 @@ function NetworkIOChart({ data }: { data: NetworkHistoryPoint[] }) {
   const ty = PAD.top + 4;
 
   return (
-    <div ref={containerRef}>
+    <div ref={containerRef} className="w-full">
       <svg
         viewBox={`0 0 ${W} ${H}`}
-        className="w-full"
-        style={{ height: H }}
+        style={{ display: "block", width: "100%", height: H }}
         onMouseMove={handleMouseMove}
         onMouseLeave={() => setHoverIdx(null)}
       >
@@ -591,10 +609,24 @@ function NetworkIOChart({ data }: { data: NetworkHistoryPoint[] }) {
           </g>
         ))}
 
-        {/* X axis time labels */}
+        {/* X axis time labels — two lines when data spans multiple calendar days */}
         {xTickIndices.map((idx) => {
           const raw = data[idx].recorded_at;
           const ts = new Date(raw.endsWith("Z") ? raw : raw + "Z");
+          if (spansMultipleDays) {
+            const datePart = ts.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+            const timePart = ts.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+            return (
+              <g key={idx}>
+                <text x={toX(idx)} y={H - 28} textAnchor="middle" fontSize={11} fill="#64748b">
+                  {datePart}
+                </text>
+                <text x={toX(idx)} y={H - 12} textAnchor="middle" fontSize={11} fill="#64748b">
+                  {timePart}
+                </text>
+              </g>
+            );
+          }
           const label = ts.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
           return (
             <text key={idx} x={toX(idx)} y={H - 6} textAnchor="middle" fontSize={12} fill="#64748b">
