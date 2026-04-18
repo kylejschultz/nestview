@@ -549,8 +549,10 @@ function NetworkIOChart({ data }: { data: NetworkHistoryPoint[] }) {
   function handleMouseMove(e: React.MouseEvent<SVGSVGElement>) {
     const svg = e.currentTarget;
     const rect = svg.getBoundingClientRect();
-    // viewBox matches real pixel width so no scale factor needed.
-    const svgX = e.clientX - rect.left;
+    // Convert CSS-pixel position to viewBox units in case the viewport
+    // and viewBox widths differ (preserveAspectRatio="none" stretches,
+    // but the mouse event is always in CSS pixels).
+    const svgX = (e.clientX - rect.left) * (W / rect.width);
 
     if (data.length === 1) { setHoverIdx(0); return; }
     const chartX = svgX - PAD.left;
@@ -572,6 +574,7 @@ function NetworkIOChart({ data }: { data: NetworkHistoryPoint[] }) {
     <div ref={containerRef} className="w-full">
       <svg
         viewBox={`0 0 ${W} ${H}`}
+        preserveAspectRatio="none"
         style={{ display: "block", width: "100%", height: H }}
         onMouseMove={handleMouseMove}
         onMouseLeave={() => setHoverIdx(null)}
