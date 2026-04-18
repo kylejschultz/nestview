@@ -511,7 +511,7 @@ function NetworkIOChart({ data }: { data: NetworkHistoryPoint[] }) {
   return (
     <div className="w-full px-4">
       <ResponsiveContainer width="100%" height={200}>
-        <LineChart data={data} margin={{ top: 8, right: 8, bottom: 8, left: 8 }}>
+        <LineChart data={data} margin={{ top: 8, right: 16, bottom: 8, left: 8 }}>
           <CartesianGrid stroke="#1e293b" vertical={false} />
           <XAxis
             dataKey="recorded_at"
@@ -531,7 +531,7 @@ function NetworkIOChart({ data }: { data: NetworkHistoryPoint[] }) {
             axisLine={false}
             tick={{ fontSize: 11, fill: "#64748b" }}
             tickFormatter={(v: number) => formatBytes(v)}
-            width={60}
+            width={80}
             ticks={[0, maxVal * 0.25, maxVal * 0.5, maxVal * 0.75, maxVal]}
           />
           <Tooltip content={<NetIOTooltip />} cursor={{ stroke: "#475569", strokeWidth: 1, strokeDasharray: "3 3" }} />
