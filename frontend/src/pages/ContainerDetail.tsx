@@ -499,14 +499,6 @@ function NetworkIOChart({ data }: { data: NetworkHistoryPoint[] }) {
     );
   }
 
-  if (containerWidth === 0) {
-    return (
-      <div ref={containerRef} className="w-full flex items-center justify-center h-[220px] text-slate-500">
-        <Spinner />
-      </div>
-    );
-  }
-
   const PAD = { top: 12, right: 48, bottom: 32, left: 64 };
   // W tracks the real rendered pixel width so viewBox always matches — no scaling distortion.
   const W = containerWidth;
@@ -580,6 +572,11 @@ function NetworkIOChart({ data }: { data: NetworkHistoryPoint[] }) {
 
   return (
     <div ref={containerRef} className="w-full">
+      {containerWidth === 0 ? (
+        <div className="flex items-center justify-center h-[220px] text-slate-500">
+          <Spinner />
+        </div>
+      ) : (
       <svg
         viewBox={`0 0 ${W} ${H}`}
         preserveAspectRatio="none"
@@ -648,6 +645,7 @@ function NetworkIOChart({ data }: { data: NetworkHistoryPoint[] }) {
           </>
         )}
       </svg>
+      )}
     </div>
   );
 }
