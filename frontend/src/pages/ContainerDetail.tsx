@@ -521,7 +521,11 @@ function NetworkIOChart({ data }: { data: NetworkHistoryPoint[] }) {
   return (
     <div className="w-full px-4" outline-none>
       <ResponsiveContainer width="100%" height={200}>
-        <LineChart data={data} margin={{ top: 8, right: 96, bottom: 8, left: 16 }}>
+        <LineChart
+          data={data}
+          margin={{ top: 8, right: 96, bottom: 8, left: 16 }}
+          style={{ outline: "none" }}
+        >
           <CartesianGrid stroke="#1e293b" vertical={false} />
           <XAxis
             dataKey="recorded_at"
