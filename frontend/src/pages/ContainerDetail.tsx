@@ -474,11 +474,16 @@ function NetworkIOChart({ data }: { data: NetworkHistoryPoint[] }) {
 
   // Synchronously read width before first paint to avoid a flash with wrong viewBox.
   useLayoutEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
+  const el = containerRef.current;
+  if (!el) return;
+  const measure = () => {
     const w = el.getBoundingClientRect().width;
     if (w > 0) setContainerWidth(w);
-  }, []);
+  };
+  measure();
+  const raf = requestAnimationFrame(measure);
+  return () => cancelAnimationFrame(raf);
+}, []);
 
   useEffect(() => {
     const el = containerRef.current;
