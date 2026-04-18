@@ -499,9 +499,17 @@ function NetworkIOChart({ data }: { data: NetworkHistoryPoint[] }) {
     );
   }
 
-  const PAD = { top: 12, right: 16, bottom: 32, left: 64 };
+  if (containerWidth === 0) {
+    return (
+      <div ref={containerRef} className="w-full flex items-center justify-center h-[220px] text-slate-500">
+        <Spinner />
+      </div>
+    );
+  }
+
+  const PAD = { top: 12, right: 48, bottom: 32, left: 64 };
   // W tracks the real rendered pixel width so viewBox always matches — no scaling distortion.
-  const W = containerWidth || 500;
+  const W = containerWidth;
   const H = 220;
   const cW = W - PAD.left - PAD.right;
   const cH = H - PAD.top - PAD.bottom;
