@@ -555,6 +555,7 @@ function NetworkIOChart({ data }: { data: NetworkHistoryPoint[] }) {
         width="100%"
         height={200}
         viewBox={`0 0 1000 200`}
+        preserveAspectRatio="none"
       >
         {/* Grid lines + Y axis labels */}
         {yTicks.map(({ val, y }) => (
