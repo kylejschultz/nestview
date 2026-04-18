@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useLayoutEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useParams, Link } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
@@ -469,32 +469,6 @@ function fmtTooltipBytes(bytes: number): string {
 
 function NetworkIOChart({ data }: { data: NetworkHistoryPoint[] }) {
   const [hoverIdx, setHoverIdx] = useState<number | null>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const [containerWidth, setContainerWidth] = useState(0);
-
-  // Synchronously read width before first paint to avoid a flash with wrong viewBox.
-  useLayoutEffect(() => {
-  const el = containerRef.current;
-  if (!el) return;
-  const measure = () => {
-    const w = el.getBoundingClientRect().width;
-    if (w > 0) setContainerWidth(w);
-  };
-  measure();
-  const raf = requestAnimationFrame(measure);
-  return () => cancelAnimationFrame(raf);
-}, []);
-
-  useEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
-    const ro = new ResizeObserver((entries) => {
-      const w = entries[0].contentRect.width;
-      if (w > 0) setContainerWidth(w);
-    });
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
 
   if (data.length === 0) {
     return (
@@ -505,8 +479,8 @@ function NetworkIOChart({ data }: { data: NetworkHistoryPoint[] }) {
   }
 
   const PAD = { top: 12, right: 48, bottom: 32, left: 64 };
-  // W tracks the real rendered pixel width so viewBox always matches — no scaling distortion.
-  const W = containerWidth;
+  // Fixed coordinate-space width; SVG stretches to fill its CSS container via width="100%".
+  const W = 600;
   const H = 220;
   const cW = W - PAD.left - PAD.right;
   const cH = H - PAD.top - PAD.bottom;
@@ -576,12 +550,7 @@ function NetworkIOChart({ data }: { data: NetworkHistoryPoint[] }) {
   const ty = PAD.top + 4;
 
   return (
-    <div ref={containerRef} className="w-full">
-      {containerWidth === 0 ? (
-        <div className="flex items-center justify-center h-[220px] text-slate-500">
-          <Spinner />
-        </div>
-      ) : (
+    <div className="w-full">
       <svg
         viewBox={`0 0 ${W} ${H}`}
         preserveAspectRatio="none"
@@ -650,7 +619,6 @@ function NetworkIOChart({ data }: { data: NetworkHistoryPoint[] }) {
           </>
         )}
       </svg>
-      )}
     </div>
   );
 }
