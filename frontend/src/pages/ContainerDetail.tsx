@@ -552,11 +552,9 @@ function NetworkIOChart({ data }: { data: NetworkHistoryPoint[] }) {
   return (
     <div className="w-full">
       <svg
-        viewBox={`0 0 ${W} ${H}`}
-        preserveAspectRatio="none"
-        style={{ display: "block", width: "100%", height: H }}
-        onMouseMove={handleMouseMove}
-        onMouseLeave={() => setHoverIdx(null)}
+        width="100%"
+        height={200}
+        viewBox={`0 0 1000 200`}
       >
         {/* Grid lines + Y axis labels */}
         {yTicks.map(({ val, y }) => (
