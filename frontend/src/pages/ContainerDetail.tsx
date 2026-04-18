@@ -471,7 +471,7 @@ function NetworkIOChart({ data }: { data: NetworkHistoryPoint[] }) {
     );
   }
 
-  const PAD = { top: 12, right: 16, bottom: 28, left: 56 };
+  const PAD = { top: 12, right: 16, bottom: 32, left: 64 };
   const W = 500;
   const H = 160;
   const cW = W - PAD.left - PAD.right;
@@ -521,22 +521,6 @@ function NetworkIOChart({ data }: { data: NetworkHistoryPoint[] }) {
 
   return (
     <div>
-      {/* Legend — outside plot area, above chart */}
-      <div className="flex gap-4 mb-1.5 text-xs text-slate-400">
-        <span className="flex items-center gap-1.5">
-          <svg width="16" height="2" aria-hidden="true">
-            <line x1="0" y1="1" x2="16" y2="1" stroke="#22d3ee" strokeWidth="2" />
-          </svg>
-          RX
-        </span>
-        <span className="flex items-center gap-1.5">
-          <svg width="16" height="2" aria-hidden="true">
-            <line x1="0" y1="1" x2="16" y2="1" stroke="#f97316" strokeWidth="2" />
-          </svg>
-          TX
-        </span>
-      </div>
-
       <svg
         viewBox={`0 0 ${W} ${H}`}
         className="w-full"
@@ -548,7 +532,7 @@ function NetworkIOChart({ data }: { data: NetworkHistoryPoint[] }) {
         {yTicks.map(({ val, y }) => (
           <g key={y}>
             <line x1={PAD.left} y1={y} x2={PAD.left + cW} y2={y} stroke="#1e293b" strokeWidth={1} />
-            <text x={PAD.left - 6} y={y + 4} textAnchor="end" fontSize={10} fill="#64748b">
+            <text x={PAD.left - 6} y={y + 4} textAnchor="end" fontSize={12} fill="#64748b">
               {formatBytes(Math.round(val))}
             </text>
           </g>
@@ -560,7 +544,7 @@ function NetworkIOChart({ data }: { data: NetworkHistoryPoint[] }) {
           const ts = new Date(raw.endsWith("Z") ? raw : raw + "Z");
           const label = ts.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
           return (
-            <text key={idx} x={toX(idx)} y={H - 6} textAnchor="middle" fontSize={10} fill="#64748b">
+            <text key={idx} x={toX(idx)} y={H - 6} textAnchor="middle" fontSize={12} fill="#64748b">
               {label}
             </text>
           );
@@ -618,6 +602,7 @@ export default function ContainerDetail() {
   const { id } = useParams<{ id: string }>();
   const tz = useTimezone();
   const { isAuthenticated } = useAuth();
+  const [netExpanded, setNetExpanded] = useState(true);
 
   const { data: container, isLoading, isError } = useQuery<Container>({
     queryKey: ["container", id],
@@ -725,11 +710,6 @@ export default function ContainerDetail() {
               )}
             </div>
 
-            {/* Network I/O chart */}
-            <div className="pt-2 border-t border-border space-y-2">
-              <h3 className="text-xs font-medium text-slate-400">Network I/O</h3>
-              <NetworkIOChart data={networkHistory} />
-            </div>
           </div>
         )}
 
@@ -800,6 +780,41 @@ export default function ContainerDetail() {
             />
           )}
         </div>
+      </div>
+
+      {/* Network I/O */}
+      <div className="card">
+        <button
+          onClick={() => setNetExpanded((v) => !v)}
+          className="w-full flex items-center justify-between px-4 py-3 text-left"
+        >
+          <span className="text-sm font-medium text-slate-300">Network I/O</span>
+          <svg
+            className={`w-4 h-4 text-slate-500 transition-transform ${netExpanded ? "rotate-180" : ""}`}
+            fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
+        {netExpanded && (
+          <div className="px-4 pb-4 space-y-3">
+            <div className="flex gap-4 text-xs text-slate-400">
+              <span className="flex items-center gap-1.5">
+                <svg width="16" height="2" aria-hidden="true">
+                  <line x1="0" y1="1" x2="16" y2="1" stroke="#22d3ee" strokeWidth="2" />
+                </svg>
+                RX
+              </span>
+              <span className="flex items-center gap-1.5">
+                <svg width="16" height="2" aria-hidden="true">
+                  <line x1="0" y1="1" x2="16" y2="1" stroke="#f97316" strokeWidth="2" />
+                </svg>
+                TX
+              </span>
+            </div>
+            <NetworkIOChart data={networkHistory} />
+          </div>
+        )}
       </div>
 
       {/* Logs */}
