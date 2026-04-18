@@ -480,8 +480,8 @@ function NetworkIOChart({ data }: { data: NetworkHistoryPoint[] }) {
 
   const PAD = { top: 12, right: 48, bottom: 32, left: 64 };
   // Fixed coordinate-space width; SVG stretches to fill its CSS container via width="100%".
-  const W = 600;
-  const H = 220;
+  const W = 1000;
+  const H = 200;
   const cW = W - PAD.left - PAD.right;
   const cH = H - PAD.top - PAD.bottom;
 
