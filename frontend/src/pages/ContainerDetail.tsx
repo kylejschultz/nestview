@@ -466,8 +466,33 @@ function fmtTooltipBytes(bytes: number): string {
   return `${(bytes / Math.pow(k, i)).toFixed(2)} ${units[i]}`;
 }
 
+// X-axis tick intervals keyed by approximate time span (seconds).
+// Returns interval in seconds to use for tick generation.
+function xTickInterval(spanSec: number): number {
+  if (spanSec <= 10 * 60)   return 2 * 60;    // ≤10 min  → every 2 min
+  if (spanSec <= 30 * 60)   return 5 * 60;    // ≤30 min  → every 5 min
+  if (spanSec <= 2 * 3600)  return 15 * 60;   // ≤2 h     → every 15 min
+  if (spanSec <= 6 * 3600)  return 60 * 60;   // ≤6 h     → every 1 h
+  if (spanSec <= 24 * 3600) return 4 * 3600;  // ≤24 h    → every 4 h
+  if (spanSec <= 48 * 3600) return 8 * 3600;  // ≤48 h    → every 8 h
+  return 24 * 3600;                            // >48 h    → every 24 h
+}
+
 function NetworkIOChart({ data }: { data: NetworkHistoryPoint[] }) {
   const [hoverIdx, setHoverIdx] = useState<number | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [containerWidth, setContainerWidth] = useState(500);
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver((entries) => {
+      const w = entries[0].contentRect.width;
+      if (w > 0) setContainerWidth(w);
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   if (data.length === 0) {
     return (
@@ -478,7 +503,8 @@ function NetworkIOChart({ data }: { data: NetworkHistoryPoint[] }) {
   }
 
   const PAD = { top: 12, right: 16, bottom: 32, left: 64 };
-  const W = 500;
+  // W tracks the real rendered pixel width so viewBox always matches — no scaling distortion.
+  const W = containerWidth;
   const H = 220;
   const cW = W - PAD.left - PAD.right;
   const cH = H - PAD.top - PAD.bottom;
@@ -499,15 +525,36 @@ function NetworkIOChart({ data }: { data: NetworkHistoryPoint[] }) {
     y: PAD.top + (1 - f) * cH,
   }));
 
-  const xTickIndices = data.length === 1
-    ? [0]
-    : Array.from({ length: 4 }, (_, i) => Math.round((i / 3) * (data.length - 1)));
+  // Build X-axis ticks from the data's actual time span.
+  const xTickIndices: number[] = (() => {
+    if (data.length === 1) return [0];
+    const t0 = new Date(data[0].recorded_at.endsWith("Z") ? data[0].recorded_at : data[0].recorded_at + "Z").getTime();
+    const t1 = new Date(data[data.length - 1].recorded_at.endsWith("Z") ? data[data.length - 1].recorded_at : data[data.length - 1].recorded_at + "Z").getTime();
+    const spanSec = (t1 - t0) / 1000;
+    if (spanSec <= 0) return [0, data.length - 1];
+    const intervalMs = xTickInterval(spanSec) * 1000;
+    const firstTick = Math.ceil(t0 / intervalMs) * intervalMs;
+    const indices = new Set<number>([0]);
+    for (let tick = firstTick; tick <= t1; tick += intervalMs) {
+      // Find the data point closest to this tick time.
+      let best = 0;
+      let bestDist = Infinity;
+      for (let i = 0; i < data.length; i++) {
+        const pt = new Date(data[i].recorded_at.endsWith("Z") ? data[i].recorded_at : data[i].recorded_at + "Z").getTime();
+        const d = Math.abs(pt - tick);
+        if (d < bestDist) { bestDist = d; best = i; }
+      }
+      indices.add(best);
+    }
+    indices.add(data.length - 1);
+    return Array.from(indices).sort((a, b) => a - b);
+  })();
 
   function handleMouseMove(e: React.MouseEvent<SVGSVGElement>) {
     const svg = e.currentTarget;
     const rect = svg.getBoundingClientRect();
-    const scaleX = W / rect.width;
-    const svgX = (e.clientX - rect.left) * scaleX;
+    // viewBox matches real pixel width so no scale factor needed.
+    const svgX = e.clientX - rect.left;
 
     if (data.length === 1) { setHoverIdx(0); return; }
     const chartX = svgX - PAD.left;
@@ -517,7 +564,7 @@ function NetworkIOChart({ data }: { data: NetworkHistoryPoint[] }) {
 
   const hovered = hoverIdx !== null ? data[hoverIdx] : null;
 
-  // Tooltip box dimensions and clamped x position
+  // Tooltip box dimensions and clamped x position (all in real px == SVG units).
   const TW = 126;
   const TH = 56;
   const tx = hoverIdx !== null
@@ -526,10 +573,9 @@ function NetworkIOChart({ data }: { data: NetworkHistoryPoint[] }) {
   const ty = PAD.top + 4;
 
   return (
-    <div>
+    <div ref={containerRef}>
       <svg
         viewBox={`0 0 ${W} ${H}`}
-        preserveAspectRatio="none"
         className="w-full"
         style={{ height: H }}
         onMouseMove={handleMouseMove}
