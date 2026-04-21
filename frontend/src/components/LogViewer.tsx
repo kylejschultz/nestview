@@ -159,6 +159,22 @@ export default function LogViewer({ dockerId }: Props) {
             Auto-scroll
           </button>
         )}
+
+        <div className="flex items-center gap-1 ml-auto shrink-0">
+          <span className="text-xs text-slate-600 mr-1">Export:</span>
+          <button
+            onClick={() => { window.location.href = `/api/logs/export?container_id=${encodeURIComponent(dockerId)}&format=txt`; }}
+            className="text-xs px-2 py-1 rounded border border-border text-slate-500 hover:border-slate-400 hover:text-slate-300 transition-colors"
+          >
+            .txt
+          </button>
+          <button
+            onClick={() => { window.location.href = `/api/logs/export?container_id=${encodeURIComponent(dockerId)}&format=csv`; }}
+            className="text-xs px-2 py-1 rounded border border-border text-slate-500 hover:border-slate-400 hover:text-slate-300 transition-colors"
+          >
+            .csv
+          </button>
+        </div>
       </div>
 
       <div className="flex-1 overflow-y-auto px-4 py-3 font-mono text-xs space-y-0.5">

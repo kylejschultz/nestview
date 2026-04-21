@@ -1,4 +1,4 @@
-import type { AlertEventType, AlertSetting, AuthStatus, Container, ContainerLog, ContainerEvent, GeneralSettings, MeResponse, WizardStatus } from "./types";
+import type { AlertEventType, AlertSetting, AuthStatus, Container, ContainerLog, ContainerEvent, GeneralSettings, MeResponse, NetworkHistoryPoint, WizardStatus } from "./types";
 
 const BASE = "/api";
 
@@ -32,20 +32,22 @@ async function post<T>(path: string, body?: unknown): Promise<T> {
 }
 
 export const api = {
-  version: () => fetch(`${BASE}/version`).then((r) => r.json()) as Promise<{ version: string }>,
+  version: () => fetch(`${BASE}/version`).then((r) => r.json()) as Promise<{ version: string; build_sha: string | null }>,
   containers: {
     list: () => get<Container[]>("/containers"),
     get: (id: string) => get<Container>(`/containers/${id}`),
-    stop:        (dockerId: string) => post<{ ok: boolean; action: string; container: string }>(`/containers/${dockerId}/stop`),
-    restart:     (dockerId: string) => post<{ ok: boolean; action: string; container: string }>(`/containers/${dockerId}/restart`),
-    start:       (dockerId: string) => post<{ ok: boolean; action: string; container: string }>(`/containers/${dockerId}/start`),
-    pullRestart: (dockerId: string) => post<{ ok: boolean; action: string; container: string }>(`/containers/${dockerId}/pull-restart`),
+    stop:             (dockerId: string) => post<{ ok: boolean; action: string; container: string }>(`/containers/${dockerId}/stop`),
+    restart:          (dockerId: string) => post<{ ok: boolean; action: string; container: string }>(`/containers/${dockerId}/restart`),
+    start:            (dockerId: string) => post<{ ok: boolean; action: string; container: string }>(`/containers/${dockerId}/start`),
+    checkForUpdates:  (dockerId: string) => post<{ ok: boolean; action: string; container: string; update_available: boolean }>(`/containers/${dockerId}/check-for-updates`),
+    updateAndRestart: (dockerId: string) => post<{ ok: boolean; action: string; container: string; update_available: boolean; restarted: boolean }>(`/containers/${dockerId}/update-and-restart`),
+    networkHistory:   (dockerId: string) => get<NetworkHistoryPoint[]>(`/containers/${dockerId}/network-history`),
   },
   stacks: {
-    stop:        (project: string) => post<{ ok: boolean; project: string; action: string; affected: number }>(`/stacks/${encodeURIComponent(project)}/stop`),
-    start:       (project: string) => post<{ ok: boolean; project: string; action: string; affected: number }>(`/stacks/${encodeURIComponent(project)}/start`),
-    restart:     (project: string) => post<{ ok: boolean; project: string; action: string; affected: number }>(`/stacks/${encodeURIComponent(project)}/restart`),
-    pullRestart: (project: string) => post<{ ok: boolean; project: string; action: string; pulled: number; restarted: number }>(`/stacks/${encodeURIComponent(project)}/pull-restart`),
+    stop:            (project: string) => post<{ ok: boolean; project: string; action: string; affected: number }>(`/stacks/${encodeURIComponent(project)}/stop`),
+    start:           (project: string) => post<{ ok: boolean; project: string; action: string; affected: number }>(`/stacks/${encodeURIComponent(project)}/start`),
+    restart:         (project: string) => post<{ ok: boolean; project: string; action: string; affected: number }>(`/stacks/${encodeURIComponent(project)}/restart`),
+    checkForUpdates: (project: string) => post<{ ok: boolean; project: string; action: string; checked: number }>(`/stacks/${encodeURIComponent(project)}/check-for-updates`),
   },
   logs: {
     forContainer: (

@@ -7,7 +7,6 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import Session, select
 
 from database import get_session
-
 from models import Container
 from services.image_checker import check_single_container
 
@@ -15,14 +14,15 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/containers", tags=["actions"])
 
-Action = Literal["start", "stop", "restart", "pull-restart"]
+Action = Literal["start", "stop", "restart"]
 
-# States that make each action valid
-_VALID_STATES: dict[Action, set[str]] = {
+_VALID_STATES: dict[str, set[str]] = {
     "stop":    {"running", "restarting", "paused"},
     "restart": {"running", "restarting", "paused", "exited"},
     "start":   {"exited", "created", "dead"},
 }
+
+_UPDATE_RESTART_VALID_STATES = {"running", "restarting", "paused"}
 
 
 def _get_db_container(docker_id: str, session: Session) -> Container:
@@ -49,26 +49,61 @@ def start_container(docker_id: str, session: Session = Depends(get_session)):
     return _run_action(docker_id, "start", session)
 
 
-@router.post("/{docker_id}/pull-restart")
-def pull_restart_container(docker_id: str, session: Session = Depends(get_session)):
+@router.post("/{docker_id}/check-for-updates")
+def check_for_updates(docker_id: str, session: Session = Depends(get_session)):
+    db_container = _get_db_container(docker_id, session)
+    check_single_container(db_container)
+    # check_single_container opens its own session; expire and re-fetch to read updated fields
+    session.expire(db_container)
+    session.refresh(db_container)
+    return {
+        "ok": True,
+        "action": "check-for-updates",
+        "container": db_container.name,
+        "update_available": db_container.update_available,
+    }
+
+
+@router.post("/{docker_id}/update-and-restart")
+def update_and_restart(docker_id: str, session: Session = Depends(get_session)):
     db_container = _get_db_container(docker_id, session)
 
-    valid_states = {"running", "restarting", "paused"}
-    if db_container.state not in valid_states:
+    if db_container.state not in _UPDATE_RESTART_VALID_STATES:
         raise HTTPException(
             status_code=409,
             detail=(
-                f"Cannot pull-restart container '{db_container.name}': "
+                f"Cannot update-and-restart container '{db_container.name}': "
                 f"current state is '{db_container.state}' "
-                f"(valid states: {', '.join(sorted(valid_states))})"
+                f"(valid states: {', '.join(sorted(_UPDATE_RESTART_VALID_STATES))})"
             ),
         )
+
+    old_image_digest = db_container.image_digest
 
     try:
         client = docker.from_env()
         client.images.pull(db_container.image)
     except docker.errors.APIError as exc:
-        raise HTTPException(status_code=500, detail=f"Image pull failed: {exc}")
+        raise HTTPException(status_code=500, detail=f"Image fetch failed: {exc}")
+
+    # Re-check digest to determine whether the fetch actually changed the local image
+    try:
+        check_single_container(db_container)
+    except Exception as exc:
+        logger.warning("update-and-restart: digest re-check failed for %r: %s", db_container.name, exc)
+
+    session.expire(db_container)
+    session.refresh(db_container)
+
+    if db_container.image_digest == old_image_digest:
+        # Image did not change — already up to date, skip restart
+        return {
+            "ok": True,
+            "action": "update-and-restart",
+            "container": db_container.name,
+            "update_available": db_container.update_available,
+            "restarted": False,
+        }
 
     try:
         c = client.containers.get(docker_id)
@@ -77,22 +112,23 @@ def pull_restart_container(docker_id: str, session: Session = Depends(get_sessio
         raise HTTPException(
             status_code=404,
             detail=(
-                f"Container '{db_container.name}' was not found in Docker after pull. "
+                f"Container '{db_container.name}' was not found in Docker after update. "
                 "It may have been removed since the last collector poll."
             ),
         )
     except docker.errors.APIError as exc:
         raise HTTPException(status_code=500, detail=str(exc))
 
-    try:
-        check_single_container(db_container)
-    except Exception as exc:
-        logger.warning("pull-restart: digest re-check failed for %r: %s", db_container.name, exc)
+    return {
+        "ok": True,
+        "action": "update-and-restart",
+        "container": db_container.name,
+        "update_available": db_container.update_available,
+        "restarted": True,
+    }
 
-    return {"ok": True, "action": "pull-restart", "container": db_container.name, "pulled": True, "restarted": True}
 
-
-def _run_action(docker_id: str, action: Action, session: Session) -> dict:
+def _run_action(docker_id: str, action: str, session: Session) -> dict:
     db_container = _get_db_container(docker_id, session)
 
     valid_states = _VALID_STATES[action]

@@ -1,4 +1,4 @@
-fastapi==0.135.3
+fastapi==0.136.0
 itsdangerous==2.2.0
 bcrypt==5.0.0
 slowapi==0.1.9
@@ -9,7 +9,7 @@ uvicorn[standard]==0.44.0
 sqlmodel==0.0.38
 apscheduler==3.11.2
 httpx==0.28.1
-pydantic==2.12.5
+pydantic==2.13.1
 docker==7.1.0
 # Explicit requests pin to fix CVE GHSA-gc5v-m9x4-r6x2 (transitive via docker SDK).
 requests>=2.33.0

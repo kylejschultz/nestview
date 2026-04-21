@@ -17,10 +17,7 @@ export default function ContainerCard({ container: c }: Props) {
       className="card p-4 flex flex-col gap-3 hover:border-accent/50 hover:bg-surface-2 transition-colors"
     >
       <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
-          <p className="font-medium text-slate-100 truncate">{c.name}</p>
-          <p className="text-xs text-slate-500 font-mono truncate mt-0.5">{c.image}</p>
-        </div>
+        <p className="font-medium text-slate-100 truncate min-w-0">{c.name}</p>
         <div className="flex items-center gap-2 shrink-0">
           {c.update_available && (
             <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium bg-blue-500/15 text-blue-400 border border-blue-500/30">
@@ -55,11 +52,6 @@ export default function ContainerCard({ container: c }: Props) {
         )}
         {c.restart_count > 0 && (
           <span className="text-yellow-500">{c.restart_count} restarts</span>
-        )}
-        {c.compose_project && (
-          <span className="badge bg-surface-3 text-slate-400 border border-border">
-            {c.compose_project}
-          </span>
         )}
         {c.ports.length > 0 && (
           <span

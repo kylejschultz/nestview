@@ -1,9 +1,18 @@
 import { useState, useEffect, useRef } from "react";
 import { useParams, Link } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import {
+  ResponsiveContainer,
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+} from "recharts";
 import { api } from "../api";
 import { useAuth } from "../AuthContext";
-import type { Container } from "../types";
+import type { Container, NetworkHistoryPoint } from "../types";
 import StatusBadge from "../components/StatusBadge";
 import MetricBar from "../components/MetricBar";
 import LogViewer from "../components/LogViewer";
@@ -28,7 +37,7 @@ function Spinner() {
 
 // ── Action buttons ────────────────────────────────────────────────────────────
 
-type ActionType = "stop" | "restart" | "start" | "pull-restart";
+type ActionType = "stop" | "restart" | "start" | "update-and-restart";
 
 interface ActionButtonsProps {
   container: Container;
@@ -48,18 +57,18 @@ const STEP_DEFINITIONS: Record<ActionType, ProgressStep[]> = {
     { id: "starting",  label: "Starting container…", status: "pending" },
     { id: "confirmed", label: "Container running",   status: "pending" },
   ],
-  "pull-restart": [
-    { id: "pulling",    label: "Pulling latest image…", status: "pending" },
-    { id: "restarting", label: "Restarting container…", status: "pending" },
-    { id: "confirming", label: "Confirming running…",   status: "pending" },
-    { id: "checking",   label: "Checking for updates…", status: "pending" },
-    { id: "complete",   label: "Complete",              status: "pending" },
+  "update-and-restart": [
+    { id: "fetching",   label: "Fetching latest image…", status: "pending" },
+    { id: "restarting", label: "Restarting container…",  status: "pending" },
+    { id: "confirming", label: "Confirming running…",    status: "pending" },
+    { id: "complete",   label: "Complete",               status: "pending" },
   ],
 };
 
 function ActionButtons({ container }: ActionButtonsProps) {
   const queryClient = useQueryClient();
   const [pendingAction, setPendingAction] = useState<ActionType | null>(null);
+  const [isCheckingUpdates, setIsCheckingUpdates] = useState(false);
   const { toastState, showToast, dismissToast } = useToast();
 
   // Progress state
@@ -77,10 +86,10 @@ function ActionButtons({ container }: ActionButtonsProps) {
   const initialStartedAtRef = useRef<string | null>(null);
 
   const ACTION_SUCCESS_MESSAGES: Record<ActionType, string> = {
-    stop:           "Container stopped",
-    start:          "Container started",
-    restart:        "Container restarted",
-    "pull-restart": "Pull & Restart complete",
+    stop:                 "Container stopped",
+    start:                "Container started",
+    restart:              "Container restarted",
+    "update-and-restart": "Update & Restart complete",
   };
 
   function updateSteps(steps: ProgressStep[]) {
@@ -163,10 +172,9 @@ function ActionButtons({ container }: ActionButtonsProps) {
           setIsComplete(true);
         }
       }
-    } else if (action === "pull-restart") {
+    } else if (action === "update-and-restart") {
       const restartingDone = progressStepsRef.current.find(s => s.id === "restarting")?.status === "done";
       const confirmingDone = progressStepsRef.current.find(s => s.id === "confirming")?.status === "done";
-      const checkingDone   = progressStepsRef.current.find(s => s.id === "checking")?.status === "done";
 
       if (!restartingDone) {
         const restarted =
@@ -183,11 +191,6 @@ function ActionButtons({ container }: ActionButtonsProps) {
       } else if (!confirmingDone) {
         if (fresh.state === "running") {
           setStepStatus("confirming", "done");
-          setStepStatus("checking", "active");
-        }
-      } else if (!checkingDone) {
-        if (fresh.last_digest_check !== initialDigestCheck) {
-          setStepStatus("checking", "done");
           setStepStatus("complete", "done");
           stopPolling();
           setIsComplete(true);
@@ -240,9 +243,26 @@ function ActionButtons({ container }: ActionButtonsProps) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hasError]);
 
+  // Separate lightweight mutation for Check for Updates (no progress modal, just toast)
+  const { mutate: runCheckForUpdates } = useMutation({
+    mutationFn: () => api.containers.checkForUpdates(container.docker_id),
+    onMutate: () => setIsCheckingUpdates(true),
+    onSuccess: (data) => {
+      setIsCheckingUpdates(false);
+      const msg = data.update_available ? "Update available" : "Already up to date";
+      showToast(msg, "success");
+      queryClient.invalidateQueries({ queryKey: ["container", container.docker_id] });
+      queryClient.invalidateQueries({ queryKey: ["containers"] });
+    },
+    onError: (err: Error) => {
+      setIsCheckingUpdates(false);
+      showToast(err.message, "error");
+    },
+  });
+
   const { mutate, isPending: mutationIsPending } = useMutation({
     mutationFn: (action: ActionType) => {
-      if (action === "pull-restart") return api.containers.pullRestart(container.docker_id);
+      if (action === "update-and-restart") return api.containers.updateAndRestart(container.docker_id);
       return api.containers[action](container.docker_id);
     },
     onMutate: (action: ActionType) => {
@@ -253,9 +273,19 @@ function ActionButtons({ container }: ActionButtonsProps) {
       steps[0] = { ...steps[0], status: "active" };
       updateSteps(steps);
     },
-    onSuccess: (_data, action) => {
-      if (action === "pull-restart") {
-        setStepStatus("pulling", "done");
+    onSuccess: (data, action) => {
+      if (action === "update-and-restart") {
+        setStepStatus("fetching", "done");
+        const result = data as unknown as { restarted: boolean };
+        if (!result.restarted) {
+          // Image was already up to date — no restart needed
+          setStepStatus("restarting", "done");
+          setStepStatus("confirming", "done");
+          setStepStatus("complete", "done");
+          stopPolling();
+          setIsComplete(true);
+          return;
+        }
         setStepStatus("restarting", "active");
       }
       startPolling(action, initialDigestCheckRef.current);
@@ -282,26 +312,23 @@ function ActionButtons({ container }: ActionButtonsProps) {
 
   // Determine which buttons to show
   const state = container.state;
-  const showStop    = state === "running" || state === "restarting" || state === "paused";
-  const showRestart = showStop;
-  const showStart   = state === "exited" || state === "created" || state === "dead";
-
-  if (!showStop && !showStart) return null;
+  const showStop             = state === "running" || state === "restarting" || state === "paused";
+  const showRestart          = showStop;
+  const showStart            = state === "exited" || state === "created" || state === "dead";
+  const showUpdateAndRestart = showStop && container.update_available;
 
   const BUTTON_STYLES: Record<ActionType, string> = {
-    stop:           "border-red-500/50 text-red-400 hover:bg-red-500/10 hover:border-red-400",
-    restart:        "border-yellow-500/50 text-yellow-400 hover:bg-yellow-500/10 hover:border-yellow-400",
-    start:          "border-green-500/50 text-green-400 hover:bg-green-500/10 hover:border-green-400",
-    "pull-restart": container.update_available
-      ? "border-blue-400 text-blue-400 hover:bg-blue-500/10"
-      : "border-blue-500/50 text-blue-400 hover:bg-blue-500/10 hover:border-blue-400",
+    stop:                 "border-red-500/50 text-red-400 hover:bg-red-500/10 hover:border-red-400",
+    restart:              "border-yellow-500/50 text-yellow-400 hover:bg-yellow-500/10 hover:border-yellow-400",
+    start:                "border-green-500/50 text-green-400 hover:bg-green-500/10 hover:border-green-400",
+    "update-and-restart": "border-blue-400 text-blue-400 hover:bg-blue-500/10",
   };
 
   const modalMessages: Record<ActionType, string> = {
-    stop:           `Are you sure you want to stop ${container.name}?`,
-    restart:        `Are you sure you want to restart ${container.name}?`,
-    start:          `Are you sure you want to start ${container.name}?`,
-    "pull-restart": `Pull the latest image and restart ${container.name}? This may take a moment.`,
+    stop:                 `Are you sure you want to stop ${container.name}?`,
+    restart:              `Are you sure you want to restart ${container.name}?`,
+    start:                `Are you sure you want to start ${container.name}?`,
+    "update-and-restart": `Update ${container.name} to the latest image and restart? The container will only restart if a new image is available.`,
   };
 
   return (
@@ -333,7 +360,7 @@ function ActionButtons({ container }: ActionButtonsProps) {
         <div className="flex flex-wrap gap-2">
           {showRestart && (
             <button
-              disabled={isPending}
+              disabled={isPending || isCheckingUpdates}
               onClick={() => requestAction("restart")}
               className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg border transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${BUTTON_STYLES.restart}`}
             >
@@ -345,23 +372,9 @@ function ActionButtons({ container }: ActionButtonsProps) {
               Restart
             </button>
           )}
-          {showRestart && (
-            <button
-              disabled={isPending}
-              onClick={() => requestAction("pull-restart")}
-              className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg border transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${BUTTON_STYLES["pull-restart"]}`}
-            >
-              {isPending && pendingAction === "pull-restart" ? <Spinner /> : (
-                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                </svg>
-              )}
-              Pull &amp; Restart
-            </button>
-          )}
           {showStop && (
             <button
-              disabled={isPending}
+              disabled={isPending || isCheckingUpdates}
               onClick={() => requestAction("stop")}
               className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg border transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${BUTTON_STYLES.stop}`}
             >
@@ -376,7 +389,7 @@ function ActionButtons({ container }: ActionButtonsProps) {
           )}
           {showStart && (
             <button
-              disabled={isPending}
+              disabled={isPending || isCheckingUpdates}
               onClick={() => requestAction("start")}
               className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg border transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${BUTTON_STYLES.start}`}
             >
@@ -389,9 +402,179 @@ function ActionButtons({ container }: ActionButtonsProps) {
               Start
             </button>
           )}
+          <button
+            disabled={isPending || isCheckingUpdates}
+            onClick={() => runCheckForUpdates()}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg border transition-colors disabled:opacity-50 disabled:cursor-not-allowed border-slate-600 text-slate-400 hover:bg-surface-3 hover:border-slate-500"
+          >
+            {isCheckingUpdates ? <Spinner /> : (
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            )}
+            Check for Updates
+          </button>
+          {showUpdateAndRestart && (
+            <button
+              disabled={isPending || isCheckingUpdates}
+              onClick={() => requestAction("update-and-restart")}
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg border transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${BUTTON_STYLES["update-and-restart"]}`}
+            >
+              {isPending && pendingAction === "update-and-restart" ? <Spinner /> : (
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+              )}
+              Update &amp; Restart
+            </button>
+          )}
         </div>
       </div>
     </>
+  );
+}
+
+// ── Network I/O chart ─────────────────────────────────────────────────────────
+
+// All values are IEC (1024-based) so formatBytes() displays clean round numbers.
+const TIER_STEPS = [
+  1_024,           // 1 KB
+  5_120,           // 5 KB
+  10_240,          // 10 KB
+  25_600,          // 25 KB
+  51_200,          // 50 KB
+  102_400,         // 100 KB
+  256_000,         // 250 KB
+  512_000,         // 500 KB
+  1_048_576,       // 1 MB
+  5_242_880,       // 5 MB
+  10_485_760,      // 10 MB
+  26_214_400,      // 25 MB
+  52_428_800,      // 50 MB
+  104_857_600,     // 100 MB
+  262_144_000,     // 250 MB
+  524_288_000,     // 500 MB
+  1_073_741_824,   // 1 GB
+  2_684_354_560,   // 2.5 GB
+  5_368_709_120,   // 5 GB
+  10_737_418_240,  // 10 GB
+];
+
+function tieredCeiling(rawMax: number): number {
+  for (const t of TIER_STEPS) {
+    if (rawMax <= t) return t;
+  }
+  return TIER_STEPS[TIER_STEPS.length - 1];
+}
+
+interface NetIOTooltipProps {
+  active?: boolean;
+  payload?: { dataKey?: string; value?: number; payload?: NetworkHistoryPoint }[];
+}
+
+function NetIOTooltip({ active, payload }: NetIOTooltipProps) {
+  if (!active || !payload?.length) return null;
+  const raw = payload[0].payload?.recorded_at ?? "";
+  const ts = new Date(raw.endsWith("Z") ? raw : raw + "Z");
+  const date = ts.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  const time = ts.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+  const rx = payload.find((p) => p.dataKey === "rx_bytes")?.value ?? 0;
+  const tx = payload.find((p) => p.dataKey === "tx_bytes")?.value ?? 0;
+  return (
+    <div className="rounded border border-slate-700 bg-[#0f172a] px-3 py-2 text-xs space-y-1">
+      <div className="flex items-center gap-2">
+        <span className="inline-block w-4 border-t-2 border-[#22d3ee]" />
+        <span className="text-slate-300">{formatBytes(rx as number)}</span>
+      </div>
+      <div className="flex items-center gap-2">
+        <span className="inline-block w-4 border-t-2 border-[#f97316]" />
+        <span className="text-slate-300">{formatBytes(tx as number)}</span>
+      </div>
+      <div className="text-slate-500 pt-0.5">{date}, {time}</div>
+    </div>
+  );
+}
+
+function NetworkIOChart({ data }: { data: NetworkHistoryPoint[] }) {
+  if (data.length === 0) {
+    return (
+      <div className="flex items-center justify-center h-20 text-slate-500 text-sm">
+        No network history available yet
+      </div>
+    );
+  }
+
+  const allValues = [...data.map((d) => d.rx_bytes), ...data.map((d) => d.tx_bytes)];
+  const rawMax = Math.max(...allValues, 1);
+  const maxVal = tieredCeiling(rawMax);
+
+  const dayBreaks = new Set(
+    data.reduce<number[]>((acc, d, i) => {
+      if (i === 0) return acc;
+      const prev = new Date((data[i-1].recorded_at.endsWith("Z") ? data[i-1].recorded_at : data[i-1].recorded_at + "Z"));
+      const curr = new Date((d.recorded_at.endsWith("Z") ? d.recorded_at : d.recorded_at + "Z"));
+      if (curr.getDate() !== prev.getDate()) acc.push(i);
+      return acc;
+    }, [])
+  );
+
+  return (
+    <div className="w-full px-4" outline-none>
+      <ResponsiveContainer width="100%" height={200}>
+        <LineChart
+          data={data}
+          margin={{ top: 8, right: 96, bottom: 8, left: 16 }}
+          style={{ outline: "none" }}
+        >
+          <CartesianGrid stroke="#1e293b" vertical={false} />
+          <XAxis
+            dataKey="recorded_at"
+            tickLine={false}
+            axisLine={false}
+            tick={{ fontSize: 11, fill: "#64748b" }}
+            tickFormatter={(val: string, index: number) => {
+              const ts = new Date(val.endsWith("Z") ? val : val + "Z");
+              const time = ts.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+              if (dayBreaks.has(index)) {
+                const date = ts.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+                return `${date} ${time}`;
+              }
+              return time;
+            }}
+            interval="preserveStartEnd"
+            minTickGap={32}
+          />
+          <YAxis
+            domain={[0, maxVal]}
+            tickLine={false}
+            axisLine={false}
+            tick={{ fontSize: 11, fill: "#64748b" }}
+            tickFormatter={(v: number) => formatBytes(v)}
+            width={80}
+            ticks={[0, maxVal * 0.25, maxVal * 0.5, maxVal * 0.75, maxVal]}
+          />
+          <Tooltip content={<NetIOTooltip />} cursor={{ stroke: "#475569", strokeWidth: 1, strokeDasharray: "3 3" }} />
+          <Line
+            type="monotone"
+            dataKey="rx_bytes"
+            stroke="#22d3ee"
+            strokeWidth={1.5}
+            dot={data.length === 1 ? { r: 3, fill: "#22d3ee" } : false}
+            activeDot={{ r: 3, fill: "#22d3ee" }}
+            isAnimationActive={false}
+          />
+          <Line
+            type="monotone"
+            dataKey="tx_bytes"
+            stroke="#f97316"
+            strokeWidth={1.5}
+            dot={data.length === 1 ? { r: 3, fill: "#f97316" } : false}
+            activeDot={{ r: 3, fill: "#f97316" }}
+            isAnimationActive={false}
+          />
+        </LineChart>
+      </ResponsiveContainer>
+    </div>
   );
 }
 
@@ -412,6 +595,7 @@ export default function ContainerDetail() {
   const { id } = useParams<{ id: string }>();
   const tz = useTimezone();
   const { isAuthenticated } = useAuth();
+  const [netExpanded, setNetExpanded] = useState(true);
 
   const { data: container, isLoading, isError } = useQuery<Container>({
     queryKey: ["container", id],
@@ -422,6 +606,15 @@ export default function ContainerDetail() {
       return 10_000;
     },
     enabled: !!id && isAuthenticated,
+  });
+
+  const { data: networkHistory = [] } = useQuery<NetworkHistoryPoint[]>({
+    queryKey: ["network-history", id],
+    queryFn: () => api.containers.networkHistory(id!),
+    enabled: !!id && isAuthenticated,
+    staleTime: Infinity,
+    refetchOnMount: false,
+    refetchOnReconnect: false,
   });
 
   if (isLoading) {
@@ -509,6 +702,7 @@ export default function ContainerDetail() {
                 </div>
               )}
             </div>
+
           </div>
         )}
 
@@ -579,6 +773,41 @@ export default function ContainerDetail() {
             />
           )}
         </div>
+      </div>
+
+      {/* Network I/O */}
+      <div className="card">
+        <button
+          onClick={() => setNetExpanded((v) => !v)}
+          className="w-full flex items-center justify-between px-4 py-3 text-left"
+        >
+          <span className="text-sm font-medium text-slate-300">Network I/O</span>
+          <svg
+            className={`w-4 h-4 text-slate-500 transition-transform ${netExpanded ? "rotate-180" : ""}`}
+            fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
+        {netExpanded && (
+          <div className="pb-4 space-y-3">
+            <div className="flex gap-4 text-xs text-slate-400 px-4">
+              <span className="flex items-center gap-1.5">
+                <svg width="16" height="2" aria-hidden="true">
+                  <line x1="0" y1="1" x2="16" y2="1" stroke="#22d3ee" strokeWidth="2" />
+                </svg>
+                RX
+              </span>
+              <span className="flex items-center gap-1.5">
+                <svg width="16" height="2" aria-hidden="true">
+                  <line x1="0" y1="1" x2="16" y2="1" stroke="#f97316" strokeWidth="2" />
+                </svg>
+                TX
+              </span>
+            </div>
+            <NetworkIOChart data={networkHistory} />
+          </div>
+        )}
       </div>
 
       {/* Logs */}

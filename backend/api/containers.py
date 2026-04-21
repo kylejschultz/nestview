@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import Session, select
 
 from database import get_session
-from models import Container
+from models import Container, ContainerNetworkHistory
 
 router = APIRouter(prefix="/api/containers", tags=["containers"])
 
@@ -35,3 +35,27 @@ def get_container(docker_id: str, session: Session = Depends(get_session)):
     d["volumes"] = json.loads(container.volumes)
     d["networks"] = json.loads(container.networks)
     return d
+
+
+@router.get("/{docker_id}/network-history")
+def get_network_history(docker_id: str, session: Session = Depends(get_session)):
+    container = session.exec(
+        select(Container).where(Container.docker_id == docker_id)
+    ).first()
+    if not container:
+        raise HTTPException(status_code=404, detail="Container not found")
+
+    records = session.exec(
+        select(ContainerNetworkHistory)
+        .where(ContainerNetworkHistory.container_id == docker_id)
+        .order_by(ContainerNetworkHistory.recorded_at)
+    ).all()
+
+    return [
+        {
+            "recorded_at": r.recorded_at.isoformat(),
+            "rx_bytes": r.rx_bytes,
+            "tx_bytes": r.tx_bytes,
+        }
+        for r in records
+    ]

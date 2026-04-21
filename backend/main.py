@@ -10,13 +10,16 @@ from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
-from sqlalchemy import text
 from sqlmodel import Session
 
 logger = logging.getLogger(__name__)
 
 _version_file = Path("/app/VERSION")
-APP_VERSION = _version_file.read_text().strip() if _version_file.exists() else "dev"
+_raw_version = _version_file.read_text().strip() if _version_file.exists() else "dev"
+_build_channel = os.environ.get("BUILD_CHANNEL", "")
+APP_VERSION = f"{_raw_version}-dev" if _build_channel == "dev" else _raw_version
+_raw_sha = os.environ.get("BUILD_SHA", "")
+BUILD_SHA: str | None = _raw_sha if _raw_sha and _raw_sha != "unknown" else None
 
 from database import create_db_and_tables, engine
 from api import containers, logs, events, settings, actions, admin, stack_actions
@@ -35,7 +38,7 @@ def _seed_settings_from_env():
     """
     seeds = {
         "log_retention_days": os.getenv("LOG_RETENTION_DAYS", "7"),
-        "exited_container_ttl_hours": os.getenv("EXITED_CONTAINER_TTL_HOURS", "0.083"),
+        "exited_container_ttl_seconds": "300",
         "timezone": os.getenv("TZ", "UTC"),
         "image_check_time": "03:00",
         "image_check_enabled": "true",
@@ -47,28 +50,12 @@ def _seed_settings_from_env():
         session.commit()
 
 
-_NEW_CONTAINER_COLUMNS = [
-    ("image_digest",            "TEXT"),
-    ("registry_digest",         "TEXT"),
-    ("update_available",        "INTEGER NOT NULL DEFAULT 0"),
-    ("last_digest_check",       "TEXT"),
-    ("image_size",              "INTEGER"),
-    ("update_alert_sent_digest","TEXT"),
-]
-
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     create_db_and_tables()
-
-    with Session(engine) as _s:
-        for col_name, col_type in _NEW_CONTAINER_COLUMNS:
-            try:
-                _s.exec(text(f"ALTER TABLE container ADD COLUMN {col_name} {col_type}"))
-                _s.commit()
-            except Exception:
-                pass  # column already exists
-
+    from migrations import run_migrations
+    with Session(engine) as _migration_session:
+        run_migrations(engine, _migration_session)
     _seed_settings_from_env()
 
     # Handle RESET_ADMIN_PASSWORD env var — clears credentials so setup wizard re-triggers
@@ -172,7 +159,7 @@ app.include_router(stack_actions.router, dependencies=[Depends(require_auth)])
 
 @app.get("/api/version")
 def version():
-    return {"version": APP_VERSION}
+    return {"version": APP_VERSION, "build_sha": BUILD_SHA}
 
 
 @app.get("/api/health")

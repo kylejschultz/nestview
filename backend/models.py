@@ -38,7 +38,10 @@ class Container(SQLModel, table=True):
     update_available: bool = False
     last_digest_check: Optional[datetime] = None
     image_size: Optional[int] = None
+    last_pulled: Optional[datetime] = None
     update_alert_sent_digest: Optional[str] = None
+    net_rx_bytes: Optional[int] = 0
+    net_tx_bytes: Optional[int] = 0
 
 
 class ContainerLog(SQLModel, table=True):
@@ -58,6 +61,16 @@ class ContainerEvent(SQLModel, table=True):
     timestamp: datetime = Field(default_factory=datetime.utcnow, index=True)
     details: Optional[str] = None
     alerted: bool = False
+
+
+class ContainerNetworkHistory(SQLModel, table=True):
+    __tablename__ = "container_network_history"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    container_id: str = Field(index=True)
+    rx_bytes: int = Field(default=0)
+    tx_bytes: int = Field(default=0)
+    recorded_at: datetime = Field(default_factory=datetime.utcnow, index=True)
 
 
 class ContainerAlertSetting(SQLModel, table=True):

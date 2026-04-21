@@ -23,6 +23,8 @@ export interface Container {
   last_digest_check: string | null;
   image_digest: string | null;
   registry_digest: string | null;
+  net_rx_bytes: number | null;
+  net_tx_bytes: number | null;
 }
 
 export interface ContainerLog {
@@ -56,8 +58,9 @@ export interface ContainerEvent {
 export interface GeneralSettings {
   discord_webhook_url: string;
   log_retention_days: number;
-  exited_container_ttl_hours: number;
+  exited_container_ttl_seconds: number;
   timezone: string;
+  network_history_retention_hours: number;
 }
 
 export interface WizardStatus {
@@ -73,4 +76,10 @@ export interface MeResponse {
   authenticated: boolean;
   username: string | null;
   auth_mode: string;
+}
+
+export interface NetworkHistoryPoint {
+  rx_bytes: number;
+  tx_bytes: number;
+  recorded_at: string;
 }

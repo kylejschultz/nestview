@@ -44,51 +44,24 @@ def restart_stack(compose_project: str, session: Session = Depends(get_session))
     return _run_stack_action(compose_project, "restart", session)
 
 
-@router.post("/{compose_project}/pull-restart")
-def pull_restart_stack(compose_project: str, session: Session = Depends(get_session)):
+@router.post("/{compose_project}/check-for-updates")
+def check_for_updates_stack(compose_project: str, session: Session = Depends(get_session)):
     containers = _get_project_containers(compose_project, session)
-    client = docker.from_env()
-
-    pulled = 0
-    pull_errors: list[str] = []
-
-    for db_container in containers:
-        try:
-            client.images.pull(db_container.image)
-            pulled += 1
-        except Exception as exc:
-            logger.warning(
-                "pull-restart: failed to pull image '%s' for container '%s': %s",
-                db_container.image, db_container.name, exc,
-            )
-            pull_errors.append(db_container.name)
-
-    restarted = 0
-    for db_container in containers:
-        try:
-            c = client.containers.get(db_container.docker_id)
-            c.restart()
-            restarted += 1
-        except docker.errors.NotFound:
-            logger.warning("pull-restart: container '%s' not found in Docker", db_container.name)
-        except docker.errors.APIError as exc:
-            logger.warning("pull-restart: failed to restart container '%s': %s", db_container.name, exc)
 
     for db_container in containers:
         try:
             check_single_container(db_container)
         except Exception as exc:
             logger.warning(
-                "pull-restart: digest re-check failed for '%s': %s",
+                "check-for-updates: digest check failed for '%s': %s",
                 db_container.name, exc,
             )
 
     return {
         "ok": True,
         "project": compose_project,
-        "action": "pull-restart",
-        "pulled": pulled,
-        "restarted": restarted,
+        "action": "check-for-updates",
+        "checked": len(containers),
     }
 
 
