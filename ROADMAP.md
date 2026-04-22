@@ -1,6 +1,48 @@
 # Nestview Roadmap
 
-## v0.2.0 — Current release
+## v0.5.0 — Current release
+
+Observability enhancements: network I/O visibility, log severity coloring, and log export.
+
+- [x] Per-container network I/O stats (bytes in/out) on the dashboard
+- [x] Network I/O history — sparkline chart on the container detail page
+- [x] Log severity coloring — automatic detection of ERROR / WARN / DEBUG lines in the UI
+- [x] Log export — download logs for a container or time range as plain text
+
+---
+
+## v0.4.1
+
+Stability and bug fix release.
+
+- [x] Bug fixes and minor improvements following the v0.4.0 auth rollout
+
+---
+
+## v0.4.0
+
+Mandatory authentication with first-run setup wizard.
+
+- [x] Mandatory authentication — dashboard is inaccessible until credentials are created
+- [x] Setup wizard — first-run flow to create a username and password before the dashboard loads
+- [x] bcrypt-hashed credential storage in `AppSetting`
+- [x] Signed httpOnly session cookies via `itsdangerous`
+- [x] "No authentication" escape hatch for users behind an external auth proxy
+- [x] `RESET_ADMIN_PASSWORD` env var to clear credentials and re-trigger the setup wizard
+
+---
+
+## v0.3.0
+
+Mono-image architecture — collector refactored into in-process daemon threads.
+
+- [x] Collector runs as daemon threads inside the backend service (no separate container or process)
+- [x] Single `docker compose up` deploys exactly one container
+- [x] `NESTVIEW_SECURE_COOKIES` env var for reverse-proxy deployments
+
+---
+
+## v0.2.0
 
 Image update awareness, pull + restart actions, and dashboard update badges.
 
@@ -33,9 +75,7 @@ Core visibility and alerting for self-hosted Docker environments.
 
 Make logs more useful without adding infrastructure complexity.
 
-- [ ] **Log pattern alerting** — configure regex patterns in `.env`; get a Discord alert when a line matches (e.g., `ERROR`, `OOM`, custom strings)
-- [ ] **Log severity coloring** — automatic detection of ERROR / WARN / DEBUG lines in the UI
-- [ ] **Log export** — download logs for a container or time range as plain text
+- [ ] **Log pattern alerting** — configure regex patterns; get a Discord alert when a line matches (e.g., `ERROR`, `OOM`, custom strings)
 - [ ] **Log bookmarks** — mark a specific log line to return to later
 
 ---
@@ -50,12 +90,8 @@ For homelabs with more than one machine.
 
 ---
 
-## Network traffic visibility
+## Network security visibility
 
-Understand what your containers are actually talking to.
-
-- [ ] **Per-container network I/O stats** — bytes in/out displayed on the dashboard
-- [ ] **Network I/O history** — sparkline chart on the container detail page
 - [ ] **Port scan detection** — alert when a container starts receiving traffic on an unexpected port
 
 ---
