@@ -9,7 +9,21 @@ Thanks for your interest in contributing. Nestview is a small project — contri
 
 ## Dev setup
 
-See the **Development** section in the README for how to run the backend and frontend locally.
+**Backend:**
+```bash
+cd backend
+pip install -r requirements.txt
+uvicorn main:app --reload --port 8080
+```
+
+**Frontend:**
+```bash
+cd frontend
+npm install
+npm run dev   # starts Vite dev server on :5173, proxies /api to :8080
+```
+
+You'll need Docker running locally so the collector can reach the Docker socket.
 
 ## Conventions
 

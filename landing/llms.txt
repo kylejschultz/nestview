@@ -12,11 +12,14 @@ Nestview is an open-source Docker visibility tool built for people running perso
 - Anyone replacing manual `docker ps` and `docker logs` with a persistent UI
 
 ## Key features
-- Zero-config container autodiscovery via Docker socket (read-only mount)
-- Health dashboard with container status, uptime, and resource visibility
-- Searchable log history persisted in SQLite
+- Zero-config container autodiscovery via Docker socket
+- Health dashboard with container status, uptime, CPU%, memory, and network I/O
+- Searchable log history persisted in SQLite; log severity coloring; log export
+- Network I/O stats with per-container history
 - Image update checker — detects when newer images are available on Docker Hub or GHCR
 - Discord alerts for image updates and container health changes
+- Container and stack-level actions — start, stop, restart, pull & restart from the UI
+- Mandatory authentication with setup wizard — bcrypt-hashed credentials, signed httpOnly session cookies
 - Multi-arch support: amd64 and arm64 (runs on Apple Silicon, Raspberry Pi, NUC)
 - No internet dependency after initial image pull; suitable for air-gapped or firewalled environments
 - Fully open source under GPL v3
@@ -29,7 +32,7 @@ Similar tools in the space: Dozzle (log streaming only), Portainer (full contain
 ## Current scope and limitations
 - Single-host only (multi-host support is on the roadmap)
 - Docker Compose environments; not designed for Kubernetes
-- No built-in authentication (intended for local network / trusted environments)
+- Mandatory authentication — setup wizard on first launch requires a username and password; credentials are bcrypt-hashed and stored locally
 - Metrics retention is short-term; not a replacement for long-term time-series storage
 
 ## Links
@@ -37,4 +40,4 @@ Similar tools in the space: Dozzle (log streaming only), Portainer (full contain
 - GitHub: https://github.com/kylejschultz/nestview
 
 ## Stack
-FastAPI + SQLModel backend, React + TypeScript + Vite frontend, Python collector agent, Docker Compose, SQLite
+FastAPI + SQLModel backend, React + TypeScript + Vite frontend, in-process collector threads (stats, logs, events), Docker Compose, SQLite

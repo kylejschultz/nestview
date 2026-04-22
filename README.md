@@ -97,6 +97,7 @@ Nestview requires authentication out of the box. On first launch, you'll be prom
 | `LOG_BATCH_INTERVAL` | `5` | Seconds between log flushes to SQLite |
 | `SECRET_KEY` | _(auto-generated)_ | Session cookie signing key. Leave blank — Nestview generates and persists one automatically. Set explicitly for scripted deployments that need stable sessions across data resets. |
 | `RESET_ADMIN_PASSWORD` | _(unset)_ | Set to `true` to clear stored credentials and re-trigger the setup wizard on next start. Remove after completing setup. |
+| `NESTVIEW_SECURE_COOKIES` | `false` | Set to `true` when Nestview is behind a TLS-terminating reverse proxy (Nginx, Caddy, Traefik). Marks session cookies as `Secure` so they are only sent over HTTPS. |
 
 `POLL_INTERVAL` and `LOG_BATCH_INTERVAL` are handled inside the single container — no separate collector service required.
 
@@ -120,9 +121,9 @@ Log retention and exited container TTL are configured in the Settings UI.
 
 ## What's next
 
-- **Log intelligence** — regex pattern alerting, severity coloring, log export, and bookmarks
+- **Log intelligence** — regex pattern alerting and log bookmarks
 - **Multi-host support** — connect collectors from multiple Docker hosts to a single dashboard
-- **Network traffic visibility** — per-container bytes in/out, I/O history, and unexpected port detection
+- **Port scan detection** — alert when a container receives traffic on an unexpected port
 
 → See [ROADMAP.md](./ROADMAP.md) for the full list.
 
