@@ -6,6 +6,7 @@ import docker.errors
 from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import Session, select
 
+from constants import _VALID_STATES
 from database import get_session
 from models import Container
 from services.image_checker import check_single_container
@@ -15,12 +16,6 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/containers", tags=["actions"])
 
 Action = Literal["start", "stop", "restart"]
-
-_VALID_STATES: dict[str, set[str]] = {
-    "stop":    {"running", "restarting", "paused"},
-    "restart": {"running", "restarting", "paused", "exited"},
-    "start":   {"exited", "created", "dead"},
-}
 
 _UPDATE_RESTART_VALID_STATES = {"running", "restarting", "paused"}
 

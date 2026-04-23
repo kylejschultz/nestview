@@ -5,6 +5,7 @@ import docker.errors
 from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import Session, select
 
+from constants import _VALID_STATES
 from database import get_session
 from models import Container
 from services.image_checker import check_single_container
@@ -12,12 +13,6 @@ from services.image_checker import check_single_container
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/stacks", tags=["stack_actions"])
-
-_VALID_STATES = {
-    "stop":    {"running", "restarting", "paused"},
-    "restart": {"running", "restarting", "paused", "exited"},
-    "start":   {"exited", "created", "dead"},
-}
 
 
 def _get_project_containers(compose_project: str, session: Session) -> list[Container]:
