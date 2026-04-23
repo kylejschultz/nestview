@@ -176,21 +176,13 @@ function SettingRow({ label, info, children, last }: { label: string; info?: str
   );
 }
 
-function GeneralTab({ authMode }: { authMode?: string }) {
+function GeneralTab({ authMode, version }: { authMode?: string; version?: string }) {
   const queryClient = useQueryClient();
   const { isAuthenticated } = useAuth();
 
   const { data: general, isLoading } = useQuery<GeneralSettings>({
     queryKey: ["settings-general"],
     queryFn: api.settings.general,
-    enabled: isAuthenticated,
-  });
-
-  const { data: versionData } = useQuery({
-    queryKey: ["version"],
-    queryFn: api.version,
-    staleTime: Infinity,
-    retry: false,
     enabled: isAuthenticated,
   });
 
@@ -557,7 +549,7 @@ function GeneralTab({ authMode }: { authMode?: string }) {
 
       </div>
 
-      <AboutSection version={versionData?.version} />
+      <AboutSection version={version} />
     </div>
   );
 }
@@ -758,7 +750,7 @@ export default function Settings({ authMode }: { authMode?: string }) {
         ))}
       </div>
 
-      {activeTab === "general" ? <GeneralTab authMode={authMode} /> : <NotificationsTab />}
+      {activeTab === "general" ? <GeneralTab authMode={authMode} version={versionData?.version} /> : <NotificationsTab />}
     </div>
   );
 }

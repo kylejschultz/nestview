@@ -119,10 +119,6 @@ function ActionButtons({ container }: ActionButtonsProps) {
     setHasError(false);
     setErrorMessage(null);
     stopPolling();
-    if (timeoutRef.current) {
-      clearTimeout(timeoutRef.current);
-      timeoutRef.current = null;
-    }
   }
 
   function advanceSteps(action: ActionType, fresh: Container, initialDigestCheck: string | null) {
@@ -519,7 +515,7 @@ function NetworkIOChart({ data }: { data: NetworkHistoryPoint[] }) {
   );
 
   return (
-    <div className="w-full px-4" outline-none>
+    <div className="w-full px-4 outline-none">
       <ResponsiveContainer width="100%" height={200}>
         <LineChart
           data={data}
