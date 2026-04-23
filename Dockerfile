@@ -33,13 +33,9 @@ COPY VERSION /app/VERSION
 # Frontend build output
 COPY --from=frontend-build /app/frontend/dist /app/static
 
-RUN useradd --no-create-home --shell /bin/false nestview
-
 EXPOSE 8080
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
   CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8080/api/health')" || exit 1
-
-USER nestview
 
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8080"]
