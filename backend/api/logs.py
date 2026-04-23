@@ -1,5 +1,6 @@
 import csv
 import io
+import re
 from datetime import datetime
 from typing import Literal, Optional
 
@@ -54,10 +55,6 @@ def export_container_logs(
     logs = session.exec(query).all()
 
     safe_id = container_id[:12]
-    # Pull the container name from the first log row (already fetched, no extra query).
-    # Strip leading slashes Docker adds to container names, then replace any remaining
-    # characters that are unsafe in filenames with underscores.
-    import re
     raw_name = logs[0].container_name.lstrip("/") if logs else safe_id
     safe_name = re.sub(r"[^\w\-]", "_", raw_name)
     filename = f"nestview-logs-{safe_name}-{safe_id}.{format}"

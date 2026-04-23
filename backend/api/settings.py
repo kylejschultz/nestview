@@ -205,23 +205,7 @@ def patch_general_settings(
     if payload.network_history_retention_hours is not None:
         set_setting(session, "network_history_retention_hours", str(payload.network_history_retention_hours))
     session.commit()
-
-    # Return updated values
-    webhook = get_setting(session, "discord_webhook_url") or ""
-    retention_str = get_setting(session, "log_retention_days")
-    retention = int(retention_str) if retention_str else _DEFAULT_LOG_RETENTION_DAYS
-    ttl_str = get_setting(session, "exited_container_ttl_seconds")
-    ttl = int(ttl_str) if ttl_str else _DEFAULT_EXITED_CONTAINER_TTL_SECONDS
-    timezone = get_setting(session, "timezone") or "UTC"
-    net_retention_str = get_setting(session, "network_history_retention_hours")
-    net_retention = int(net_retention_str) if net_retention_str else _DEFAULT_NETWORK_HISTORY_RETENTION_HOURS
-    return {
-        "discord_webhook_url": webhook,
-        "log_retention_days": retention,
-        "exited_container_ttl_seconds": ttl,
-        "timezone": timezone,
-        "network_history_retention_hours": net_retention,
-    }
+    return get_general_settings(session)
 
 
 # ── Wizard ─────────────────────────────────────────────────────────────────────

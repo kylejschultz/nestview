@@ -1,5 +1,9 @@
+import logging
+
 import httpx
 from datetime import datetime
+
+logger = logging.getLogger(__name__)
 
 EVENT_COLORS = {
     "crash": 0xEF4444,
@@ -61,7 +65,7 @@ async def send_alert(
     except Exception as e:
         # Do not log the exception directly — httpx errors can include the full
         # webhook URL (which is a secret) in the message string.
-        print(f"Discord alert failed: {type(e).__name__}")
+        logger.warning("Discord alert failed: %s", type(e).__name__)
         return False
 
 
@@ -86,5 +90,5 @@ async def send_test_embed(webhook_url: str) -> bool:
             resp = await client.post(webhook_url, json=payload, timeout=10)
             return resp.status_code in (200, 204)
     except Exception as e:
-        print(f"Discord test alert failed: {type(e).__name__}")
+        logger.warning("Discord test alert failed: %s", type(e).__name__)
         return False

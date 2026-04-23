@@ -7,6 +7,7 @@ from the FastAPI lifespan function.
 
 import asyncio
 import json
+import logging
 import re
 import threading
 import time
@@ -21,6 +22,8 @@ from database import engine
 from models import Container, ContainerAlertSetting, ContainerEvent, ContainerLog, ContainerNetworkHistory
 from services import discord
 from services.app_settings import get_setting
+
+logger = logging.getLogger(__name__)
 
 POLL_INTERVAL = 10       # overridden by env var at startup
 LOG_BATCH_INTERVAL = 5   # overridden by env var at startup
@@ -140,7 +143,7 @@ def _collect_one(container) -> Optional[dict]:
         }
     except Exception as exc:
         name = _safe_name(getattr(container, "name", "?"))
-        print(f"[collector] Error collecting stats for {name}: {type(exc).__name__}")
+        logger.error("Error collecting stats for %s: %s", name, type(exc).__name__)
         return None
 
 
@@ -175,7 +178,7 @@ def _apply_batch(containers_data: list[dict]) -> None:
                         ContainerNetworkHistory.container_id == docker_id
                     )
                 )
-                print(f"[collector] Cleared network history for {c['name']} (restart detected)")
+                logger.info("Cleared network history for %s (restart detected)", c['name'])
             _container_started_at[docker_id] = new_started
 
             existing = session.exec(
@@ -340,7 +343,7 @@ def _stream_logs(container_id: str, container_name: str) -> None:
                     }
                 )
     except Exception as exc:
-        print(f"[collector] Log stream ended for {_safe_name(container_name)}: {type(exc).__name__}")
+        logger.warning("Log stream ended for %s: %s", _safe_name(container_name), type(exc).__name__)
 
 
 def _flush_logs() -> None:
@@ -455,11 +458,11 @@ def _watch_events() -> None:
                                         session.add(db_event)
                                         session.commit()
                                 except Exception as exc:
-                                    print(f"[collector] Discord alert failed: {exc}")
+                                    logger.error("Discord alert failed: %s", exc)
                 except Exception as exc:
-                    print(f"[collector] Event write failed: {exc}")
+                    logger.error("Event write failed: %s", exc)
         except Exception as exc:
-            print(f"[collector] Event watcher error (retrying): {exc}")
+            logger.warning("Event watcher error (retrying): %s", exc)
             time.sleep(5)
 
 
@@ -506,7 +509,7 @@ def _stats_loop() -> None:
                 last_flush = time.time()
 
         except Exception as exc:
-            print(f"[collector] Main loop error: {exc}")
+            logger.error("Main loop error: %s", exc)
 
         time.sleep(POLL_INTERVAL)
 
@@ -521,4 +524,4 @@ def start_collector(poll_interval: int = 10, log_batch_interval: int = 5) -> Non
 
     threading.Thread(target=_watch_events, daemon=True, name="collector-events").start()
     threading.Thread(target=_stats_loop, daemon=True, name="collector-stats").start()
-    print(f"[collector] Started — poll={POLL_INTERVAL}s log_flush={LOG_BATCH_INTERVAL}s")
+    logger.info("Started — poll=%ds log_flush=%ds", POLL_INTERVAL, LOG_BATCH_INTERVAL)

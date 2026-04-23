@@ -61,7 +61,6 @@ async def lifespan(app: FastAPI):
     # Handle RESET_ADMIN_PASSWORD env var — clears credentials so setup wizard re-triggers
     if os.getenv("RESET_ADMIN_PASSWORD", "").strip().lower() == "true":
         with Session(engine) as _reset_session:
-            from services.app_settings import set_setting as _set
             from sqlmodel import select as _select
             from models import AppSetting as _AppSetting
             for _key in ("admin_username", "admin_password_hash"):
@@ -103,17 +102,15 @@ async def lifespan(app: FastAPI):
     logger.info("image_check startup run queued")
     scheduler.start()
 
-    import os as _os
     from services.collector import start_collector
 
-    poll_interval = max(1, int(_os.getenv("POLL_INTERVAL", "10")))
-    log_batch_interval = max(1, int(_os.getenv("LOG_BATCH_INTERVAL", "5")))
+    poll_interval = max(1, int(os.getenv("POLL_INTERVAL", "10")))
+    log_batch_interval = max(1, int(os.getenv("LOG_BATCH_INTERVAL", "5")))
     start_collector(poll_interval=poll_interval, log_batch_interval=log_batch_interval)
 
-    from pathlib import Path as _Path
     from fastapi.staticfiles import StaticFiles
 
-    static_dir = _Path("/app/static")
+    static_dir = Path("/app/static")
     if static_dir.exists():
         app.mount("/", StaticFiles(directory=str(static_dir), html=True), name="static")
         logger.info("Serving frontend static files from %s", static_dir)
