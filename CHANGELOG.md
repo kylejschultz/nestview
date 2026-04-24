@@ -7,6 +7,58 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [1.0.0] — Unreleased
+
+### Added
+
+- Auth mode selector in the setup wizard — choose between standard login or no-auth during first-run setup
+- Auth mode toggle in Settings — switch between standard and no-auth with inline credential setup and explicit confirmation flow
+
+### Changed
+
+- Backend cleanup pass: extracted constants, fixed logging initialization order, removed dead endpoints, cleaned up imports
+- Frontend cleanup pass: extracted `NestviewLogo` component, removed dead code, fixed JSX issues, deduplicated React Query hooks
+- Docker image hardened: HEALTHCHECK added, pip cache disabled; non-root USER reverted due to Docker socket permission conflict
+- GitHub Actions workflows pinned to full commit SHAs; `github-actions` ecosystem added to Dependabot
+
+### Fixed
+
+- Session cookie now correctly awaited and cleared before redirecting to login on logout
+- Auth mode switching flow corrected in Settings and setup wizard
+- Bumped Python and npm dependencies (fastapi, uvicorn, requests, vite, react-router-dom, postcss)
+
+---
+
+## [0.5.0] — 2026-04-15
+
+### Added
+
+- Versioned migration system using SQLAlchemy inspect — replaces ad-hoc schema patching; eliminates startup boot loop
+- Per-container network I/O (rx/tx bytes) tracking with configurable history retention
+- Network I/O line chart on container detail page (Recharts), with date boundaries on X-axis and tiered Y-axis scaling
+- Configurable network I/O history retention in Settings
+- Log export endpoint (`GET /api/logs/{id}/export`) with download button in the UI
+- Generic OCI bearer-auth digest fetcher; `lscr.io` support added to image update checker
+- Git SHA embedded in dev image, surfaced as a version tooltip
+- `BUILD_CHANNEL` build arg for dev image self-identification in CI
+
+### Changed
+
+- Container card image subtitle replaced with registry badge and tag pill
+- "Pull & restart" action replaced by "Check for updates" and "Update & restart" with live progress steps
+- Exited container TTL moved to Settings UI (configurable in seconds with slider); `EXITED_CONTAINER_TTL_HOURS` env var removed
+- SQLite database storage switched from named Docker volume to host-path bind mount (`./data`)
+- Dev image CI build scoped to arm64 (M-series) only
+
+### Fixed
+
+- OCI and Docker manifest `Accept` headers included in digest fetch requests
+- Missing `last_pulled` field added to `Container` model (migration 002)
+- Container name included in log export filenames
+- Bumped Python and npm dependencies (pydantic, fastapi, vite, react-router-dom, postcss)
+
+---
+
 ## [0.4.1] — 2026-04-11
 
 ### Fixed
