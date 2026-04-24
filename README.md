@@ -98,6 +98,9 @@ Nestview requires authentication out of the box. On first launch, you'll be prom
 | `SECRET_KEY` | _(auto-generated)_ | Session cookie signing key. Leave blank — Nestview generates and persists one automatically. Set explicitly for scripted deployments that need stable sessions across data resets. |
 | `RESET_ADMIN_PASSWORD` | _(unset)_ | Set to `true` to clear stored credentials and re-trigger the setup wizard on next start. Remove after completing setup. |
 | `NESTVIEW_SECURE_COOKIES` | `false` | Set to `true` when Nestview is behind a TLS-terminating reverse proxy (Nginx, Caddy, Traefik). Marks session cookies as `Secure` so they are only sent over HTTPS. |
+| `DATABASE_PATH` | `/data/nestview.db` | Path inside the container where Nestview stores its SQLite database. Override only if you need a non-standard mount path. |
+| `TZ` | `UTC` | Timezone for log timestamps and scheduled tasks. Use a standard tz database name (e.g. `America/Chicago`, `Europe/London`). |
+| `LOG_RETENTION_DAYS` | `7` | How many days of container log history to keep. Seeded from this env var on first run only; changes after initial setup must be made in the Settings UI. |
 
 `POLL_INTERVAL` and `LOG_BATCH_INTERVAL` are handled inside the single container — no separate collector service required.
 
