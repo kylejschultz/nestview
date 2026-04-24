@@ -203,6 +203,8 @@ function GeneralTab({ authMode, version }: { authMode?: string; version?: string
   const [newPw, setNewPw] = useState("");
   const [confirmPw, setConfirmPw] = useState("");
   const [pwError, setPwError] = useState<string | null>(null);
+  const [authModeDraft, setAuthModeDraft] = useState<"password" | "none" | null>(null);
+  const [noAuthConfirmed, setNoAuthConfirmed] = useState(false);
 
   // Image check drafts
   const serverEnabled = (allSettings?.image_check_enabled ?? "true") !== "false";
@@ -282,6 +284,17 @@ function GeneralTab({ authMode, version }: { authMode?: string; version?: string
     },
   });
 
+  const { mutate: saveAuthMode, isPending: isSavingAuthMode } = useMutation({
+    mutationFn: (body: { auth_mode: "password" | "none" }) => api.auth.patchMode(body),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["auth-status"] });
+      setAuthModeDraft(null);
+      setNoAuthConfirmed(false);
+      showToast("Authentication mode updated", "success");
+    },
+    onError: (err: Error) => showToast(err.message, "error"),
+  });
+
   if (isLoading || isLoadingAll) {
     return <div className="py-12 text-center text-slate-500">Loading…</div>;
   }
@@ -291,6 +304,8 @@ function GeneralTab({ authMode, version }: { authMode?: string; version?: string
   const ttlNum = parseInt(ttl, 10);
   const ttlValid = !isNaN(ttlNum) && ttlNum >= 0;
   const imageHasDraft = enabledDraft !== null || timeDraft !== null;
+  const selectedMode = authModeDraft ?? authMode ?? "password";
+  const modeHasDraft = authModeDraft !== null && authModeDraft !== authMode;
 
   return (
     <div className="space-y-6">
@@ -461,10 +476,43 @@ function GeneralTab({ authMode, version }: { authMode?: string; version?: string
           </div>
         </SettingRow>
 
-        {/* SECURITY */}
-        {authMode === "password" && (
+        {/* AUTHENTICATION */}
+        <SectionHeader label="Authentication" />
+        <SettingRow label="Auth mode" info="Controls how users authenticate with Nestview. Switching to No Authentication removes all login requirements and wipes stored credentials." last={selectedMode === "none"}>
+          <div className="space-y-3">
+            <select
+              value={selectedMode}
+              onChange={(e) => { setAuthModeDraft(e.target.value as "password" | "none"); setNoAuthConfirmed(false); }}
+              disabled={isSavingAuthMode}
+              className="bg-surface-3 border border-border rounded-lg px-3 py-1.5 text-sm text-slate-200 focus:outline-none focus:border-accent disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              <option value="password">Password Authentication</option>
+              <option value="none">No Authentication</option>
+            </select>
+            {selectedMode === "none" && authMode === "password" && (
+              <label className="flex items-start gap-2 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={noAuthConfirmed}
+                  onChange={(e) => setNoAuthConfirmed(e.target.checked)}
+                  className="mt-0.5 accent-accent"
+                />
+                <span className="text-xs text-slate-400">I understand this will remove all authentication requirements.</span>
+              </label>
+            )}
+            {modeHasDraft && (
+              <button
+                disabled={isSavingAuthMode || (selectedMode === "none" && !noAuthConfirmed)}
+                onClick={() => saveAuthMode({ auth_mode: selectedMode as "password" | "none" })}
+                className="px-3 py-1.5 text-xs rounded-lg bg-accent hover:bg-accent-hover text-white font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {isSavingAuthMode ? "Saving…" : "Save"}
+              </button>
+            )}
+          </div>
+        </SettingRow>
+        {selectedMode === "password" && (
           <>
-            <SectionHeader label="Security" />
             <SettingRow label="Session expiry" info="How long a login session stays active before requiring re-authentication. Changes apply to new logins only — existing sessions are unaffected.">
               <div className="space-y-2">
                 <div className="flex items-center gap-2">

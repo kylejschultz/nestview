@@ -83,6 +83,8 @@ export const api = {
     me: () => get<MeResponse>("/auth/me"),
     changePassword: (body: { current_password: string; new_password: string }) =>
       post<{ ok: boolean }>("/auth/change-password", body),
+    patchMode: (body: { auth_mode: "password" | "none" }) =>
+      patch<{ ok: boolean }>("/auth/mode", body),
   },
   settings: {
     alerts: () => get<AlertSetting[]>("/settings/alerts"),
