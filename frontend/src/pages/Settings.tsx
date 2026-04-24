@@ -289,19 +289,21 @@ function GeneralTab({ authMode, version }: { authMode?: string; version?: string
   const { mutate: saveAuthMode, isPending: isSavingAuthMode } = useMutation({
     mutationFn: async (body: { auth_mode: "password" | "none"; username?: string; password?: string }) => {
       await api.auth.patchMode(body);
-      if (body.auth_mode === "password") {
-        await api.auth.logout();
-      }
       return body.auth_mode;
     },
-    onSuccess: (authMode) => {
+    onSuccess: async (authMode) => {
       if (authMode === "none") {
         queryClient.invalidateQueries({ queryKey: ["auth-status"] });
         setAuthModeDraft(null);
         setNoAuthConfirmed(false);
         showToast("Authentication disabled", "success");
       } else {
-        navigate("/login", { replace: true });
+        try {
+          await api.auth.logout();
+        } catch {
+          // session will be invalid regardless; proceed to redirect
+        }
+        window.location.href = "/login";
       }
     },
     onError: (err: Error) => showToast(err.message, "error"),
