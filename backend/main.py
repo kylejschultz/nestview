@@ -58,6 +58,12 @@ async def lifespan(app: FastAPI):
         run_migrations(engine, _migration_session)
     _seed_settings_from_env()
 
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
+
     # Handle RESET_ADMIN_PASSWORD env var — clears credentials so setup wizard re-triggers
     if os.getenv("RESET_ADMIN_PASSWORD", "").strip().lower() == "true":
         with Session(engine) as _reset_session:
@@ -86,12 +92,6 @@ async def lifespan(app: FastAPI):
         h, m = (int(x) for x in raw_time.split(":"))
     except Exception:
         h, m = 3, 0
-
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
-    )
 
     scheduler = AsyncIOScheduler()
     scheduler.add_job(run_cleanup, "interval", hours=1, id="cleanup")
