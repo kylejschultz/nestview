@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
 import { useAuth } from "../AuthContext";
@@ -178,6 +179,7 @@ function SettingRow({ label, info, children, last }: { label: string; info?: str
 
 function GeneralTab({ authMode, version }: { authMode?: string; version?: string }) {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const { isAuthenticated } = useAuth();
 
   const { data: general, isLoading } = useQuery<GeneralSettings>({
@@ -285,12 +287,20 @@ function GeneralTab({ authMode, version }: { authMode?: string; version?: string
   });
 
   const { mutate: saveAuthMode, isPending: isSavingAuthMode } = useMutation({
-    mutationFn: (body: { auth_mode: "password" | "none" }) => api.auth.patchMode(body),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["auth-status"] });
-      setAuthModeDraft(null);
-      setNoAuthConfirmed(false);
-      showToast("Authentication mode updated", "success");
+    mutationFn: (body: { auth_mode: "password" | "none"; username?: string; password?: string }) =>
+      api.auth.patchMode(body),
+    onSuccess: async (_, variables) => {
+      if (variables.auth_mode === "none") {
+        // Stay on Settings, refresh auth state so UI reflects new mode
+        queryClient.invalidateQueries({ queryKey: ["auth-status"] });
+        setAuthModeDraft(null);
+        setNoAuthConfirmed(false);
+        showToast("Authentication disabled", "success");
+      } else {
+        // Credentials were just set — log out so the user must log in with the new password
+        try { await api.auth.logout(); } catch { /* ignore */ }
+        navigate("/login", { replace: true });
+      }
     },
     onError: (err: Error) => showToast(err.message, "error"),
   });
@@ -478,40 +488,85 @@ function GeneralTab({ authMode, version }: { authMode?: string; version?: string
 
         {/* AUTHENTICATION */}
         <SectionHeader label="Authentication" />
-        <SettingRow label="Auth mode" info="Controls how users authenticate with Nestview. Switching to No Authentication removes all login requirements and wipes stored credentials." last={selectedMode === "none"}>
+        <SettingRow
+          label="Auth mode"
+          info="Controls how users authenticate with Nestview. Switching to No Authentication removes all login requirements and wipes stored credentials."
+          last={!(selectedMode === "password" && authMode === "password")}
+        >
           <div className="space-y-3">
             <select
               value={selectedMode}
-              onChange={(e) => { setAuthModeDraft(e.target.value as "password" | "none"); setNoAuthConfirmed(false); }}
+              onChange={(e) => { setAuthModeDraft(e.target.value as "password" | "none"); setNoAuthConfirmed(false); setNewPw(""); setConfirmPw(""); }}
               disabled={isSavingAuthMode}
               className="bg-surface-3 border border-border rounded-lg px-3 py-1.5 text-sm text-slate-200 focus:outline-none focus:border-accent disabled:opacity-40 disabled:cursor-not-allowed"
             >
               <option value="password">Password Authentication</option>
               <option value="none">No Authentication</option>
             </select>
-            {selectedMode === "none" && authMode === "password" && (
-              <label className="flex items-start gap-2 cursor-pointer select-none">
-                <input
-                  type="checkbox"
-                  checked={noAuthConfirmed}
-                  onChange={(e) => setNoAuthConfirmed(e.target.checked)}
-                  className="mt-0.5 accent-accent"
-                />
-                <span className="text-xs text-slate-400">I understand this will remove all authentication requirements.</span>
-              </label>
+
+            {/* password → no auth: confirmation checkbox */}
+            {selectedMode === "none" && modeHasDraft && (
+              <>
+                <label className="flex items-start gap-2 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={noAuthConfirmed}
+                    onChange={(e) => setNoAuthConfirmed(e.target.checked)}
+                    className="mt-0.5 accent-accent"
+                  />
+                  <span className="text-xs text-slate-400">I understand this will remove all authentication requirements.</span>
+                </label>
+                <button
+                  disabled={isSavingAuthMode || !noAuthConfirmed}
+                  onClick={() => saveAuthMode({ auth_mode: "none" })}
+                  className="px-3 py-1.5 text-xs rounded-lg bg-accent hover:bg-accent-hover text-white font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  {isSavingAuthMode ? "Saving…" : "Save"}
+                </button>
+              </>
             )}
-            {modeHasDraft && (
-              <button
-                disabled={isSavingAuthMode || (selectedMode === "none" && !noAuthConfirmed)}
-                onClick={() => saveAuthMode({ auth_mode: selectedMode as "password" | "none" })}
-                className="px-3 py-1.5 text-xs rounded-lg bg-accent hover:bg-accent-hover text-white font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                {isSavingAuthMode ? "Saving…" : "Save"}
-              </button>
+
+            {/* no auth → password: set new credentials (no current password required) */}
+            {selectedMode === "password" && authMode === "none" && (
+              <>
+                <div className="space-y-1.5">
+                  <input
+                    type="password"
+                    placeholder="New password (min 8 characters)"
+                    value={newPw}
+                    onChange={(e) => setNewPw(e.target.value)}
+                    disabled={isSavingAuthMode}
+                    className="w-full max-w-xs bg-surface-3 border border-border rounded-lg px-3 py-1.5 text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:border-accent disabled:opacity-40"
+                  />
+                  <input
+                    type="password"
+                    placeholder="Confirm new password"
+                    value={confirmPw}
+                    onChange={(e) => setConfirmPw(e.target.value)}
+                    disabled={isSavingAuthMode}
+                    className="w-full max-w-xs bg-surface-3 border border-border rounded-lg px-3 py-1.5 text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:border-accent disabled:opacity-40"
+                  />
+                  {newPw.length > 0 && newPw.length < 8 && (
+                    <p className="text-xs text-red-400">Password must be at least 8 characters.</p>
+                  )}
+                  {confirmPw && newPw !== confirmPw && (
+                    <p className="text-xs text-red-400">Passwords do not match.</p>
+                  )}
+                </div>
+                <button
+                  disabled={isSavingAuthMode || !newPw || newPw.length < 8 || newPw !== confirmPw}
+                  onClick={() => saveAuthMode({ auth_mode: "password", username: "admin", password: newPw })}
+                  className="px-3 py-1.5 text-xs rounded-lg bg-accent hover:bg-accent-hover text-white font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  {isSavingAuthMode ? "Saving…" : "Enable password auth"}
+                </button>
+              </>
             )}
           </div>
         </SettingRow>
-        {selectedMode === "password" && (
+
+        {/* Session expiry + change password — only when already in password mode */}
+        {selectedMode === "password" && authMode === "password" && (
           <>
             <SettingRow label="Session expiry" info="How long a login session stays active before requiring re-authentication. Changes apply to new logins only — existing sessions are unaffected.">
               <div className="space-y-2">

@@ -10,7 +10,7 @@ Endpoints:
 
 import logging
 import os
-from typing import Literal
+from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from pydantic import BaseModel, Field
@@ -41,8 +41,8 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 # ---------------------------------------------------------------------------
 
 class SetupPayload(BaseModel):
-    username: str = Field(min_length=1, max_length=64)
-    password: str = Field(min_length=8, max_length=128)
+    username: Optional[str] = Field(None, min_length=1, max_length=64)
+    password: Optional[str] = Field(None, min_length=8, max_length=128)
     auth_mode: Literal["password", "none"] = "password"
 
 
@@ -58,6 +58,8 @@ class ChangePasswordPayload(BaseModel):
 
 class AuthModePayload(BaseModel):
     auth_mode: Literal["password", "none"]
+    username: Optional[str] = Field(None, min_length=1, max_length=64)
+    password: Optional[str] = Field(None, min_length=8, max_length=128)
 
 
 # ---------------------------------------------------------------------------
@@ -80,8 +82,15 @@ def setup(payload: SetupPayload, session: Session = Depends(get_session)) -> dic
             detail="Setup has already been completed. Use the Settings UI to change credentials.",
         )
 
-    set_setting(session, "admin_username", payload.username)
-    set_setting(session, "admin_password_hash", hash_password(payload.password))
+    if payload.auth_mode == "password":
+        if not payload.username or not payload.password:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="username and password are required for password authentication",
+            )
+        set_setting(session, "admin_username", payload.username)
+        set_setting(session, "admin_password_hash", hash_password(payload.password))
+
     set_setting(session, "auth_mode", payload.auth_mode)
     session.commit()
 
@@ -208,6 +217,9 @@ def update_auth_mode(
             row = session.exec(select(AppSetting).where(AppSetting.key == key)).first()
             if row is not None:
                 session.delete(row)
+    elif payload.auth_mode == "password" and payload.username and payload.password:
+        set_setting(session, "admin_username", payload.username)
+        set_setting(session, "admin_password_hash", hash_password(payload.password))
     set_setting(session, "auth_mode", payload.auth_mode)
     session.commit()
     logger.info("auth: auth_mode changed to %r", payload.auth_mode)
