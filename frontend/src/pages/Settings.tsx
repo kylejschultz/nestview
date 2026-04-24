@@ -287,18 +287,20 @@ function GeneralTab({ authMode, version }: { authMode?: string; version?: string
   });
 
   const { mutate: saveAuthMode, isPending: isSavingAuthMode } = useMutation({
-    mutationFn: (body: { auth_mode: "password" | "none"; username?: string; password?: string }) =>
-      api.auth.patchMode(body),
-    onSuccess: async (_, variables) => {
-      if (variables.auth_mode === "none") {
-        // Stay on Settings, refresh auth state so UI reflects new mode
+    mutationFn: async (body: { auth_mode: "password" | "none"; username?: string; password?: string }) => {
+      await api.auth.patchMode(body);
+      if (body.auth_mode === "password") {
+        await api.auth.logout();
+      }
+      return body.auth_mode;
+    },
+    onSuccess: (authMode) => {
+      if (authMode === "none") {
         queryClient.invalidateQueries({ queryKey: ["auth-status"] });
         setAuthModeDraft(null);
         setNoAuthConfirmed(false);
         showToast("Authentication disabled", "success");
       } else {
-        // Credentials were just set — log out so the user must log in with the new password
-        try { await api.auth.logout(); } catch { /* ignore */ }
         navigate("/login", { replace: true });
       }
     },
