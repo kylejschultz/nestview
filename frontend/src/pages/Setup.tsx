@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { api } from "../api";
+import NestviewLogo from "../components/NestviewLogo";
 
 interface SetupProps {
   onComplete: () => void;
@@ -22,15 +23,18 @@ export default function Setup({ onComplete }: SetupProps) {
   const confirmPasswordError = touched.confirmPassword && confirmPassword !== password ? "Passwords do not match." : null;
 
   const isValid =
-    username.trim().length > 0 &&
-    username.trim().length <= 64 &&
-    password.length >= 8 &&
-    confirmPassword === password &&
-    (authMode === "password" || noAuthConfirmed);
+    authMode === "none"
+      ? noAuthConfirmed
+      : username.trim().length > 0 &&
+        username.trim().length <= 64 &&
+        password.length >= 8 &&
+        confirmPassword === password;
 
   const mutation = useMutation({
     mutationFn: () =>
-      api.auth.setup({ username: username.trim(), password, auth_mode: authMode }),
+      authMode === "none"
+        ? api.auth.setup({ auth_mode: "none" })
+        : api.auth.setup({ username: username.trim(), password, auth_mode: "password" }),
     onSuccess: () => {
       onComplete();
     },
@@ -40,7 +44,9 @@ export default function Setup({ onComplete }: SetupProps) {
   });
 
   function handleSubmit() {
-    setTouched({ username: true, password: true, confirmPassword: true });
+    if (authMode === "password") {
+      setTouched({ username: true, password: true, confirmPassword: true });
+    }
     if (!isValid) return;
     setApiError(null);
     mutation.mutate();
@@ -51,72 +57,13 @@ export default function Setup({ onComplete }: SetupProps) {
       <div className="w-full max-w-md">
         {/* Logo */}
         <div className="flex justify-center mb-8">
-          <svg viewBox="0 0 580 120" xmlns="http://www.w3.org/2000/svg" height="32" style={{ display: "block" }}>
-            <g transform="translate(60, 60) scale(0.43)">
-              <g fill="none">
-                <circle cx="0" cy="0" r="158" stroke="#252a3a" strokeWidth="20" />
-                <circle cx="0" cy="0" r="118" stroke="#2e3347" strokeWidth="18" />
-                <circle cx="0" cy="0" r="82"  stroke="#4b4f6e" strokeWidth="14" />
-                <circle cx="0" cy="0" r="50"  stroke="#6366f1" strokeWidth="12" />
-              </g>
-              <circle cx="0" cy="0" r="22" fill="#6366f1" />
-            </g>
-            <text y="84" fontFamily="Helvetica Neue,Helvetica,Arial,sans-serif" fontSize="76" letterSpacing="-2">
-              <tspan x="140" fontWeight="300" fill="#e2e8f0">nest</tspan>
-              <tspan fontWeight="700" fill="#6366f1">view</tspan>
-            </text>
-          </svg>
+          <NestviewLogo />
         </div>
 
         {/* Card */}
         <div className="bg-surface-2 border border-border rounded-xl p-8">
           <h1 className="text-xl font-semibold text-slate-100 mb-1">Welcome to Nestview</h1>
-          <p className="text-sm text-slate-400 mb-6">Create an admin account to get started.</p>
-
-          {/* Username */}
-          <div className="mb-4">
-            <label className="block text-sm font-medium text-slate-300 mb-1.5">Username</label>
-            <input
-              type="text"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              onBlur={() => setTouched((t) => ({ ...t, username: true }))}
-              className="w-full bg-surface-3 border border-border rounded-lg px-3 py-2 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-accent focus:border-accent"
-              placeholder="admin"
-              autoComplete="username"
-            />
-            {usernameError && <p className="mt-1.5 text-xs text-red-400">{usernameError}</p>}
-          </div>
-
-          {/* Password */}
-          <div className="mb-4">
-            <label className="block text-sm font-medium text-slate-300 mb-1.5">Password</label>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              onBlur={() => setTouched((t) => ({ ...t, password: true }))}
-              className="w-full bg-surface-3 border border-border rounded-lg px-3 py-2 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-accent focus:border-accent"
-              placeholder="Minimum 8 characters"
-              autoComplete="new-password"
-            />
-            {passwordError && <p className="mt-1.5 text-xs text-red-400">{passwordError}</p>}
-          </div>
-
-          {/* Confirm Password */}
-          <div className="mb-6">
-            <label className="block text-sm font-medium text-slate-300 mb-1.5">Confirm Password</label>
-            <input
-              type="password"
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-              onBlur={() => setTouched((t) => ({ ...t, confirmPassword: true }))}
-              className="w-full bg-surface-3 border border-border rounded-lg px-3 py-2 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-accent focus:border-accent"
-              placeholder="Repeat password"
-              autoComplete="new-password"
-            />
-            {confirmPasswordError && <p className="mt-1.5 text-xs text-red-400">{confirmPasswordError}</p>}
-          </div>
+          <p className="text-sm text-slate-400 mb-6">Set up your dashboard to get started.</p>
 
           {/* Auth mode */}
           <div className="mb-6">
@@ -188,6 +135,51 @@ export default function Setup({ onComplete }: SetupProps) {
             )}
           </div>
 
+          {/* Credentials — only shown for password auth */}
+          {authMode === "password" && (
+            <div className="mt-6 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-300 mb-1.5">Username</label>
+                <input
+                  type="text"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  onBlur={() => setTouched((t) => ({ ...t, username: true }))}
+                  className="w-full bg-surface-3 border border-border rounded-lg px-3 py-2 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-accent focus:border-accent"
+                  placeholder="admin"
+                  autoComplete="username"
+                />
+                {usernameError && <p className="mt-1.5 text-xs text-red-400">{usernameError}</p>}
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-300 mb-1.5">Password</label>
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  onBlur={() => setTouched((t) => ({ ...t, password: true }))}
+                  className="w-full bg-surface-3 border border-border rounded-lg px-3 py-2 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-accent focus:border-accent"
+                  placeholder="Minimum 8 characters"
+                  autoComplete="new-password"
+                />
+                {passwordError && <p className="mt-1.5 text-xs text-red-400">{passwordError}</p>}
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-300 mb-1.5">Confirm Password</label>
+                <input
+                  type="password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  onBlur={() => setTouched((t) => ({ ...t, confirmPassword: true }))}
+                  className="w-full bg-surface-3 border border-border rounded-lg px-3 py-2 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-accent focus:border-accent"
+                  placeholder="Repeat password"
+                  autoComplete="new-password"
+                />
+                {confirmPasswordError && <p className="mt-1.5 text-xs text-red-400">{confirmPasswordError}</p>}
+              </div>
+            </div>
+          )}
+
           {/* API error */}
           {apiError && (
             <p className="mb-4 text-xs text-red-400 bg-red-400/10 border border-red-400/30 rounded-lg px-3 py-2">
@@ -202,7 +194,7 @@ export default function Setup({ onComplete }: SetupProps) {
             disabled={mutation.isPending || !isValid}
             className="w-full py-2.5 px-4 rounded-lg bg-accent text-white text-sm font-medium transition-opacity disabled:opacity-50 disabled:cursor-not-allowed hover:opacity-90"
           >
-            {mutation.isPending ? "Creating account…" : "Create account"}
+            {mutation.isPending ? "Setting up…" : authMode === "none" ? "Continue to dashboard" : "Create account"}
           </button>
         </div>
       </div>

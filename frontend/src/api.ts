@@ -75,7 +75,7 @@ export const api = {
   },
   auth: {
     status: () => get<AuthStatus>("/auth/status"),
-    setup: (body: { username: string; password: string; auth_mode: "password" | "none" }) =>
+    setup: (body: { username?: string; password?: string; auth_mode: "password" | "none" }) =>
       post<{ ok: boolean }>("/auth/setup", body),
     login: (body: { username: string; password: string }) =>
       post<{ ok: boolean; auth_mode: string }>("/auth/login", body),
@@ -83,6 +83,8 @@ export const api = {
     me: () => get<MeResponse>("/auth/me"),
     changePassword: (body: { current_password: string; new_password: string }) =>
       post<{ ok: boolean }>("/auth/change-password", body),
+    patchMode: (body: { auth_mode: "password" | "none"; username?: string; password?: string }) =>
+      patch<{ ok: boolean }>("/auth/mode", body),
   },
   settings: {
     alerts: () => get<AlertSetting[]>("/settings/alerts"),

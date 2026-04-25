@@ -16,7 +16,7 @@ ENV BUILD_CHANNEL=${BUILD_CHANNEL}
 ARG GIT_SHA=unknown
 ENV BUILD_SHA=${GIT_SHA}
 
-RUN pip install --upgrade pip
+RUN pip install --no-cache-dir --upgrade pip
 
 WORKDIR /app
 
@@ -34,5 +34,8 @@ COPY VERSION /app/VERSION
 COPY --from=frontend-build /app/frontend/dist /app/static
 
 EXPOSE 8080
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8080/api/health')" || exit 1
 
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8080"]

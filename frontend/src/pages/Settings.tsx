@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
 import { useAuth } from "../AuthContext";
@@ -176,21 +177,14 @@ function SettingRow({ label, info, children, last }: { label: string; info?: str
   );
 }
 
-function GeneralTab({ authMode }: { authMode?: string }) {
+function GeneralTab({ authMode, version }: { authMode?: string; version?: string }) {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const { isAuthenticated } = useAuth();
 
   const { data: general, isLoading } = useQuery<GeneralSettings>({
     queryKey: ["settings-general"],
     queryFn: api.settings.general,
-    enabled: isAuthenticated,
-  });
-
-  const { data: versionData } = useQuery({
-    queryKey: ["version"],
-    queryFn: api.version,
-    staleTime: Infinity,
-    retry: false,
     enabled: isAuthenticated,
   });
 
@@ -211,6 +205,8 @@ function GeneralTab({ authMode }: { authMode?: string }) {
   const [newPw, setNewPw] = useState("");
   const [confirmPw, setConfirmPw] = useState("");
   const [pwError, setPwError] = useState<string | null>(null);
+  const [authModeDraft, setAuthModeDraft] = useState<"password" | "none" | null>(null);
+  const [noAuthConfirmed, setNoAuthConfirmed] = useState(false);
 
   // Image check drafts
   const serverEnabled = (allSettings?.image_check_enabled ?? "true") !== "false";
@@ -290,6 +286,29 @@ function GeneralTab({ authMode }: { authMode?: string }) {
     },
   });
 
+  const { mutate: saveAuthMode, isPending: isSavingAuthMode } = useMutation({
+    mutationFn: async (body: { auth_mode: "password" | "none"; username?: string; password?: string }) => {
+      await api.auth.patchMode(body);
+      return body.auth_mode;
+    },
+    onSuccess: async (authMode) => {
+      if (authMode === "none") {
+        queryClient.invalidateQueries({ queryKey: ["auth-status"] });
+        setAuthModeDraft(null);
+        setNoAuthConfirmed(false);
+        showToast("Authentication disabled", "success");
+      } else {
+        try {
+          await api.auth.logout();
+        } catch {
+          // session will be invalid regardless; proceed to redirect
+        }
+        window.location.href = "/login";
+      }
+    },
+    onError: (err: Error) => showToast(err.message, "error"),
+  });
+
   if (isLoading || isLoadingAll) {
     return <div className="py-12 text-center text-slate-500">Loading…</div>;
   }
@@ -299,6 +318,8 @@ function GeneralTab({ authMode }: { authMode?: string }) {
   const ttlNum = parseInt(ttl, 10);
   const ttlValid = !isNaN(ttlNum) && ttlNum >= 0;
   const imageHasDraft = enabledDraft !== null || timeDraft !== null;
+  const selectedMode = authModeDraft ?? authMode ?? "password";
+  const modeHasDraft = authModeDraft !== null && authModeDraft !== authMode;
 
   return (
     <div className="space-y-6">
@@ -469,10 +490,88 @@ function GeneralTab({ authMode }: { authMode?: string }) {
           </div>
         </SettingRow>
 
-        {/* SECURITY */}
-        {authMode === "password" && (
+        {/* AUTHENTICATION */}
+        <SectionHeader label="Authentication" />
+        <SettingRow
+          label="Auth mode"
+          info="Controls how users authenticate with Nestview. Switching to No Authentication removes all login requirements and wipes stored credentials."
+          last={!(selectedMode === "password" && authMode === "password")}
+        >
+          <div className="space-y-3">
+            <select
+              value={selectedMode}
+              onChange={(e) => { setAuthModeDraft(e.target.value as "password" | "none"); setNoAuthConfirmed(false); setNewPw(""); setConfirmPw(""); }}
+              disabled={isSavingAuthMode}
+              className="bg-surface-3 border border-border rounded-lg px-3 py-1.5 text-sm text-slate-200 focus:outline-none focus:border-accent disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              <option value="password">Password Authentication</option>
+              <option value="none">No Authentication</option>
+            </select>
+
+            {/* password → no auth: confirmation checkbox */}
+            {selectedMode === "none" && modeHasDraft && (
+              <>
+                <label className="flex items-start gap-2 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={noAuthConfirmed}
+                    onChange={(e) => setNoAuthConfirmed(e.target.checked)}
+                    className="mt-0.5 accent-accent"
+                  />
+                  <span className="text-xs text-slate-400">I understand this will remove all authentication requirements.</span>
+                </label>
+                <button
+                  disabled={isSavingAuthMode || !noAuthConfirmed}
+                  onClick={() => saveAuthMode({ auth_mode: "none" })}
+                  className="px-3 py-1.5 text-xs rounded-lg bg-accent hover:bg-accent-hover text-white font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  {isSavingAuthMode ? "Saving…" : "Save"}
+                </button>
+              </>
+            )}
+
+            {/* no auth → password: set new credentials (no current password required) */}
+            {selectedMode === "password" && authMode === "none" && (
+              <>
+                <div className="space-y-1.5">
+                  <input
+                    type="password"
+                    placeholder="New password (min 8 characters)"
+                    value={newPw}
+                    onChange={(e) => setNewPw(e.target.value)}
+                    disabled={isSavingAuthMode}
+                    className="w-full max-w-xs bg-surface-3 border border-border rounded-lg px-3 py-1.5 text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:border-accent disabled:opacity-40"
+                  />
+                  <input
+                    type="password"
+                    placeholder="Confirm new password"
+                    value={confirmPw}
+                    onChange={(e) => setConfirmPw(e.target.value)}
+                    disabled={isSavingAuthMode}
+                    className="w-full max-w-xs bg-surface-3 border border-border rounded-lg px-3 py-1.5 text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:border-accent disabled:opacity-40"
+                  />
+                  {newPw.length > 0 && newPw.length < 8 && (
+                    <p className="text-xs text-red-400">Password must be at least 8 characters.</p>
+                  )}
+                  {confirmPw && newPw !== confirmPw && (
+                    <p className="text-xs text-red-400">Passwords do not match.</p>
+                  )}
+                </div>
+                <button
+                  disabled={isSavingAuthMode || !newPw || newPw.length < 8 || newPw !== confirmPw}
+                  onClick={() => saveAuthMode({ auth_mode: "password", username: "admin", password: newPw })}
+                  className="px-3 py-1.5 text-xs rounded-lg bg-accent hover:bg-accent-hover text-white font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  {isSavingAuthMode ? "Saving…" : "Enable password auth"}
+                </button>
+              </>
+            )}
+          </div>
+        </SettingRow>
+
+        {/* Session expiry + change password — only when already in password mode */}
+        {selectedMode === "password" && authMode === "password" && (
           <>
-            <SectionHeader label="Security" />
             <SettingRow label="Session expiry" info="How long a login session stays active before requiring re-authentication. Changes apply to new logins only — existing sessions are unaffected.">
               <div className="space-y-2">
                 <div className="flex items-center gap-2">
@@ -557,7 +656,7 @@ function GeneralTab({ authMode }: { authMode?: string }) {
 
       </div>
 
-      <AboutSection version={versionData?.version} />
+      <AboutSection version={version} />
     </div>
   );
 }
@@ -758,7 +857,7 @@ export default function Settings({ authMode }: { authMode?: string }) {
         ))}
       </div>
 
-      {activeTab === "general" ? <GeneralTab authMode={authMode} /> : <NotificationsTab />}
+      {activeTab === "general" ? <GeneralTab authMode={authMode} version={versionData?.version} /> : <NotificationsTab />}
     </div>
   );
 }

@@ -92,7 +92,9 @@ def decode_session_token(
 # ---------------------------------------------------------------------------
 
 def is_setup_complete(session: Session) -> bool:
-    """Returns True if a password hash exists — setup wizard has been completed."""
+    """Returns True if setup is complete: no-auth mode is active, or a password hash exists."""
+    if get_auth_mode(session) == "none":
+        return True
     return bool(get_setting(session, "admin_password_hash"))
 
 

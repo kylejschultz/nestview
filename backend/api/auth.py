@@ -10,14 +10,15 @@ Endpoints:
 
 import logging
 import os
-from typing import Literal
+from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from pydantic import BaseModel, Field
-from sqlmodel import Session
+from sqlmodel import Session, select
 
 from database import get_session
 from limiter import limiter
+from models import AppSetting
 from services.app_settings import get_setting, set_setting
 from services.auth import (
     COOKIE_NAME,
@@ -40,8 +41,8 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 # ---------------------------------------------------------------------------
 
 class SetupPayload(BaseModel):
-    username: str = Field(min_length=1, max_length=64)
-    password: str = Field(min_length=8, max_length=128)
+    username: Optional[str] = Field(None, min_length=1, max_length=64)
+    password: Optional[str] = Field(None, min_length=8, max_length=128)
     auth_mode: Literal["password", "none"] = "password"
 
 
@@ -53,6 +54,12 @@ class LoginPayload(BaseModel):
 class ChangePasswordPayload(BaseModel):
     current_password: str
     new_password: str = Field(min_length=8, max_length=128)
+
+
+class AuthModePayload(BaseModel):
+    auth_mode: Literal["password", "none"]
+    username: Optional[str] = Field(None, min_length=1, max_length=64)
+    password: Optional[str] = Field(None, min_length=8, max_length=128)
 
 
 # ---------------------------------------------------------------------------
@@ -75,8 +82,15 @@ def setup(payload: SetupPayload, session: Session = Depends(get_session)) -> dic
             detail="Setup has already been completed. Use the Settings UI to change credentials.",
         )
 
-    set_setting(session, "admin_username", payload.username)
-    set_setting(session, "admin_password_hash", hash_password(payload.password))
+    if payload.auth_mode == "password":
+        if not payload.username or not payload.password:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="username and password are required for password authentication",
+            )
+        set_setting(session, "admin_username", payload.username)
+        set_setting(session, "admin_password_hash", hash_password(payload.password))
+
     set_setting(session, "auth_mode", payload.auth_mode)
     session.commit()
 
@@ -189,4 +203,24 @@ def change_password(
     session.commit()
 
     logger.info("auth: password changed successfully")
+    return {"ok": True}
+
+
+@router.patch("/mode", dependencies=[Depends(require_auth)])
+def update_auth_mode(
+    payload: AuthModePayload,
+    session: Session = Depends(get_session),
+) -> dict:
+    """Switch between password auth and no-auth. Switching to 'none' wipes stored credentials."""
+    if payload.auth_mode == "none":
+        for key in ("admin_username", "admin_password_hash"):
+            row = session.exec(select(AppSetting).where(AppSetting.key == key)).first()
+            if row is not None:
+                session.delete(row)
+    elif payload.auth_mode == "password" and payload.username and payload.password:
+        set_setting(session, "admin_username", payload.username)
+        set_setting(session, "admin_password_hash", hash_password(payload.password))
+    set_setting(session, "auth_mode", payload.auth_mode)
+    session.commit()
+    logger.info("auth: auth_mode changed to %r", payload.auth_mode)
     return {"ok": True}
