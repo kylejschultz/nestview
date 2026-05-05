@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
 import { useAuth } from "../AuthContext";
-import type { AlertEventType, AlertSetting, Container, GeneralSettings } from "../types";
+import type { AlertEventType, AlertSetting, AnalyticsStatus, Container, GeneralSettings } from "../types";
 import WebhookField from "../components/WebhookField";
 import TimezoneSelect from "../components/TimezoneSelect";
 import Toast from "../components/Toast";
@@ -208,6 +208,16 @@ function GeneralTab({ authMode, version }: { authMode?: string; version?: string
   const [authModeDraft, setAuthModeDraft] = useState<"password" | "none" | null>(null);
   const [noAuthConfirmed, setNoAuthConfirmed] = useState(false);
 
+  const { data: analyticsStatus } = useQuery<AnalyticsStatus>({
+    queryKey: ["analytics-status"],
+    queryFn: api.analytics.status,
+    enabled: isAuthenticated,
+    staleTime: Infinity,
+    refetchInterval: false,
+    refetchOnMount: false,
+    refetchOnReconnect: false,
+  });
+
   // Image check drafts
   const serverEnabled = (allSettings?.image_check_enabled ?? "true") !== "false";
   const serverTime = allSettings?.image_check_time ?? "03:00";
@@ -305,6 +315,16 @@ function GeneralTab({ authMode, version }: { authMode?: string; version?: string
         }
         window.location.href = "/login";
       }
+    },
+    onError: (err: Error) => showToast(err.message, "error"),
+  });
+
+  const { mutate: toggleAnalytics, isPending: isTogglingAnalytics } = useMutation({
+    mutationFn: (enable: boolean) => enable ? api.analytics.optIn() : api.analytics.optOut(),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["analytics-status"] });
+      queryClient.invalidateQueries({ queryKey: ["settings-all"] });
+      showToast("Analytics preference saved", "success");
     },
     onError: (err: Error) => showToast(err.message, "error"),
   });
@@ -487,6 +507,23 @@ function GeneralTab({ authMode, version }: { authMode?: string; version?: string
                 {isChecking ? "Checking…" : "Check now"}
               </button>
             </div>
+          </div>
+        </SettingRow>
+
+        {/* ANALYTICS */}
+        <SectionHeader label="Analytics" />
+        <SettingRow
+          label="Anonymous telemetry"
+          info="When enabled, sends a daily anonymous ping containing only: a random install ID, Nestview version, CPU architecture, and a timestamp. No hostnames, container names, IPs, or identifying information is ever sent."
+          last
+        >
+          <div className="space-y-1.5">
+            <Toggle
+              checked={analyticsStatus?.analytics_enabled ?? false}
+              onChange={(v) => toggleAnalytics(v)}
+              disabled={isTogglingAnalytics}
+            />
+            <p className="text-xs text-slate-600">Sends: random install ID, version, arch, timestamp — no hostnames, container names, or IPs.</p>
           </div>
         </SettingRow>
 

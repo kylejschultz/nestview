@@ -177,6 +177,17 @@ def _migrate_007(engine: Engine) -> None:
     logger.info("migration 007: seeded install_id and analytics_enabled keys")
 
 
+def _migrate_008(engine: Engine) -> None:
+    """Seed analytics_prompt_seen AppSetting key for upgrade-modal tracking."""
+    with engine.connect() as conn:
+        conn.execute(text(
+            "INSERT OR IGNORE INTO app_setting (key, value, updated_at) "
+            "VALUES ('analytics_prompt_seen', 'false', datetime('now'))"
+        ))
+        conn.commit()
+    logger.info("migration 008: seeded analytics_prompt_seen key")
+
+
 MIGRATIONS: list[tuple[str, Callable]] = [
     ("001", _migrate_001),
     ("002", _migrate_002),
@@ -185,6 +196,7 @@ MIGRATIONS: list[tuple[str, Callable]] = [
     ("005", _migrate_005),
     ("006", _migrate_006),
     ("007", _migrate_007),
+    ("008", _migrate_008),
 ]
 
 

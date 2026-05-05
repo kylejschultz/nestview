@@ -83,3 +83,8 @@ export interface NetworkHistoryPoint {
   tx_bytes: number;
   recorded_at: string;
 }
+
+export interface AnalyticsStatus {
+  analytics_enabled: boolean;
+  install_id: string;
+}

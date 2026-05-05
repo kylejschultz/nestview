@@ -1,4 +1,4 @@
-import type { AlertEventType, AlertSetting, AuthStatus, Container, ContainerLog, ContainerEvent, GeneralSettings, MeResponse, NetworkHistoryPoint, WizardStatus } from "./types";
+import type { AlertEventType, AlertSetting, AnalyticsStatus, AuthStatus, Container, ContainerLog, ContainerEvent, GeneralSettings, MeResponse, NetworkHistoryPoint, WizardStatus } from "./types";
 
 const BASE = "/api";
 
@@ -98,5 +98,10 @@ export const api = {
     testWebhook: (url?: string) => post<{ ok: boolean; error?: string }>("/settings/test-webhook", url !== undefined ? { url } : undefined),
     wizard: () => get<WizardStatus>("/settings/wizard"),
     dismissWizard: () => post<{ ok: boolean }>("/settings/wizard/dismiss"),
+  },
+  analytics: {
+    status: () => get<AnalyticsStatus>("/analytics/status"),
+    optIn: () => post<AnalyticsStatus>("/analytics/opt-in"),
+    optOut: () => post<AnalyticsStatus>("/analytics/opt-out"),
   },
 };

@@ -8,6 +8,7 @@ import Setup from "./pages/Setup";
 import Login from "./pages/Login";
 import Header from "./components/Header";
 import SetupWizard from "./components/SetupWizard";
+import AnalyticsPromptModal from "./components/AnalyticsPromptModal";
 import { TimezoneProvider } from "./TimezoneContext";
 import { AuthContext } from "./AuthContext";
 import { api } from "./api";
@@ -19,6 +20,7 @@ export default function App() {
 
   // Once the wizard is dismissed in this session, don't re-show it without a reload.
   const [wizardDismissed, setWizardDismissed] = useState(false);
+  const [analyticsModalDismissed, setAnalyticsModalDismissed] = useState(false);
 
   const { data: authStatus, isLoading: authStatusLoading } = useQuery<AuthStatus>({
     queryKey: ["auth-status"],
@@ -60,6 +62,18 @@ export default function App() {
 
   const showWizard = !wizardDismissed && wizardStatus !== undefined && !wizardStatus.completed;
 
+  const isAuthed = authStatus?.auth_mode === "none" || meData?.authenticated === true;
+
+  const { data: allSettings } = useQuery<Record<string, string>>({
+    queryKey: ["settings-all"],
+    queryFn: api.settings.getAll,
+    enabled: isAuthed && wizardStatus?.completed === true,
+    staleTime: Infinity,
+    refetchInterval: false,
+    refetchOnMount: false,
+    refetchOnReconnect: false,
+  });
+
   async function handleLogin() {
     await queryClient.invalidateQueries({ queryKey: ["auth-me"] });
     navigate("/", { replace: true });
@@ -97,6 +111,14 @@ export default function App() {
   // Authenticated: auth_mode "none" bypasses auth entirely; "password" requires a valid session
   const isAuthenticated = authStatus?.auth_mode === "none" || meData?.authenticated === true;
 
+  const showAnalyticsModal =
+    !analyticsModalDismissed &&
+    isAuthenticated &&
+    !showWizard &&
+    wizardStatus?.completed === true &&
+    allSettings?.["analytics_enabled"] !== "true" &&
+    allSettings?.["analytics_prompt_seen"] !== "true";
+
   if (!isAuthenticated) {
     return (
       <Routes>
@@ -122,6 +144,7 @@ export default function App() {
             </Routes>
           </main>
           {showWizard && <SetupWizard onDone={() => setWizardDismissed(true)} />}
+          {showAnalyticsModal && <AnalyticsPromptModal onClose={() => setAnalyticsModalDismissed(true)} />}
         </div>
       </TimezoneProvider>
     </AuthContext.Provider>

@@ -34,6 +34,7 @@ _ALLOWED_SETTING_KEYS = {
     "image_check_time",
     "session_expiry_days",
     "network_history_retention_hours",
+    "analytics_prompt_seen",
 }
 
 
