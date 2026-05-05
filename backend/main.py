@@ -22,7 +22,7 @@ _raw_sha = os.environ.get("BUILD_SHA", "")
 BUILD_SHA: str | None = _raw_sha if _raw_sha and _raw_sha != "unknown" else None
 
 from database import create_db_and_tables, engine
-from api import containers, logs, events, settings, actions, admin, stack_actions
+from api import containers, logs, events, settings, actions, admin, stack_actions, analytics as analytics_router
 from api import auth as auth_router
 from limiter import limiter
 from services.cleanup import run_cleanup
@@ -57,6 +57,10 @@ async def lifespan(app: FastAPI):
     with Session(engine) as _migration_session:
         run_migrations(engine, _migration_session)
     _seed_settings_from_env()
+
+    with Session(engine) as _analytics_session:
+        from services.analytics import ensure_install_id
+        ensure_install_id(_analytics_session)
 
     logging.basicConfig(
         level=logging.INFO,
@@ -93,8 +97,11 @@ async def lifespan(app: FastAPI):
     except Exception:
         h, m = 3, 0
 
+    from services.analytics import run_analytics_ping
+
     scheduler = AsyncIOScheduler()
     scheduler.add_job(run_cleanup, "interval", hours=1, id="cleanup")
+    scheduler.add_job(run_analytics_ping, "interval", hours=1, id="analytics_ping")
     if check_enabled:
         scheduler.add_job(run_image_check, "cron", hour=h, minute=m, id="image_check")
         logger.info("image_check cron registered for %02d:%02d", h, m)
@@ -151,7 +158,8 @@ app.include_router(events.router,        dependencies=[Depends(require_auth)])
 app.include_router(settings.router,      dependencies=[Depends(require_auth)])
 app.include_router(actions.router,       dependencies=[Depends(require_auth)])
 app.include_router(admin.router,         dependencies=[Depends(require_auth)])
-app.include_router(stack_actions.router, dependencies=[Depends(require_auth)])
+app.include_router(stack_actions.router,      dependencies=[Depends(require_auth)])
+app.include_router(analytics_router.router,   dependencies=[Depends(require_auth)])
 
 
 @app.get("/api/version")
