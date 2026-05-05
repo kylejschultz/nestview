@@ -67,7 +67,7 @@ docker compose up -d
   ```
 
 #### Unraid Community Applications
-Search for **Nestview** in the Unraid CA plugin. The template is pre-configured with everything you should need. Adjust the port assignment as required if there are any conflicts.
+Search for **Nestview** in the Unraid CA plugin. The template is pre-configured with everything you should need. All Environmental Variables are included in the template, with optional variables found by clicking **Show more settings...**
 
 The Unraid support thread can be found on the [Unraid forums](https://forums.unraid.net/topic/198374-support-nestview-lightweight-docker-observability/).
 
@@ -82,8 +82,8 @@ On first launch, you'll be prompted to create an admin username and password bef
 
 ## Environment variables
 > The below envs are optional and most can be configured in the UI - only set if needed.
-> - **Docker Users:** Copy `.env.example` to `.env` only if you want to change the port or tune polling intervals.
-> - **Unraid Users:** These are provided in the **Advanced View** of the Unraid template. No need to modify a `.env` file.
+> - **Docker Users:** Copy `.env.example` to `.env`
+> - **Unraid Users:** These are hidden by default. Click **Show more settings...** to unhide and set as needed.
 
 | Variable | Default | Description |
 |---|---|---|
