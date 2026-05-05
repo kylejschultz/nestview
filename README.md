@@ -33,7 +33,7 @@ services:
     image: ghcr.io/kylejschultz/nestview:latest
     restart: unless-stopped
     ports:
-      - "${NESTVIEW_PORT:-8484}:8080"
+      - "8484:8080"
     volumes:
       - ./data:/data
       - /var/run/docker.sock:/var/run/docker.sock
@@ -87,7 +87,6 @@ On first launch, you'll be prompted to create an admin username and password bef
 
 | Variable | Default | Description |
 |---|---|---|
-| `NESTVIEW_PORT` | `8484` | Host port Nestview is exposed on |
 | `POLL_INTERVAL` | `10` | Seconds between Docker stats polls |
 | `LOG_BATCH_INTERVAL` | `5` | Seconds between log flushes to SQLite |
 | `SECRET_KEY` | _(auto-generated)_ | Session cookie signing key. Leave blank - Nestview generates and persists one automatically. Set explicitly for scripted deployments that need stable sessions across data resets. |
