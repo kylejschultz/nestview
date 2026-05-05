@@ -162,6 +162,21 @@ def _migrate_006(engine: Engine) -> None:
     )
 
 
+def _migrate_007(engine: Engine) -> None:
+    """Seed install_id and analytics_enabled AppSetting keys for telemetry."""
+    with engine.connect() as conn:
+        conn.execute(text(
+            "INSERT OR IGNORE INTO app_setting (key, value, updated_at) "
+            "VALUES ('install_id', '', datetime('now'))"
+        ))
+        conn.execute(text(
+            "INSERT OR IGNORE INTO app_setting (key, value, updated_at) "
+            "VALUES ('analytics_enabled', 'false', datetime('now'))"
+        ))
+        conn.commit()
+    logger.info("migration 007: seeded install_id and analytics_enabled keys")
+
+
 MIGRATIONS: list[tuple[str, Callable]] = [
     ("001", _migrate_001),
     ("002", _migrate_002),
@@ -169,6 +184,7 @@ MIGRATIONS: list[tuple[str, Callable]] = [
     ("004", _migrate_004),
     ("005", _migrate_005),
     ("006", _migrate_006),
+    ("007", _migrate_007),
 ]
 
 
