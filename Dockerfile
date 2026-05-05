@@ -33,9 +33,9 @@ COPY VERSION /app/VERSION
 # Frontend build output
 COPY --from=frontend-build /app/frontend/dist /app/static
 
-EXPOSE 8080
+EXPOSE 8484
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-  CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8080/api/health')" || exit 1
+  CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8484/api/health')" || exit 1
 
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8080"]
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8484"]
