@@ -116,6 +116,3 @@ Nestview sends a formatted embed when a container crashes (non-zero exit), is OO
 [GitHub Issues](https://github.com/kylejschultz/nestview/issues) is available for bugs and feature requests, but Discord is faster and more conversational. Please search existing issues before opening a new one.
 
 [GitHub Sponsors](https://github.com/sponsors/kylejschultz) / [Ko-fi](https://ko-fi.com/kylejschultz) - if Nestview saves you time, a coffee is always appreciated.
-
-## Contributing
-See [CONTRIBUTING.md](./CONTRIBUTING.md). TL;DR: open an issue before big changes, follow conventional commits, don't be a dick.
