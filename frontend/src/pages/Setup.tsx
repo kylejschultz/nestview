@@ -192,7 +192,7 @@ export default function Setup({ onComplete }: SetupProps) {
             type="button"
             onClick={handleSubmit}
             disabled={mutation.isPending || !isValid}
-            className="w-full py-2.5 px-4 rounded-lg bg-accent text-white text-sm font-medium transition-opacity disabled:opacity-50 disabled:cursor-not-allowed hover:opacity-90"
+            className="mt-6 w-full py-2.5 px-4 rounded-lg bg-accent text-white text-sm font-medium transition-opacity disabled:opacity-50 disabled:cursor-not-allowed hover:opacity-90"
           >
             {mutation.isPending ? "Setting up…" : authMode === "none" ? "Continue to dashboard" : "Create account"}
           </button>

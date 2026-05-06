@@ -117,6 +117,7 @@ export default function SetupWizard({ onDone }: SetupWizardProps) {
                 {isSaving ? "Saving..." : "Save & finish"}
               </button>
             </div>
+            <p className="text-xs text-slate-500 text-center">You can update this any time in Settings.</p>
           </div>
         )}
       </div>

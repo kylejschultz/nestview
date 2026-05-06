@@ -6,6 +6,7 @@ import type { Container } from "../types";
 import ContainerCard from "../components/ContainerCard";
 import EventTimeline from "../components/EventTimeline";
 import ConfirmModal from "../components/ConfirmModal";
+import AnalyticsBanner from "../components/AnalyticsBanner";
 import type { ProgressStep } from "../components/ConfirmModal";
 import Toast from "../components/Toast";
 import { useToast } from "../hooks/useToast";
@@ -506,6 +507,8 @@ export default function Dashboard() {
   }
 
   return (
+    <>
+    <AnalyticsBanner />
     <div className="grid grid-cols-1 xl:grid-cols-[1fr_320px] gap-6">
       <div className="space-y-6">
         {/* Toolbar */}
@@ -613,5 +616,6 @@ export default function Dashboard() {
         <EventTimeline limit={eventLimit} />
       </aside>
     </div>
+    </>
   );
 }
