@@ -41,24 +41,15 @@ export default function AnalyticsPromptModal({ onClose }: Props) {
         onClick={(e) => e.stopPropagation()}
       >
         <div className="p-6 space-y-4">
-          <div className="space-y-1">
-            <h2 className="text-lg font-semibold text-slate-100">Anonymous Telemetry</h2>
-            <p className="text-sm text-slate-400 leading-relaxed">
-              Help us understand how many active Nestview installs there are. This is
-              opt-in — the default is off and you can change it any time in Settings.
+          <div className="space-y-3">
+            <p className="text-sm text-slate-300 leading-relaxed">
+              Want to help me know how many people are running Nestview? If you opt in, Nestview sends a small anonymous ping once a day.
             </p>
-          </div>
-
-          <div className="rounded-lg bg-surface-3 border border-border p-3 space-y-2">
-            <p className="text-slate-300 font-medium text-xs uppercase tracking-wide">What's sent (nothing else)</p>
-            <ul className="text-slate-400 space-y-1 text-sm">
-              <li>· A random install ID — generated once, never tied to your identity</li>
-              <li>· Nestview version</li>
-              <li>· CPU architecture (amd64 or arm64)</li>
-              <li>· A daily timestamp</li>
-            </ul>
-            <p className="text-slate-500 text-xs pt-1 border-t border-border mt-2">
-              No hostnames, container names, IP addresses, or identifying information is ever sent.
+            <p className="text-sm text-slate-400 leading-relaxed">
+              What's sent: a random install ID (never tied to you), your Nestview version, CPU architecture, and a timestamp.
+            </p>
+            <p className="text-xs text-slate-500 leading-relaxed">
+              No hostnames, container names, IPs, or anything identifying. You can change this any time in Settings.
             </p>
           </div>
 
@@ -66,16 +57,16 @@ export default function AnalyticsPromptModal({ onClose }: Props) {
             <button
               disabled={isPending}
               onClick={() => dismiss()}
-              className="px-4 py-2 text-sm rounded-lg border border-border text-slate-400 hover:text-slate-200 hover:border-slate-500 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              className="flex-1 px-4 py-2 text-sm rounded-lg border border-border text-slate-300 hover:text-slate-100 hover:border-slate-500 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
             >
-              Dismiss
+              Skip
             </button>
             <button
               disabled={isPending}
               onClick={() => optIn()}
-              className="flex-1 px-4 py-2 text-sm rounded-lg bg-accent hover:bg-accent-hover text-white font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              className="flex-1 px-4 py-2 text-sm rounded-lg border border-border text-slate-300 hover:text-slate-100 hover:border-slate-500 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
             >
-              {isOptingIn ? "Saving…" : "Opt in"}
+              {isOptingIn ? "Saving..." : "Opt in"}
             </button>
           </div>
         </div>

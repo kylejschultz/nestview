@@ -239,7 +239,7 @@ function ComposeGroup({ project, members }: ComposeGroupProps) {
     timeoutRef.current = setTimeout(() => {
       stopPolling();
       setHasError(true);
-      setErrorMessage("Timed out waiting for confirmation. The action may have completed — check the dashboard.");
+      setErrorMessage("Timed out waiting for confirmation. The action may have completed - check the dashboard.");
       setIsProgressing(false);
     }, 30_000);
 
@@ -385,7 +385,7 @@ function ComposeGroup({ project, members }: ComposeGroupProps) {
           )}
           {collapsed && (
             <span className="text-xs text-slate-600 font-normal normal-case tracking-normal shrink-0">
-              — {members.length} container{members.length !== 1 ? "s" : ""}
+              - {members.length} container{members.length !== 1 ? "s" : ""}
             </span>
           )}
         </button>

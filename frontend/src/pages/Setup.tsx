@@ -129,7 +129,7 @@ export default function Setup({ onComplete }: SetupProps) {
                     onChange={(e) => setNoAuthConfirmed(e.target.checked)}
                     className="mt-0.5 w-4 h-4 rounded accent-accent flex-shrink-0"
                   />
-                  <span className="text-xs text-yellow-200">Confirm — disable authentication</span>
+                  <span className="text-xs text-yellow-200">Confirm: disable authentication</span>
                 </label>
               </div>
             )}

@@ -513,18 +513,15 @@ function GeneralTab({ authMode, version }: { authMode?: string; version?: string
         {/* ANALYTICS */}
         <SectionHeader label="Analytics" />
         <SettingRow
-          label="Anonymous telemetry"
-          info="When enabled, sends a daily anonymous ping containing only: a random install ID, Nestview version, CPU architecture, and a timestamp. No hostnames, container names, IPs, or identifying information is ever sent."
+          label="Analytics"
+          info="Sends a daily ping with your install ID, version, and architecture. No personal data is collected."
           last
         >
-          <div className="space-y-1.5">
-            <Toggle
-              checked={analyticsStatus?.analytics_enabled ?? false}
-              onChange={(v) => toggleAnalytics(v)}
-              disabled={isTogglingAnalytics}
-            />
-            <p className="text-xs text-slate-600">Sends: random install ID, version, arch, timestamp — no hostnames, container names, or IPs.</p>
-          </div>
+          <Toggle
+            checked={analyticsStatus?.analytics_enabled ?? false}
+            onChange={(v) => toggleAnalytics(v)}
+            disabled={isTogglingAnalytics}
+          />
         </SettingRow>
 
         {/* AUTHENTICATION */}
@@ -609,7 +606,7 @@ function GeneralTab({ authMode, version }: { authMode?: string; version?: string
         {/* Session expiry + change password — only when already in password mode */}
         {selectedMode === "password" && authMode === "password" && (
           <>
-            <SettingRow label="Session expiry" info="How long a login session stays active before requiring re-authentication. Changes apply to new logins only — existing sessions are unaffected.">
+            <SettingRow label="Session expiry" info="How long a login session stays active before requiring re-authentication. Changes apply to new logins only (existing sessions are unaffected).">
               <div className="space-y-2">
                 <div className="flex items-center gap-2">
                   <input

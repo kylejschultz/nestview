@@ -9,7 +9,7 @@ interface SetupWizardProps {
 
 export default function SetupWizard({ onDone }: SetupWizardProps) {
   const queryClient = useQueryClient();
-  const [step, setStep] = useState<1 | 2 | 3>(1);
+  const [step, setStep] = useState<1 | 2>(1);
   const [webhookUrl, setWebhookUrl] = useState("");
   const [saveError, setSaveError] = useState<string | null>(null);
 
@@ -36,15 +36,6 @@ export default function SetupWizard({ onDone }: SetupWizardProps) {
     },
   });
 
-  const { mutate: analyticsOptIn, isPending: isOptingIn } = useMutation({
-    mutationFn: api.analytics.optIn,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["analytics-status"] });
-      queryClient.invalidateQueries({ queryKey: ["settings-all"] });
-      setStep(3);
-    },
-  });
-
   function handleSkip() {
     dismiss();
   }
@@ -60,7 +51,7 @@ export default function SetupWizard({ onDone }: SetupWizardProps) {
       >
         {/* Progress dots */}
         <div className="flex justify-center gap-2 pt-5">
-          {[1, 2, 3].map((n) => (
+          {[1, 2].map((n) => (
             <div
               key={n}
               className={`w-2 h-2 rounded-full transition-colors ${
@@ -99,51 +90,6 @@ export default function SetupWizard({ onDone }: SetupWizardProps) {
         {step === 2 && (
           <div className="p-6 space-y-4">
             <div className="space-y-1">
-              <h2 className="text-lg font-semibold text-slate-100">Anonymous Telemetry</h2>
-              <p className="text-sm text-slate-400 leading-relaxed">
-                Help us understand how many active Nestview installs there are. This is
-                opt-in — the default is off and you can change it any time in Settings.
-              </p>
-            </div>
-            <div className="rounded-lg bg-surface-3 border border-border p-3 space-y-2 text-sm">
-              <p className="text-slate-300 font-medium text-xs uppercase tracking-wide">What's sent (nothing else)</p>
-              <ul className="text-slate-400 space-y-1 text-sm">
-                <li>· A random install ID — generated once, never tied to your identity</li>
-                <li>· Nestview version</li>
-                <li>· CPU architecture (amd64 or arm64)</li>
-                <li>· A daily timestamp</li>
-              </ul>
-              <p className="text-slate-500 text-xs pt-1 border-t border-border mt-2">
-                No hostnames, container names, IP addresses, or identifying information is ever sent.
-              </p>
-            </div>
-            <div className="flex gap-2 pt-1">
-              <button
-                onClick={() => setStep(1)}
-                className="px-4 py-2 text-sm rounded-lg border border-border text-slate-400 hover:text-slate-200 hover:border-slate-500 transition-colors"
-              >
-                Back
-              </button>
-              <button
-                onClick={() => setStep(3)}
-                className="px-4 py-2 text-sm rounded-lg border border-border text-slate-400 hover:text-slate-200 hover:border-slate-500 transition-colors"
-              >
-                Skip
-              </button>
-              <button
-                disabled={isOptingIn}
-                onClick={() => analyticsOptIn()}
-                className="flex-1 px-4 py-2 text-sm rounded-lg bg-accent hover:bg-accent-hover text-white font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                {isOptingIn ? "Saving…" : "Opt in"}
-              </button>
-            </div>
-          </div>
-        )}
-
-        {step === 3 && (
-          <div className="p-6 space-y-4">
-            <div className="space-y-1">
               <h2 className="text-lg font-semibold text-slate-100">Set up Discord alerts</h2>
               <p className="text-sm text-slate-400 leading-relaxed">
                 Paste an incoming webhook URL from your Discord server settings. You can
@@ -158,7 +104,7 @@ export default function SetupWizard({ onDone }: SetupWizardProps) {
             {saveError && <p className="text-xs text-red-400">{saveError}</p>}
             <div className="flex gap-2 pt-1">
               <button
-                onClick={() => setStep(2)}
+                onClick={() => setStep(1)}
                 className="px-4 py-2 text-sm rounded-lg border border-border text-slate-400 hover:text-slate-200 hover:border-slate-500 transition-colors"
               >
                 Back
@@ -168,7 +114,7 @@ export default function SetupWizard({ onDone }: SetupWizardProps) {
                 onClick={() => saveAndFinish()}
                 className="flex-1 px-4 py-2 text-sm rounded-lg bg-accent hover:bg-accent-hover text-white font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
               >
-                {isSaving ? "Saving…" : "Save & finish"}
+                {isSaving ? "Saving..." : "Save & finish"}
               </button>
             </div>
           </div>
