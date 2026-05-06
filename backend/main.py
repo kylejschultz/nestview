@@ -111,8 +111,8 @@ async def lifespan(app: FastAPI):
 
     from services.collector import start_collector
 
-    poll_interval = max(1, int(os.getenv("POLL_INTERVAL", "10")))
-    log_batch_interval = max(1, int(os.getenv("LOG_BATCH_INTERVAL", "5")))
+    poll_interval = max(1, int(os.getenv("POLL_INTERVAL") or "10"))
+    log_batch_interval = max(1, int(os.getenv("LOG_BATCH_INTERVAL") or "5"))
     start_collector(poll_interval=poll_interval, log_batch_interval=log_batch_interval)
 
     from fastapi.staticfiles import StaticFiles
