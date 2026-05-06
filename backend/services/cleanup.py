@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 # Env-var bootstrap defaults; DB values (set via Settings UI) take precedence
 # at runtime once the service has started for the first time.
-_DEFAULT_LOG_RETENTION_DAYS = int(os.getenv("LOG_RETENTION_DAYS", "7"))
+_DEFAULT_LOG_RETENTION_DAYS = int(os.getenv("LOG_RETENTION_DAYS") or "7")
 _DEFAULT_EXITED_CONTAINER_TTL_SECONDS = 300
 
 _TERMINAL_STATES = ("exited", "dead")
