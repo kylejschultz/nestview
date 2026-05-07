@@ -105,7 +105,7 @@ jobs:
           ACTIVE_INSTALLS_CHANNEL_ID = os.environ["ACTIVE_INSTALLS_CHANNEL_ID"]
 
           req = urllib.request.Request(
-              f"https://beacon.kjschultz.com/summary?key={BEACON_SECRET}&project=nestview",
+              f"https://beacon.kjschultz.com/summary?key={BEACON_STATS_SECRET}&project=nestview",
           )
           with urllib.request.urlopen(req) as resp:
               data = json.loads(resp.read())
