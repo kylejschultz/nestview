@@ -101,7 +101,7 @@ jobs:
           import discord
 
           TOKEN = os.environ["DISCORD_BOT_TOKEN"]
-          BEACON_SECRET = os.environ["BEACON_STATS_SECRET"]
+          BEACON_STATS_SECRET = os.environ["BEACON_STATS_SECRET"]
           ACTIVE_INSTALLS_CHANNEL_ID = os.environ["ACTIVE_INSTALLS_CHANNEL_ID"]
 
           req = urllib.request.Request(
