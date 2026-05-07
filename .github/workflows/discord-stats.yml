@@ -89,7 +89,7 @@ jobs:
         env:
           DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
           BEACON_STATS_SECRET: ${{ secrets.BEACON_STATS_SECRET }}
-          ACTIVE_INSTALLS_CHANNEL_ID: ${{ secrets.DISCORD_ACTIVE_INSTALLS_CHANNEL_ID }}
+          ACTIVE_INSTALLS_CHANNEL_ID: "1502007833938497666"
         run: |
           python3 << 'EOF'
           import asyncio
