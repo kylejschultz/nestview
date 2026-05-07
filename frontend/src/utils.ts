@@ -12,7 +12,7 @@ export function formatUptime(startedAt: string): string {
   const normalized = /[Z+]/.test(startedAt) ? startedAt : startedAt + "Z";
   const diff = Math.floor((Date.now() - new Date(normalized).getTime()) / 1000);
 
-  if (!Number.isFinite(diff) || diff < 0) return "—";
+  if (!Number.isFinite(diff) || diff < 0) return "-";
 
   const d = Math.floor(diff / 86400);
   const h = Math.floor((diff % 86400) / 3600);

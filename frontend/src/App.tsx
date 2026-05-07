@@ -60,6 +60,18 @@ export default function App() {
 
   const showWizard = !wizardDismissed && wizardStatus !== undefined && !wizardStatus.completed;
 
+  const isAuthed = authStatus?.auth_mode === "none" || meData?.authenticated === true;
+
+  const { data: allSettings } = useQuery<Record<string, string>>({
+    queryKey: ["settings-all"],
+    queryFn: api.settings.getAll,
+    enabled: isAuthed && wizardStatus?.completed === true,
+    staleTime: Infinity,
+    refetchInterval: false,
+    refetchOnMount: false,
+    refetchOnReconnect: false,
+  });
+
   async function handleLogin() {
     await queryClient.invalidateQueries({ queryKey: ["auth-me"] });
     navigate("/", { replace: true });

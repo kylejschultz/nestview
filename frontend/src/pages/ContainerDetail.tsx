@@ -201,7 +201,7 @@ function ActionButtons({ container }: ActionButtonsProps) {
       const activeStep = progressStepsRef.current.find(s => s.status === "active");
       if (activeStep) setStepStatus(activeStep.id, "error");
       setHasError(true);
-      setErrorMessage("Timed out waiting for confirmation. The action may have completed — check the dashboard.");
+      setErrorMessage("Timed out waiting for confirmation. The action may have completed - check the dashboard.");
     }, 30_000);
 
     pollRef.current = setInterval(async () => {
@@ -676,7 +676,7 @@ export default function ContainerDetail() {
               <div className="flex justify-between text-slate-400">
                 <span>Uptime</span>
                 <span className="font-mono">
-                  {container.started_at ? formatUptime(container.started_at) : "—"}
+                  {container.started_at ? formatUptime(container.started_at) : "-"}
                 </span>
               </div>
               <div className="flex justify-between text-slate-400">

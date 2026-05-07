@@ -11,8 +11,8 @@ Single container, deployed via Docker Compose:
 ```
 nestview (FastAPI + SQLModel + SQLite + embedded React)
   └── reads /var/run/docker.sock (writable, for stats + actions)
-  └── serves REST API at :8080/api/
-  └── serves React SPA at :8080/ (StaticFiles)
+  └── serves REST API at :8484/api/
+  └── serves React SPA at :8484/ (StaticFiles)
   └── runs collector threads in-process (stats poll, log stream, event watcher)
 ```
 
@@ -99,7 +99,6 @@ All config is in `.env` (copy from `.env.example`). Docker Compose auto-loads it
 
 | Variable | Default | Notes |
 |---|---|---|
-| `NESTVIEW_PORT` | `8484` | Host port exposed to the host |
 | `LOG_RETENTION_DAYS` | `7` | Seeded from env on first run only, then stored in the DB. Changes after initial setup must be made in the Settings UI — live env var changes have no effect. |
 | `POLL_INTERVAL` | `10` | Seconds between Docker stats polls |
 | `LOG_BATCH_INTERVAL` | `5` | Seconds between log flushes |

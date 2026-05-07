@@ -114,9 +114,10 @@ export default function SetupWizard({ onDone }: SetupWizardProps) {
                 onClick={() => saveAndFinish()}
                 className="flex-1 px-4 py-2 text-sm rounded-lg bg-accent hover:bg-accent-hover text-white font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
               >
-                {isSaving ? "Saving…" : "Save & finish"}
+                {isSaving ? "Saving..." : "Save & finish"}
               </button>
             </div>
+            <p className="text-xs text-slate-500 text-center">You can update this any time in Settings.</p>
           </div>
         )}
       </div>

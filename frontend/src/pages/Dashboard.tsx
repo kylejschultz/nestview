@@ -6,6 +6,7 @@ import type { Container } from "../types";
 import ContainerCard from "../components/ContainerCard";
 import EventTimeline from "../components/EventTimeline";
 import ConfirmModal from "../components/ConfirmModal";
+import AnalyticsBanner from "../components/AnalyticsBanner";
 import type { ProgressStep } from "../components/ConfirmModal";
 import Toast from "../components/Toast";
 import { useToast } from "../hooks/useToast";
@@ -239,7 +240,7 @@ function ComposeGroup({ project, members }: ComposeGroupProps) {
     timeoutRef.current = setTimeout(() => {
       stopPolling();
       setHasError(true);
-      setErrorMessage("Timed out waiting for confirmation. The action may have completed — check the dashboard.");
+      setErrorMessage("Timed out waiting for confirmation. The action may have completed - check the dashboard.");
       setIsProgressing(false);
     }, 30_000);
 
@@ -385,7 +386,7 @@ function ComposeGroup({ project, members }: ComposeGroupProps) {
           )}
           {collapsed && (
             <span className="text-xs text-slate-600 font-normal normal-case tracking-normal shrink-0">
-              — {members.length} container{members.length !== 1 ? "s" : ""}
+              - {members.length} container{members.length !== 1 ? "s" : ""}
             </span>
           )}
         </button>
@@ -506,6 +507,8 @@ export default function Dashboard() {
   }
 
   return (
+    <>
+    <AnalyticsBanner />
     <div className="grid grid-cols-1 xl:grid-cols-[1fr_320px] gap-6">
       <div className="space-y-6">
         {/* Toolbar */}
@@ -613,5 +616,6 @@ export default function Dashboard() {
         <EventTimeline limit={eventLimit} />
       </aside>
     </div>
+    </>
   );
 }

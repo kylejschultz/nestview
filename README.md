@@ -33,12 +33,12 @@ services:
     image: ghcr.io/kylejschultz/nestview:latest
     restart: unless-stopped
     ports:
-      - "8484:8080"
+      - "8484:8484"
     volumes:
       - ./data:/data
       - /var/run/docker.sock:/var/run/docker.sock
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/api/health')"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8484/api/health')"]
       interval: 15s
       timeout: 5s
       retries: 3
@@ -60,7 +60,7 @@ docker compose up -d
   docker run -d \
     --name nestview \
     --restart unless-stopped \
-    -p 8484:8080 \
+    -p 8484:8484 \
     -v $(pwd)/data:/data \
     -v /var/run/docker.sock:/var/run/docker.sock \
     ghcr.io/kylejschultz/nestview:latest
