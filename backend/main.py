@@ -102,6 +102,8 @@ async def lifespan(app: FastAPI):
     scheduler = AsyncIOScheduler()
     scheduler.add_job(run_cleanup, "interval", hours=1, id="cleanup")
     scheduler.add_job(run_analytics_ping, "interval", hours=1, id="analytics_ping")
+    scheduler.add_job(run_analytics_ping, "date", run_date=datetime.utcnow(), id="analytics_ping_startup")
+    logger.info("analytics_ping startup run queued")
     if check_enabled:
         scheduler.add_job(run_image_check, "cron", hour=h, minute=m, id="image_check")
         logger.info("image_check cron registered for %02d:%02d", h, m)
