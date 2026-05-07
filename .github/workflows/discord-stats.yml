@@ -112,6 +112,9 @@ jobs:
 
           active = data["active"]
           print(f"Active installs: {active}")
+          print(f"Channel ID: {ACTIVE_INSTALLS_CHANNEL_ID}")
+          print(f"Channel ID type: {type(ACTIVE_INSTALLS_CHANNEL_ID)}")
+          print(f"Active installs: {active}")
 
           class InstallsBot(discord.Client):
               async def setup_hook(self):
@@ -130,7 +133,7 @@ jobs:
                       await channel.edit(name=name)
                       print(f"Updated channel {ACTIVE_INSTALLS_CHANNEL_ID} to '{name}'")
                   except discord.Forbidden as e:
-                      print(f"Missing permissions to edit channel {ACTIVE_INSTALLS_CHANNEL_ID}: {e}")
+                      print(f"Full error: {e}, status: {e.status}, code: {e.code}, text: {e.text}")
                       await self.close()
                       sys.exit(1)
                   except discord.HTTPException as e:
