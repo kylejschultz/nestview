@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 from sqlmodel import Session, delete
 
 from database import engine
-from models import Container, ContainerLog, ContainerEvent
+from models import Container, ContainerLog, ContainerEvent, ContainerMetricsHistory, ContainerNetworkHistory
 from services.app_settings import get_setting
 
 logger = logging.getLogger(__name__)
@@ -49,9 +49,25 @@ def run_cleanup():
             )
             purged_containers = c_result.rowcount
 
+        retention_history_str = get_setting(session, "network_history_retention_hours")
+        history_retention_hours = float(retention_history_str) if retention_history_str else 6.0
+        history_cutoff = datetime.utcnow() - timedelta(hours=history_retention_hours)
+        network_history_result = session.exec(
+            delete(ContainerNetworkHistory).where(
+                ContainerNetworkHistory.recorded_at < history_cutoff
+            )
+        )
+        metrics_history_result = session.exec(
+            delete(ContainerMetricsHistory).where(
+                ContainerMetricsHistory.timestamp < history_cutoff
+            )
+        )
+
         session.commit()
         deleted_logs = log_result.rowcount
         deleted_events = event_result.rowcount
+        deleted_network_history = network_history_result.rowcount
+        deleted_metrics_history = metrics_history_result.rowcount
 
     if deleted_logs or deleted_events:
         logger.info(
@@ -62,4 +78,9 @@ def run_cleanup():
         logger.info(
             "Purged %d stale exited/dead container records (last_seen > %ds ago)",
             purged_containers, exited_ttl,
+        )
+    if deleted_network_history or deleted_metrics_history:
+        logger.info(
+            "Pruned %d network history and %d metrics history rows older than %.1f hours",
+            deleted_network_history, deleted_metrics_history, history_retention_hours,
         )

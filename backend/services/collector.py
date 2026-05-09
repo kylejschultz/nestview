@@ -19,7 +19,7 @@ import docker
 from sqlmodel import Session, delete, select
 
 from database import engine
-from models import Container, ContainerAlertSetting, ContainerEvent, ContainerLog, ContainerNetworkHistory
+from models import Container, ContainerAlertSetting, ContainerEvent, ContainerLog, ContainerMetricsHistory, ContainerNetworkHistory
 from services import discord
 from services.app_settings import get_setting
 
@@ -294,6 +294,41 @@ def _write_network_history(containers_data: list[dict]) -> None:
         session.commit()
 
 
+def _write_metrics_history(containers_data: list[dict]) -> None:
+    """Write one CPU/memory snapshot per running container, pruning old records.
+
+    Shares the same retention window as network history.
+    """
+    now = datetime.utcnow()
+
+    with Session(engine) as session:
+        retention_str = get_setting(session, "network_history_retention_hours")
+        retention_hours = float(retention_str) if retention_str else 6.0
+        cutoff = now - timedelta(hours=retention_hours)
+
+        for c in containers_data:
+            if c.get("state") != "running":
+                continue
+
+            docker_id = c["docker_id"]
+            session.add(ContainerMetricsHistory(
+                docker_id=docker_id,
+                timestamp=now,
+                cpu_percent=c["cpu_percent"],
+                mem_usage_bytes=c["mem_usage"],
+                mem_limit_bytes=c["mem_limit"],
+            ))
+
+            session.exec(
+                delete(ContainerMetricsHistory).where(
+                    ContainerMetricsHistory.docker_id == docker_id,
+                    ContainerMetricsHistory.timestamp < cutoff,
+                )
+            )
+
+        session.commit()
+
+
 # ── Log streaming ──────────────────────────────────────────────────────────────
 
 
@@ -503,6 +538,7 @@ def _stats_loop() -> None:
             if container_data:
                 _apply_batch(container_data)
                 _write_network_history(container_data)
+                _write_metrics_history(container_data)
 
             if time.time() - last_flush >= LOG_BATCH_INTERVAL:
                 _flush_logs()
