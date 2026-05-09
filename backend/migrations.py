@@ -188,6 +188,55 @@ def _migrate_008(engine: Engine) -> None:
     logger.info("migration 008: seeded analytics_prompt_seen key")
 
 
+def _migrate_009(engine: Engine) -> None:
+    """Create container_metrics_history table for per-container CPU/memory history."""
+    inspector = inspect(engine)
+    if "container_metrics_history" in inspector.get_table_names():
+        logger.info("migration 009: table container_metrics_history already present, skipping")
+        return
+
+    with engine.connect() as conn:
+        conn.execute(text("""
+            CREATE TABLE container_metrics_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                docker_id TEXT NOT NULL,
+                timestamp TEXT NOT NULL,
+                cpu_percent REAL NOT NULL DEFAULT 0.0,
+                mem_usage_bytes INTEGER NOT NULL DEFAULT 0,
+                mem_limit_bytes INTEGER NOT NULL DEFAULT 0
+            )
+        """))
+        conn.execute(text(
+            "CREATE INDEX ix_container_metrics_history_docker_id "
+            "ON container_metrics_history (docker_id)"
+        ))
+        conn.execute(text(
+            "CREATE INDEX ix_container_metrics_history_timestamp "
+            "ON container_metrics_history (timestamp)"
+        ))
+        conn.commit()
+    logger.info("migration 009: created table container_metrics_history")
+
+
+def _migrate_010(engine: Engine) -> None:
+    """Add previous_docker_id column to container table for re-association tracking."""
+    inspector = inspect(engine)
+    existing_cols = {col["name"] for col in inspector.get_columns("container")}
+
+    if "previous_docker_id" in existing_cols:
+        logger.info("migration 010: column previous_docker_id already present, skipping")
+        return
+
+    with engine.connect() as conn:
+        try:
+            conn.execute(text("ALTER TABLE container ADD COLUMN previous_docker_id TEXT"))
+            logger.info("migration 010: added column previous_docker_id")
+        except Exception as e:
+            logger.warning("migration 010: could not add column previous_docker_id: %s", e)
+            raise
+        conn.commit()
+
+
 MIGRATIONS: list[tuple[str, Callable]] = [
     ("001", _migrate_001),
     ("002", _migrate_002),
@@ -197,6 +246,8 @@ MIGRATIONS: list[tuple[str, Callable]] = [
     ("006", _migrate_006),
     ("007", _migrate_007),
     ("008", _migrate_008),
+    ("009", _migrate_009),
+    ("010", _migrate_010),
 ]
 
 
