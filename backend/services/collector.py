@@ -164,6 +164,7 @@ def _parse_dt(s: Optional[str]) -> Optional[datetime]:
 
 def _apply_batch(containers_data: list[dict]) -> None:
     seen_ids = set()
+    protected_ids: set[str] = set()
     with Session(engine) as session:
         for c in containers_data:
             docker_id = c["docker_id"]
@@ -281,6 +282,7 @@ def _apply_batch(containers_data: list[dict]) -> None:
 
                             sp.commit()
                             reassociated = True
+                            protected_ids.add(old_docker_id)
                             logger.info(
                                 "Re-associated container %s (%s → %s)",
                                 c["name"], old_docker_id[:12], docker_id[:12],
@@ -319,9 +321,12 @@ def _apply_batch(containers_data: list[dict]) -> None:
 
         # Reconcile: purge any DB row whose docker_id was not in this snapshot.
         # Guard: skip when batch is empty to avoid accidentally wiping the table.
+        # Also exclude re-associated rows whose old docker_id is no longer reported
+        # by Docker but whose row has already been updated in-place.
         if seen_ids:
+            exclude_ids = seen_ids | protected_ids if protected_ids else seen_ids
             session.exec(
-                delete(Container).where(Container.docker_id.notin_(seen_ids))
+                delete(Container).where(Container.docker_id.notin_(exclude_ids))
             )
 
         # Ghost-detection pass: remove exited/dead rows superseded by a live
