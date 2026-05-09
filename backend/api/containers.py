@@ -1,11 +1,12 @@
 import json
+from datetime import datetime, timedelta
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import Session, select
 
 from database import get_session
-from models import Container, ContainerNetworkHistory
+from models import Container, ContainerMetricsHistory, ContainerNetworkHistory
 
 router = APIRouter(prefix="/api/containers", tags=["containers"])
 
@@ -56,6 +57,39 @@ def get_network_history(docker_id: str, session: Session = Depends(get_session))
             "recorded_at": r.recorded_at.isoformat(),
             "rx_bytes": r.rx_bytes,
             "tx_bytes": r.tx_bytes,
+        }
+        for r in records
+    ]
+
+
+@router.get("/{docker_id}/metrics-history")
+def get_metrics_history(
+    docker_id: str,
+    hours: Optional[float] = None,
+    session: Session = Depends(get_session),
+):
+    container = session.exec(
+        select(Container).where(Container.docker_id == docker_id)
+    ).first()
+    if not container:
+        raise HTTPException(status_code=404, detail="Container not found")
+
+    query = (
+        select(ContainerMetricsHistory)
+        .where(ContainerMetricsHistory.docker_id == docker_id)
+        .order_by(ContainerMetricsHistory.timestamp)
+    )
+    if hours is not None:
+        cutoff = datetime.utcnow() - timedelta(hours=hours)
+        query = query.where(ContainerMetricsHistory.timestamp >= cutoff)
+
+    records = session.exec(query).all()
+    return [
+        {
+            "timestamp": r.timestamp.isoformat(),
+            "cpu_percent": r.cpu_percent,
+            "mem_usage_bytes": r.mem_usage_bytes,
+            "mem_limit_bytes": r.mem_limit_bytes,
         }
         for r in records
     ]

@@ -422,7 +422,7 @@ function GeneralTab({ authMode, version }: { authMode?: string; version?: string
             </div>
           </div>
         </SettingRow>
-        <SettingRow label="Network I/O history" info="How many hours of network I/O history to retain per container. Affects the time range shown in the detail panel chart. Default is 6 hours.">
+        <SettingRow label="History retention" info="How many hours of network I/O and CPU/memory history to retain per container. Affects the time range shown in the detail panel charts. Default is 6 hours.">
           <div className="space-y-2">
             <div className="flex items-center gap-3">
               <input

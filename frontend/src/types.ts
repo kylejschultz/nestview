@@ -84,6 +84,13 @@ export interface NetworkHistoryPoint {
   recorded_at: string;
 }
 
+export interface MetricsHistoryPoint {
+  timestamp: string;
+  cpu_percent: number;
+  mem_usage_bytes: number;
+  mem_limit_bytes: number;
+}
+
 export interface AnalyticsStatus {
   analytics_enabled: boolean;
   install_id: string;
