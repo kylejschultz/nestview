@@ -16,6 +16,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 import docker
+from sqlalchemy import update as sa_update
 from sqlmodel import Session, delete, select
 
 from database import engine
@@ -205,29 +206,116 @@ def _apply_batch(containers_data: list[dict]) -> None:
                 existing.last_seen = datetime.utcnow()
                 session.add(existing)
             else:
-                new_container = Container(
-                    docker_id=docker_id,
-                    short_id=c["short_id"],
-                    name=c["name"],
-                    image=c["image"],
-                    status=c["status"],
-                    state=c["state"],
-                    restart_count=c["restart_count"],
-                    cpu_percent=c["cpu_percent"],
-                    mem_usage=c["mem_usage"],
-                    mem_limit=c["mem_limit"],
-                    ports=c["ports"],
-                    volumes=c["volumes"],
-                    networks=c["networks"],
-                    compose_project=c["compose_project"],
-                    compose_service=c["compose_service"],
-                    created_at=_parse_dt(c["created_at"]),
-                    started_at=_parse_dt(c["started_at"]),
-                    net_rx_bytes=c["net_rx_bytes"],
-                    net_tx_bytes=c["net_tx_bytes"],
-                    last_seen=datetime.utcnow(),
-                )
-                session.add(new_container)
+                # Recreation detection: look for an existing row with the same
+                # name + compose_project but a different docker_id. Both fields
+                # must be non-empty for the match to be unambiguous.
+                new_project = c["compose_project"]
+                reassociated = False
+
+                if new_project:
+                    candidates = session.exec(
+                        select(Container).where(
+                            Container.name == c["name"],
+                            Container.compose_project == new_project,
+                        )
+                    ).all()
+
+                    if len(candidates) == 1:
+                        old = candidates[0]
+                        old_docker_id = old.docker_id
+                        try:
+                            sp = session.begin_nested()
+
+                            # Re-associate all history tables to the new docker_id
+                            session.exec(
+                                sa_update(ContainerNetworkHistory)
+                                .where(ContainerNetworkHistory.container_id == old_docker_id)
+                                .values(container_id=docker_id)
+                            )
+                            session.exec(
+                                sa_update(ContainerMetricsHistory)
+                                .where(ContainerMetricsHistory.docker_id == old_docker_id)
+                                .values(docker_id=docker_id)
+                            )
+                            session.exec(
+                                sa_update(ContainerLog)
+                                .where(ContainerLog.container_id == old_docker_id)
+                                .values(container_id=docker_id)
+                            )
+                            session.exec(
+                                sa_update(ContainerEvent)
+                                .where(ContainerEvent.container_id == old_docker_id)
+                                .values(container_id=docker_id)
+                            )
+
+                            # Update the existing Container row in-place
+                            old.docker_id = docker_id
+                            old.short_id = c["short_id"]
+                            old.previous_docker_id = old_docker_id
+                            old.image = c["image"]
+                            old.status = c["status"]
+                            old.state = c["state"]
+                            old.restart_count = c["restart_count"]
+                            old.cpu_percent = c["cpu_percent"]
+                            old.mem_usage = c["mem_usage"]
+                            old.mem_limit = c["mem_limit"]
+                            old.ports = c["ports"]
+                            old.volumes = c["volumes"]
+                            old.networks = c["networks"]
+                            old.compose_service = c["compose_service"]
+                            old.started_at = _parse_dt(c["started_at"])
+                            old.net_rx_bytes = c["net_rx_bytes"]
+                            old.net_tx_bytes = c["net_tx_bytes"]
+                            old.last_seen = datetime.utcnow()
+                            session.add(old)
+
+                            # Record the recreation as an event
+                            session.add(ContainerEvent(
+                                container_id=docker_id,
+                                container_name=c["name"],
+                                event_type="recreated",
+                                details=f"Container recreated: {old_docker_id[:12]} → {docker_id[:12]}",
+                                timestamp=datetime.utcnow(),
+                                alerted=False,
+                            ))
+
+                            sp.commit()
+                            reassociated = True
+                            logger.info(
+                                "Re-associated container %s (%s → %s)",
+                                c["name"], old_docker_id[:12], docker_id[:12],
+                            )
+                        except Exception as exc:
+                            sp.rollback()
+                            logger.warning(
+                                "Re-association failed for %s, inserting as new: %s",
+                                c["name"], exc,
+                            )
+
+                if not reassociated:
+                    new_container = Container(
+                        docker_id=docker_id,
+                        short_id=c["short_id"],
+                        name=c["name"],
+                        image=c["image"],
+                        status=c["status"],
+                        state=c["state"],
+                        restart_count=c["restart_count"],
+                        cpu_percent=c["cpu_percent"],
+                        mem_usage=c["mem_usage"],
+                        mem_limit=c["mem_limit"],
+                        ports=c["ports"],
+                        volumes=c["volumes"],
+                        networks=c["networks"],
+                        compose_project=c["compose_project"],
+                        compose_service=c["compose_service"],
+                        created_at=_parse_dt(c["created_at"]),
+                        started_at=_parse_dt(c["started_at"]),
+                        net_rx_bytes=c["net_rx_bytes"],
+                        net_tx_bytes=c["net_tx_bytes"],
+                        last_seen=datetime.utcnow(),
+                    )
+                    session.add(new_container)
 
         # Reconcile: purge any DB row whose docker_id was not in this snapshot.
         # Guard: skip when batch is empty to avoid accidentally wiping the table.
