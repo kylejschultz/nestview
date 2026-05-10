@@ -53,11 +53,10 @@ export const api = {
   logs: {
     forContainer: (
       id: string,
-      params?: { search?: string; stream?: string; limit?: number; offset?: number }
+      params?: { search?: string; limit?: number; offset?: number }
     ) => {
       const qs = new URLSearchParams();
       if (params?.search) qs.set("search", params.search);
-      if (params?.stream) qs.set("stream", params.stream);
       if (params?.limit != null) qs.set("limit", String(params.limit));
       if (params?.offset != null) qs.set("offset", String(params.offset));
       const q = qs.toString();

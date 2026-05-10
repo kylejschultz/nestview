@@ -25,19 +25,25 @@ nestview/
 ├── backend/
 │   ├── api/
 │   │   ├── actions.py       # Container start/stop/restart (POST)
-│   │   ├── admin.py         # Admin / credential management endpoints
+│   │   ├── admin.py         # Admin / image check trigger endpoint
+│   │   ├── analytics.py     # Analytics opt-in/opt-out endpoints
 │   │   ├── auth.py          # Login, logout, session endpoints
-│   │   ├── containers.py    # Container CRUD + batch reconciliation
+│   │   ├── containers.py    # Container CRUD + metrics/network history
 │   │   ├── events.py        # Container event history (GET endpoints only)
 │   │   ├── logs.py          # Log search + export
-│   │   ├── settings.py      # Per-container alert enable/disable
+│   │   ├── settings.py      # App settings, alert toggles, webhook config
 │   │   └── stack_actions.py # Compose stack-level actions (POST)
 │   ├── services/
+│   │   ├── analytics.py     # Anonymous install ping (daily, opt-in)
 │   │   ├── app_settings.py  # DB-backed app settings helpers
 │   │   ├── cleanup.py       # APScheduler hourly job (log/event/container TTL)
 │   │   ├── collector.py     # In-process collector threads (stats, logs, events)
-│   │   └── discord.py       # Discord webhook embed sender
+│   │   ├── discord.py       # Discord webhook embed sender
+│   │   └── image_checker.py # Registry digest fetcher + update detection
+│   ├── constants.py         # Shared constants (valid container states)
 │   ├── database.py          # SQLite engine + session factory
+│   ├── limiter.py           # slowapi rate limiter instance
+│   ├── migrations.py        # Sequential schema migration runner
 │   ├── models.py            # SQLModel table definitions
 │   ├── main.py              # FastAPI app entrypoint
 │   └── requirements.txt
@@ -66,7 +72,7 @@ nestview/
 ### Backend
 
 - **FastAPI routers** are in `backend/api/`. Each file owns one domain and registers its own `APIRouter`. Routers are mounted in `main.py`.
-- **Models** live in `backend/models.py` — six tables: `Container`, `ContainerLog`, `ContainerEvent`, `ContainerAlertSetting`, `AppSetting`, `ContainerNetworkHistory`.
+- **Models** live in `backend/models.py` — seven tables: `Container`, `ContainerLog`, `ContainerEvent`, `ContainerAlertSetting`, `AppSetting`, `ContainerNetworkHistory`, `ContainerMetricsHistory`.
 - **Schema migrations** are handled by `backend/migrations.py` — a lightweight custom system, not Alembic. There is no alembic package or dependency. `create_db_and_tables()` handles fresh installs via SQLModel's `create_all`. Upgrades are handled by a sequential list of versioned migration functions in `migrations.py`, with the current version tracked in the `AppSetting` table under key `schema_version`. To add a column: add it to the model as `Optional` with a default, then append a new `(version_str, fn)` entry to the `MIGRATIONS` list in `migrations.py`. Failures raise loudly — do not swallow migration exceptions.
 - The collector runs in-process as daemon threads and writes directly to the DB via SQLModel — there are no HTTP endpoints for collector ingest.
 - **Container state reconciliation** happens in `_apply_batch()` in `services/collector.py`. The stats loop sends a full `docker ps -a` snapshot; anything not in the batch is deleted. Ghost detection (same name/project, old container exited + new one running) also fires here.
@@ -169,7 +175,7 @@ Never push directly to `main`. All work happens on `dev` and goes to `main` via 
 
 - **Schema changes** require a new entry in `backend/migrations.py`. Add the column to the model as `Optional` with a default, then append a `(version_str, fn)` tuple to `MIGRATIONS`. Do not drop the volume — migrations run at startup and apply the change in place.
 - **Empty collector batch** — `_apply_batch()` in `services/collector.py` has a guard: if `seen_ids` is empty, reconciliation is skipped to avoid wiping the table when Docker is temporarily unreachable.
-- **`die` vs `crash`** — the collector maps `die` + non-zero exit to `crash`, but both share the `crash` alert setting. Don't add a separate `die` setting without updating `_SETTING_KEY` in both `events.py` and `services/collector.py`.
+- **`die` vs `crash`** — the collector maps `die` + non-zero exit to `crash`. Only `crash` (not `die`) is in `_ALERT_EVENT_TYPES`, so clean shutdowns (`die` with exit 0) do not fire Discord alerts. Both map to the same `crash` alert setting key via `_SETTING_KEY`. Don't add a separate `die` alert setting without updating `_SETTING_KEY` in both `events.py` and `services/collector.py`.
 - **Single writable Docker socket mount** — the socket is mounted writable for both container actions and the in-process collector stats polling.
 - **macOS/Colima/OrbStack** all expose the socket at `/var/run/docker.sock` — no config changes needed. Only non-standard socket paths require updating the volume mount in `docker-compose.yml`.
 - **Collector writes directly to DB** — there are no HTTP endpoints for collector ingest. The collector runs in-process and uses SQLModel sessions directly.

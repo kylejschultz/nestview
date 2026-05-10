@@ -494,7 +494,7 @@ def _flush_logs() -> None:
 
 # ── Event watcher ──────────────────────────────────────────────────────────────
 
-_ALERT_EVENT_TYPES = {"crash", "die", "oom", "restart"}
+_ALERT_EVENT_TYPES = {"crash", "oom", "restart"}
 _SETTING_KEY: dict[str, str] = {
     "crash": "crash",
     "die": "crash",

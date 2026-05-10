@@ -11,12 +11,15 @@ from models import Container, ContainerMetricsHistory, ContainerNetworkHistory
 router = APIRouter(prefix="/api/containers", tags=["containers"])
 
 
+_CONTAINER_EXCLUDE = {"update_alert_sent_digest"}
+
+
 @router.get("")
 def list_containers(session: Session = Depends(get_session)):
     containers = session.exec(select(Container)).all()
     result = []
     for c in containers:
-        d = c.dict()
+        d = c.dict(exclude=_CONTAINER_EXCLUDE)
         d["ports"] = json.loads(c.ports)
         d["volumes"] = json.loads(c.volumes)
         d["networks"] = json.loads(c.networks)
@@ -31,7 +34,7 @@ def get_container(docker_id: str, session: Session = Depends(get_session)):
     ).first()
     if not container:
         raise HTTPException(status_code=404, detail="Container not found")
-    d = container.dict()
+    d = container.dict(exclude=_CONTAINER_EXCLUDE)
     d["ports"] = json.loads(container.ports)
     d["volumes"] = json.loads(container.volumes)
     d["networks"] = json.loads(container.networks)
