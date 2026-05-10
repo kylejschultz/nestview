@@ -788,7 +788,7 @@ export default function ContainerDetail() {
   const tz = useTimezone();
   const { isAuthenticated } = useAuth();
   const [netExpanded, setNetExpanded] = useState(true);
-  const [metricsExpanded, setMetricsExpanded] = useState(true);
+  const [metricsExpanded, setMetricsExpanded] = useState(false);
 
   const { data: container, isLoading, isError } = useQuery<Container>({
     queryKey: ["container", id],

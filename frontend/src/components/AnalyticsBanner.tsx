@@ -41,6 +41,18 @@ function AnalyticsModal({ onClose }: { onClose: () => void }) {
             <span className="text-accent mt-0.5 shrink-0">-</span>
             <span>Timestamp of the ping</span>
           </li>
+          <li className="flex items-start gap-2">
+            <span className="text-accent mt-0.5 shrink-0">-</span>
+            <span>Build channel (e.g. stable, dev)</span>
+          </li>
+          <li className="flex items-start gap-2">
+            <span className="text-accent mt-0.5 shrink-0">-</span>
+            <span>Number of containers currently tracked (a count, not names or images)</span>
+          </li>
+          <li className="flex items-start gap-2">
+            <span className="text-accent mt-0.5 shrink-0">-</span>
+            <span>Host operating system type (e.g. Linux, Darwin)</span>
+          </li>
         </ul>
         <p className="text-sm text-slate-500 leading-relaxed">
           No personal information, container names, image names, host data, or IP addresses are ever collected.

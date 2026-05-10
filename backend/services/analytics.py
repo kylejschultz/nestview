@@ -1,13 +1,15 @@
 import logging
+import os
 import platform
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
 import httpx
-from sqlmodel import Session
+from sqlmodel import Session, func, select
 
 from database import engine
+from models import Container
 from services.app_settings import get_setting, set_setting
 
 logger = logging.getLogger(__name__)
@@ -46,6 +48,7 @@ async def run_analytics_ping() -> None:
             install_id = get_setting(session, "install_id") or ""
             if not install_id:
                 return
+            container_count = session.exec(select(func.count()).select_from(Container)).one()
 
         version = _VERSION_FILE.read_text().strip() if _VERSION_FILE.exists() else "dev"
 
@@ -55,6 +58,9 @@ async def run_analytics_ping() -> None:
             "version": version,
             "arch": _get_arch(),
             "timestamp": datetime.now(timezone.utc).isoformat(),
+            "channel": os.environ.get("BUILD_CHANNEL", "stable"),
+            "container_count": container_count,
+            "os": platform.system(),
         }
 
         async with httpx.AsyncClient(timeout=10.0) as client:
