@@ -45,7 +45,7 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ### Breaking Changes
 
-- The default port changed from 8080 to 8484. Users with reverse proxy configs, firewall rules, or bookmarks pointing to port 8080 must update them. The `docker-compose.yml` host port mapping also changed - pull the latest compose file or update the ports entry manually.
+- The internal conatiner port changed from 8080 to 8484. If coming froma prior version, you will need to redploy using `8484:8484` for your port configuration - no other changes should be needed. The `docker-compose.yml` has been updated to reflect this or you can update the port mapping manually..
 
 ---
 
