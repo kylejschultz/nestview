@@ -42,6 +42,7 @@ class Container(SQLModel, table=True):
     update_alert_sent_digest: Optional[str] = None
     net_rx_bytes: Optional[int] = 0
     net_tx_bytes: Optional[int] = 0
+    previous_docker_id: Optional[str] = None
 
 
 class ContainerLog(SQLModel, table=True):
@@ -71,6 +72,17 @@ class ContainerNetworkHistory(SQLModel, table=True):
     rx_bytes: int = Field(default=0)
     tx_bytes: int = Field(default=0)
     recorded_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+
+
+class ContainerMetricsHistory(SQLModel, table=True):
+    __tablename__ = "container_metrics_history"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    docker_id: str = Field(index=True)
+    timestamp: datetime = Field(default_factory=datetime.utcnow, index=True)
+    cpu_percent: float = Field(default=0.0)
+    mem_usage_bytes: int = Field(default=0)
+    mem_limit_bytes: int = Field(default=0)
 
 
 class ContainerAlertSetting(SQLModel, table=True):

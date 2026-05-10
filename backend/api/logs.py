@@ -2,7 +2,7 @@ import csv
 import io
 import re
 from datetime import datetime
-from typing import Literal, Optional
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
@@ -18,7 +18,6 @@ router = APIRouter(prefix="/api", tags=["logs"])
 def get_container_logs(
     docker_id: str,
     search: Optional[str] = Query(None, max_length=256),
-    stream: Optional[Literal["stdout", "stderr"]] = Query(None),
     limit: int = Query(200, ge=1, le=1000),
     offset: int = Query(0, ge=0),
     session: Session = Depends(get_session),
@@ -27,8 +26,6 @@ def get_container_logs(
 
     if search:
         query = query.where(ContainerLog.message.contains(search))
-    if stream:
-        query = query.where(ContainerLog.stream == stream)
 
     query = query.order_by(ContainerLog.timestamp.desc()).offset(offset).limit(limit)
     logs = session.exec(query).all()

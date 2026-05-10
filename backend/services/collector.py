@@ -16,10 +16,11 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 import docker
+from sqlalchemy import update as sa_update
 from sqlmodel import Session, delete, select
 
 from database import engine
-from models import Container, ContainerAlertSetting, ContainerEvent, ContainerLog, ContainerNetworkHistory
+from models import Container, ContainerAlertSetting, ContainerEvent, ContainerLog, ContainerMetricsHistory, ContainerNetworkHistory
 from services import discord
 from services.app_settings import get_setting
 
@@ -163,6 +164,7 @@ def _parse_dt(s: Optional[str]) -> Optional[datetime]:
 
 def _apply_batch(containers_data: list[dict]) -> None:
     seen_ids = set()
+    protected_ids: set[str] = set()
     with Session(engine) as session:
         for c in containers_data:
             docker_id = c["docker_id"]
@@ -205,35 +207,126 @@ def _apply_batch(containers_data: list[dict]) -> None:
                 existing.last_seen = datetime.utcnow()
                 session.add(existing)
             else:
-                new_container = Container(
-                    docker_id=docker_id,
-                    short_id=c["short_id"],
-                    name=c["name"],
-                    image=c["image"],
-                    status=c["status"],
-                    state=c["state"],
-                    restart_count=c["restart_count"],
-                    cpu_percent=c["cpu_percent"],
-                    mem_usage=c["mem_usage"],
-                    mem_limit=c["mem_limit"],
-                    ports=c["ports"],
-                    volumes=c["volumes"],
-                    networks=c["networks"],
-                    compose_project=c["compose_project"],
-                    compose_service=c["compose_service"],
-                    created_at=_parse_dt(c["created_at"]),
-                    started_at=_parse_dt(c["started_at"]),
-                    net_rx_bytes=c["net_rx_bytes"],
-                    net_tx_bytes=c["net_tx_bytes"],
-                    last_seen=datetime.utcnow(),
-                )
-                session.add(new_container)
+                # Recreation detection: look for an existing row with the same
+                # name + compose_project but a different docker_id. Both fields
+                # must be non-empty for the match to be unambiguous.
+                new_project = c["compose_project"]
+                reassociated = False
+
+                if new_project:
+                    candidates = session.exec(
+                        select(Container).where(
+                            Container.name == c["name"],
+                            Container.compose_project == new_project,
+                        )
+                    ).all()
+
+                    if len(candidates) == 1:
+                        old = candidates[0]
+                        old_docker_id = old.docker_id
+                        try:
+                            sp = session.begin_nested()
+
+                            # Re-associate all history tables to the new docker_id
+                            session.exec(
+                                sa_update(ContainerNetworkHistory)
+                                .where(ContainerNetworkHistory.container_id == old_docker_id)
+                                .values(container_id=docker_id)
+                            )
+                            session.exec(
+                                sa_update(ContainerMetricsHistory)
+                                .where(ContainerMetricsHistory.docker_id == old_docker_id)
+                                .values(docker_id=docker_id)
+                            )
+                            session.exec(
+                                sa_update(ContainerLog)
+                                .where(ContainerLog.container_id == old_docker_id)
+                                .values(container_id=docker_id)
+                            )
+                            session.exec(
+                                sa_update(ContainerEvent)
+                                .where(ContainerEvent.container_id == old_docker_id)
+                                .values(container_id=docker_id)
+                            )
+
+                            # Update the existing Container row in-place
+                            old.docker_id = docker_id
+                            old.short_id = c["short_id"]
+                            old.previous_docker_id = old_docker_id
+                            old.image = c["image"]
+                            old.status = c["status"]
+                            old.state = c["state"]
+                            old.restart_count = c["restart_count"]
+                            old.cpu_percent = c["cpu_percent"]
+                            old.mem_usage = c["mem_usage"]
+                            old.mem_limit = c["mem_limit"]
+                            old.ports = c["ports"]
+                            old.volumes = c["volumes"]
+                            old.networks = c["networks"]
+                            old.compose_service = c["compose_service"]
+                            old.started_at = _parse_dt(c["started_at"])
+                            old.net_rx_bytes = c["net_rx_bytes"]
+                            old.net_tx_bytes = c["net_tx_bytes"]
+                            old.last_seen = datetime.utcnow()
+                            session.add(old)
+
+                            # Record the recreation as an event
+                            session.add(ContainerEvent(
+                                container_id=docker_id,
+                                container_name=c["name"],
+                                event_type="recreated",
+                                details=f"Container recreated: {old_docker_id[:12]} → {docker_id[:12]}",
+                                timestamp=datetime.utcnow(),
+                                alerted=False,
+                            ))
+
+                            sp.commit()
+                            reassociated = True
+                            protected_ids.add(old_docker_id)
+                            logger.info(
+                                "Re-associated container %s (%s → %s)",
+                                c["name"], old_docker_id[:12], docker_id[:12],
+                            )
+                        except Exception as exc:
+                            sp.rollback()
+                            logger.warning(
+                                "Re-association failed for %s, inserting as new: %s",
+                                c["name"], exc,
+                            )
+
+                if not reassociated:
+                    new_container = Container(
+                        docker_id=docker_id,
+                        short_id=c["short_id"],
+                        name=c["name"],
+                        image=c["image"],
+                        status=c["status"],
+                        state=c["state"],
+                        restart_count=c["restart_count"],
+                        cpu_percent=c["cpu_percent"],
+                        mem_usage=c["mem_usage"],
+                        mem_limit=c["mem_limit"],
+                        ports=c["ports"],
+                        volumes=c["volumes"],
+                        networks=c["networks"],
+                        compose_project=c["compose_project"],
+                        compose_service=c["compose_service"],
+                        created_at=_parse_dt(c["created_at"]),
+                        started_at=_parse_dt(c["started_at"]),
+                        net_rx_bytes=c["net_rx_bytes"],
+                        net_tx_bytes=c["net_tx_bytes"],
+                        last_seen=datetime.utcnow(),
+                    )
+                    session.add(new_container)
 
         # Reconcile: purge any DB row whose docker_id was not in this snapshot.
         # Guard: skip when batch is empty to avoid accidentally wiping the table.
+        # Also exclude re-associated rows whose old docker_id is no longer reported
+        # by Docker but whose row has already been updated in-place.
         if seen_ids:
+            exclude_ids = seen_ids | protected_ids if protected_ids else seen_ids
             session.exec(
-                delete(Container).where(Container.docker_id.notin_(seen_ids))
+                delete(Container).where(Container.docker_id.notin_(exclude_ids))
             )
 
         # Ghost-detection pass: remove exited/dead rows superseded by a live
@@ -288,6 +381,41 @@ def _write_network_history(containers_data: list[dict]) -> None:
                 delete(ContainerNetworkHistory).where(
                     ContainerNetworkHistory.container_id == docker_id,
                     ContainerNetworkHistory.recorded_at < cutoff,
+                )
+            )
+
+        session.commit()
+
+
+def _write_metrics_history(containers_data: list[dict]) -> None:
+    """Write one CPU/memory snapshot per running container, pruning old records.
+
+    Shares the same retention window as network history.
+    """
+    now = datetime.utcnow()
+
+    with Session(engine) as session:
+        retention_str = get_setting(session, "network_history_retention_hours")
+        retention_hours = float(retention_str) if retention_str else 6.0
+        cutoff = now - timedelta(hours=retention_hours)
+
+        for c in containers_data:
+            if c.get("state") != "running":
+                continue
+
+            docker_id = c["docker_id"]
+            session.add(ContainerMetricsHistory(
+                docker_id=docker_id,
+                timestamp=now,
+                cpu_percent=c["cpu_percent"],
+                mem_usage_bytes=c["mem_usage"],
+                mem_limit_bytes=c["mem_limit"],
+            ))
+
+            session.exec(
+                delete(ContainerMetricsHistory).where(
+                    ContainerMetricsHistory.docker_id == docker_id,
+                    ContainerMetricsHistory.timestamp < cutoff,
                 )
             )
 
@@ -366,7 +494,7 @@ def _flush_logs() -> None:
 
 # ── Event watcher ──────────────────────────────────────────────────────────────
 
-_ALERT_EVENT_TYPES = {"crash", "die", "oom", "restart"}
+_ALERT_EVENT_TYPES = {"crash", "oom", "restart"}
 _SETTING_KEY: dict[str, str] = {
     "crash": "crash",
     "die": "crash",
@@ -503,6 +631,7 @@ def _stats_loop() -> None:
             if container_data:
                 _apply_batch(container_data)
                 _write_network_history(container_data)
+                _write_metrics_history(container_data)
 
             if time.time() - last_flush >= LOG_BATCH_INTERVAL:
                 _flush_logs()

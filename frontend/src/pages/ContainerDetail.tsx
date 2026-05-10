@@ -12,7 +12,7 @@ import {
 } from "recharts";
 import { api } from "../api";
 import { useAuth } from "../AuthContext";
-import type { Container, NetworkHistoryPoint } from "../types";
+import type { Container, MetricsHistoryPoint, NetworkHistoryPoint } from "../types";
 import StatusBadge from "../components/StatusBadge";
 import MetricBar from "../components/MetricBar";
 import LogViewer from "../components/LogViewer";
@@ -574,6 +574,202 @@ function NetworkIOChart({ data }: { data: NetworkHistoryPoint[] }) {
   );
 }
 
+// ── CPU % chart ───────────────────────────────────────────────────────────────
+
+interface CpuTooltipProps {
+  active?: boolean;
+  payload?: { value?: number; payload?: MetricsHistoryPoint }[];
+}
+
+function CpuTooltip({ active, payload }: CpuTooltipProps) {
+  if (!active || !payload?.length) return null;
+  const raw = payload[0].payload?.timestamp ?? "";
+  const ts = new Date(raw.endsWith("Z") ? raw : raw + "Z");
+  const date = ts.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  const time = ts.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+  const cpu = payload[0].value ?? 0;
+  return (
+    <div className="rounded border border-slate-700 bg-[#0f172a] px-3 py-2 text-xs space-y-1">
+      <div className="flex items-center gap-2">
+        <span className="inline-block w-4 border-t-2 border-[#22d3ee]" />
+        <span className="text-slate-300">{cpu.toFixed(2)}%</span>
+      </div>
+      <div className="text-slate-500 pt-0.5">{date}, {time}</div>
+    </div>
+  );
+}
+
+function CpuChart({ data }: { data: MetricsHistoryPoint[] }) {
+  if (data.length === 0) {
+    return (
+      <div className="flex items-center justify-center h-20 text-slate-500 text-sm">
+        No CPU history available yet
+      </div>
+    );
+  }
+
+  const dayBreaks = new Set(
+    data.reduce<number[]>((acc, d, i) => {
+      if (i === 0) return acc;
+      const prev = new Date((data[i-1].timestamp.endsWith("Z") ? data[i-1].timestamp : data[i-1].timestamp + "Z"));
+      const curr = new Date((d.timestamp.endsWith("Z") ? d.timestamp : d.timestamp + "Z"));
+      if (curr.getDate() !== prev.getDate()) acc.push(i);
+      return acc;
+    }, [])
+  );
+
+  return (
+    <div className="w-full px-4 outline-none">
+      <ResponsiveContainer width="100%" height={180}>
+        <LineChart
+          data={data}
+          margin={{ top: 8, right: 96, bottom: 8, left: 16 }}
+          style={{ outline: "none" }}
+        >
+          <CartesianGrid stroke="#1e293b" vertical={false} />
+          <XAxis
+            dataKey="timestamp"
+            tickLine={false}
+            axisLine={false}
+            tick={{ fontSize: 11, fill: "#64748b" }}
+            tickFormatter={(val: string, index: number) => {
+              const ts = new Date(val.endsWith("Z") ? val : val + "Z");
+              const time = ts.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+              if (dayBreaks.has(index)) {
+                const date = ts.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+                return `${date} ${time}`;
+              }
+              return time;
+            }}
+            interval="preserveStartEnd"
+            minTickGap={32}
+          />
+          <YAxis
+            domain={[0, 100]}
+            tickLine={false}
+            axisLine={false}
+            tick={{ fontSize: 11, fill: "#64748b" }}
+            tickFormatter={(v: number) => `${v}%`}
+            width={40}
+            ticks={[0, 25, 50, 75, 100]}
+          />
+          <Tooltip content={<CpuTooltip />} cursor={{ stroke: "#475569", strokeWidth: 1, strokeDasharray: "3 3" }} />
+          <Line
+            type="monotone"
+            dataKey="cpu_percent"
+            stroke="#22d3ee"
+            strokeWidth={1.5}
+            dot={data.length === 1 ? { r: 3, fill: "#22d3ee" } : false}
+            activeDot={{ r: 3, fill: "#22d3ee" }}
+            isAnimationActive={false}
+          />
+        </LineChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
+// ── Memory chart ──────────────────────────────────────────────────────────────
+
+interface MemTooltipProps {
+  active?: boolean;
+  payload?: { value?: number; payload?: MetricsHistoryPoint }[];
+}
+
+function MemTooltip({ active, payload }: MemTooltipProps) {
+  if (!active || !payload?.length) return null;
+  const raw = payload[0].payload?.timestamp ?? "";
+  const ts = new Date(raw.endsWith("Z") ? raw : raw + "Z");
+  const date = ts.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  const time = ts.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+  const mem = payload[0].value ?? 0;
+  const limit = payload[0].payload?.mem_limit_bytes ?? 0;
+  return (
+    <div className="rounded border border-slate-700 bg-[#0f172a] px-3 py-2 text-xs space-y-1">
+      <div className="flex items-center gap-2">
+        <span className="inline-block w-4 border-t-2 border-[#a78bfa]" />
+        <span className="text-slate-300">
+          {formatBytes(mem)}{limit > 0 ? ` / ${formatBytes(limit)}` : ""}
+        </span>
+      </div>
+      <div className="text-slate-500 pt-0.5">{date}, {time}</div>
+    </div>
+  );
+}
+
+function MemChart({ data }: { data: MetricsHistoryPoint[] }) {
+  if (data.length === 0) {
+    return (
+      <div className="flex items-center justify-center h-20 text-slate-500 text-sm">
+        No memory history available yet
+      </div>
+    );
+  }
+
+  const rawMax = Math.max(...data.map((d) => d.mem_usage_bytes), 1);
+  const maxVal = tieredCeiling(rawMax);
+
+  const dayBreaks = new Set(
+    data.reduce<number[]>((acc, d, i) => {
+      if (i === 0) return acc;
+      const prev = new Date((data[i-1].timestamp.endsWith("Z") ? data[i-1].timestamp : data[i-1].timestamp + "Z"));
+      const curr = new Date((d.timestamp.endsWith("Z") ? d.timestamp : d.timestamp + "Z"));
+      if (curr.getDate() !== prev.getDate()) acc.push(i);
+      return acc;
+    }, [])
+  );
+
+  return (
+    <div className="w-full px-4 outline-none">
+      <ResponsiveContainer width="100%" height={180}>
+        <LineChart
+          data={data}
+          margin={{ top: 8, right: 96, bottom: 8, left: 16 }}
+          style={{ outline: "none" }}
+        >
+          <CartesianGrid stroke="#1e293b" vertical={false} />
+          <XAxis
+            dataKey="timestamp"
+            tickLine={false}
+            axisLine={false}
+            tick={{ fontSize: 11, fill: "#64748b" }}
+            tickFormatter={(val: string, index: number) => {
+              const ts = new Date(val.endsWith("Z") ? val : val + "Z");
+              const time = ts.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+              if (dayBreaks.has(index)) {
+                const date = ts.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+                return `${date} ${time}`;
+              }
+              return time;
+            }}
+            interval="preserveStartEnd"
+            minTickGap={32}
+          />
+          <YAxis
+            domain={[0, maxVal]}
+            tickLine={false}
+            axisLine={false}
+            tick={{ fontSize: 11, fill: "#64748b" }}
+            tickFormatter={(v: number) => formatBytes(v)}
+            width={80}
+            ticks={[0, maxVal * 0.25, maxVal * 0.5, maxVal * 0.75, maxVal]}
+          />
+          <Tooltip content={<MemTooltip />} cursor={{ stroke: "#475569", strokeWidth: 1, strokeDasharray: "3 3" }} />
+          <Line
+            type="monotone"
+            dataKey="mem_usage_bytes"
+            stroke="#a78bfa"
+            strokeWidth={1.5}
+            dot={data.length === 1 ? { r: 3, fill: "#a78bfa" } : false}
+            activeDot={{ r: 3, fill: "#a78bfa" }}
+            isAnimationActive={false}
+          />
+        </LineChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
 // ── Info row ──────────────────────────────────────────────────────────────────
 
 function InfoRow({ label, value }: { label: string; value: React.ReactNode }) {
@@ -592,6 +788,7 @@ export default function ContainerDetail() {
   const tz = useTimezone();
   const { isAuthenticated } = useAuth();
   const [netExpanded, setNetExpanded] = useState(true);
+  const [metricsExpanded, setMetricsExpanded] = useState(false);
 
   const { data: container, isLoading, isError } = useQuery<Container>({
     queryKey: ["container", id],
@@ -607,6 +804,15 @@ export default function ContainerDetail() {
   const { data: networkHistory = [] } = useQuery<NetworkHistoryPoint[]>({
     queryKey: ["network-history", id],
     queryFn: () => api.containers.networkHistory(id!),
+    enabled: !!id && isAuthenticated,
+    staleTime: Infinity,
+    refetchOnMount: false,
+    refetchOnReconnect: false,
+  });
+
+  const { data: metricsHistory = [] } = useQuery<MetricsHistoryPoint[]>({
+    queryKey: ["metrics-history", id],
+    queryFn: () => api.containers.metricsHistory(id!),
     enabled: !!id && isAuthenticated,
     staleTime: Infinity,
     refetchOnMount: false,
@@ -802,6 +1008,48 @@ export default function ContainerDetail() {
               </span>
             </div>
             <NetworkIOChart data={networkHistory} />
+          </div>
+        )}
+      </div>
+
+      {/* CPU & Memory */}
+      <div className="card">
+        <button
+          onClick={() => setMetricsExpanded((v) => !v)}
+          className="w-full flex items-center justify-between px-4 py-3 text-left"
+        >
+          <span className="text-sm font-medium text-slate-300">CPU &amp; Memory</span>
+          <svg
+            className={`w-4 h-4 text-slate-500 transition-transform ${metricsExpanded ? "rotate-180" : ""}`}
+            fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
+        {metricsExpanded && (
+          <div className="pb-4 space-y-6">
+            <div className="space-y-2">
+              <div className="flex gap-4 text-xs text-slate-400 px-4">
+                <span className="flex items-center gap-1.5">
+                  <svg width="16" height="2" aria-hidden="true">
+                    <line x1="0" y1="1" x2="16" y2="1" stroke="#22d3ee" strokeWidth="2" />
+                  </svg>
+                  CPU %
+                </span>
+              </div>
+              <CpuChart data={metricsHistory} />
+            </div>
+            <div className="space-y-2">
+              <div className="flex gap-4 text-xs text-slate-400 px-4">
+                <span className="flex items-center gap-1.5">
+                  <svg width="16" height="2" aria-hidden="true">
+                    <line x1="0" y1="1" x2="16" y2="1" stroke="#a78bfa" strokeWidth="2" />
+                  </svg>
+                  Memory
+                </span>
+              </div>
+              <MemChart data={metricsHistory} />
+            </div>
           </div>
         )}
       </div>

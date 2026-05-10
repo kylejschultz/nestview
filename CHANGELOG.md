@@ -7,6 +7,48 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [1.2.0] — 2026-05-09
+
+### Added
+
+- CPU and memory usage history charts on the container detail page, showing trends over the configured retention window
+- Container history re-association: when a container is recreated (same name and Compose project, new docker ID), Nestview automatically migrates all previous logs, events, metrics, and network history to the new container instead of starting fresh; a recreation event is written to the timeline
+- "Learn more" link on the analytics opt-in banner opens a modal with full disclosure of every field collected
+
+### Changed
+
+- Analytics daily ping now includes OS, container count, and release channel
+- CPU and Memory chart panel is collapsed by default on the container detail page
+- Sensitive settings values (Discord webhook URL, password hash, session signing key, admin username) are no longer returned by the settings API
+
+### Fixed
+
+- Clean container shutdowns (exit code 0) no longer trigger Discord alerts - only non-zero exit crashes alert
+- Removed an inoperative stream filter from the log search endpoint that had no effect but added confusion
+- Removed a dead `/api/config` endpoint that was no longer wired up
+
+---
+
+## [1.1.0] — 2026-05-07
+
+### Added
+
+- Opt-in anonymous telemetry: a setup wizard step and Settings toggle let users choose whether to participate; a daily background ping sends a randomly generated install ID and aggregate stats to the Nestview beacon; no container names, hostnames, or personal data are collected
+
+### Changed
+
+- Internal container port aligned to 8484; `NESTVIEW_PORT` environment variable removed
+
+### Fixed
+
+- Empty string values for `POLL_INTERVAL` and `LOG_BATCH_INTERVAL` environment variables are now treated as unset and fall back to defaults, preventing collector startup failures in environments that set blank env vars
+
+### Breaking Changes
+
+- The internal conatiner port changed from 8080 to 8484. If coming froma prior version, you will need to redploy using `8484:8484` for your port configuration - no other changes should be needed. The `docker-compose.yml` has been updated to reflect this or you can update the port mapping manually..
+
+---
+
 ## [1.0.0] — 2026-04-24
 
 ### Added

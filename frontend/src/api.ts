@@ -1,4 +1,4 @@
-import type { AlertEventType, AlertSetting, AnalyticsStatus, AuthStatus, Container, ContainerLog, ContainerEvent, GeneralSettings, MeResponse, NetworkHistoryPoint, WizardStatus } from "./types";
+import type { AlertEventType, AlertSetting, AnalyticsStatus, AuthStatus, Container, ContainerLog, ContainerEvent, GeneralSettings, MeResponse, MetricsHistoryPoint, NetworkHistoryPoint, WizardStatus } from "./types";
 
 const BASE = "/api";
 
@@ -42,6 +42,7 @@ export const api = {
     checkForUpdates:  (dockerId: string) => post<{ ok: boolean; action: string; container: string; update_available: boolean }>(`/containers/${dockerId}/check-for-updates`),
     updateAndRestart: (dockerId: string) => post<{ ok: boolean; action: string; container: string; update_available: boolean; restarted: boolean }>(`/containers/${dockerId}/update-and-restart`),
     networkHistory:   (dockerId: string) => get<NetworkHistoryPoint[]>(`/containers/${dockerId}/network-history`),
+    metricsHistory:   (dockerId: string) => get<MetricsHistoryPoint[]>(`/containers/${dockerId}/metrics-history`),
   },
   stacks: {
     stop:            (project: string) => post<{ ok: boolean; project: string; action: string; affected: number }>(`/stacks/${encodeURIComponent(project)}/stop`),
@@ -52,11 +53,10 @@ export const api = {
   logs: {
     forContainer: (
       id: string,
-      params?: { search?: string; stream?: string; limit?: number; offset?: number }
+      params?: { search?: string; limit?: number; offset?: number }
     ) => {
       const qs = new URLSearchParams();
       if (params?.search) qs.set("search", params.search);
-      if (params?.stream) qs.set("stream", params.stream);
       if (params?.limit != null) qs.set("limit", String(params.limit));
       if (params?.offset != null) qs.set("offset", String(params.offset));
       const q = qs.toString();

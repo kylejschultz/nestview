@@ -3,7 +3,7 @@ itsdangerous==2.2.0
 bcrypt==5.0.0
 slowapi==0.1.9
 # Explicit starlette pin to fix CVEs GHSA-f96h-pmfr-66vw and GHSA-2c2j-9gv5-cj73.
-# fastapi 0.128.8 allows starlette>=0.40.0,<1.0.0 so this is within range.
+# fastapi 0.136.1 allows starlette>=0.40.0,<1.0.0 so this is within range.
 starlette>=1.0.0
 uvicorn[standard]==0.46.0
 sqlmodel==0.0.38

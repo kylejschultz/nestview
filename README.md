@@ -11,7 +11,7 @@
 
 **Lightweight, self-hosted Docker visibility for homelabbers.**
 
-Nestview gives you a live health dashboard, searchable log history, and Discord alerts for all your containers - no manual configuration, no Grafana stack required. Point it at your Docker socket and it discovers everything automatically.
+Nestview gives you a live health dashboard with per-container CPU and memory history charts, searchable log history, and Discord alerts for all your containers - no manual configuration, no Grafana stack required. Point it at your Docker socket and it discovers everything automatically. Container metrics and logs are re-associated when containers are recreated, so your history survives updates.
 
 > **Need help?** [Join the Discord](https://discord.gg/TfQ8QX3Ptr) - it's the fastest way to get support, ask questions, or report a bug. GitHub Issues is available too, but Discord is where the conversation happens.
 
@@ -105,6 +105,22 @@ Log retention and exited container TTL are configured in the Settings UI.
 4. Open Nestview and paste the URL into the setup wizard (shown on first launch) or **Settings > General**
 
 Nestview sends a formatted embed when a container crashes (non-zero exit), is OOM-killed, or restarts unexpectedly.
+
+## Telemetry
+
+Nestview includes optional, anonymous telemetry that helps track active installs and guide development priorities. It is off by default and can be enabled from **Settings > General**.
+
+When enabled, a single ping is sent once per day containing:
+
+- A randomly generated install ID (not tied to any user, container, or host data)
+- Nestview version
+- Architecture (amd64 or arm64)
+- Operating system
+- Container count
+- Release channel
+- Timestamp
+
+No personal data, container names, image names, or host information is collected or transmitted.
 
 ## License
 [GNU General Public License v3.0](./LICENSE) - free to use, modify, and self-host. If you distribute modified versions, you must release them under the same license.

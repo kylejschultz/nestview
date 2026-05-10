@@ -142,10 +142,9 @@ app = FastAPI(title="Nestview", version=APP_VERSION, lifespan=lifespan)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-# The backend is not port-exposed in docker-compose — only nginx (frontend service)
-# reaches it.  CORS is permissive here so local `npm run dev` works without extra
-# config.  If you expose the backend port directly, restrict allow_origins to the
-# specific host(s) that need access.
+# Port 8484 is exposed directly in docker-compose (no nginx in front).
+# CORS is permissive so local `npm run dev` works without extra config.
+# For hardened deployments, restrict allow_origins to the specific host(s) that need access.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -172,11 +171,6 @@ def version():
 @app.get("/api/health")
 def health():
     return {"status": "ok", "version": APP_VERSION}
-
-
-@app.get("/api/config")
-def config():
-    return {"api_key_required": False}
 
 
 @app.get("/{full_path:path}", include_in_schema=False)
