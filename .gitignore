@@ -13,4 +13,5 @@ data/
 .claude/
 .vscode/
 assets/
-docker-compose.dev.yml.wrangler/
+docker-compose.dev.yml
+.wrangler/
