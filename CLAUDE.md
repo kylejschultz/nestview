@@ -156,19 +156,17 @@ Common types: `feat`, `fix`, `chore`, `docs`, `refactor`, `test`, `style`.
 
 **When to commit:** Commit when a logical unit of work is complete — a passing feature, a self-contained fix, a cleanup. Don't batch unrelated changes into one commit and don't commit half-finished work.
 
-**Main branch:** No WIP commits to `main`. If work isn't in a shippable state, keep it on a feature branch or leave it uncommitted locally.
-
 ---
 
 ## Workflow
 
-After completing any task:
-1. Commit all changes using conventional commit format
-2. Push to `dev`
-3. Do not open or update a PR. A separate prompt handles PR creation when the work is ready to merge.
+All feature and fix work happens on a dedicated branch off `main`:
 
-Never push directly to `main`. All work happens on `dev` and goes to `main` via PR.
-
+1. Before starting any work, confirm you are on a feat/<description> branch. If you are not, stop and ask Kyle to create and check out the correct branch before proceeding.
+2. Never commit directly to `dev` or `main`
+3. Commit changes using conventional commit format as logical units of work are completed
+4. Push to the feature branch (`origin feat/`)
+5. Do not open a PR — Kyle handles merging the feature branch to `dev` for testing, and `dev` to `main` for release
 ---
 
 ## Common Pitfalls
