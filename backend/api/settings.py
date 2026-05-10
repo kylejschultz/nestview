@@ -22,6 +22,13 @@ _DEFAULT_NETWORK_HISTORY_RETENTION_HOURS = 6
 
 _NUMERIC_SETTING_KEYS = {"log_retention_days", "exited_container_ttl_seconds", "network_history_retention_hours"}
 
+# Keys never returned by GET /api/settings — sensitive values that must stay server-side.
+_SENSITIVE_SETTING_KEYS: frozenset[str] = frozenset({
+    "session_secret",
+    "admin_password_hash",
+    "discord_webhook_url",
+})
+
 # Allowlist of keys that may be written via the generic PATCH /api/settings endpoint.
 # Prevents arbitrary key injection into the AppSetting table.
 _ALLOWED_SETTING_KEYS = {
@@ -89,7 +96,7 @@ def patch_alert_setting(
 @router.get("")
 def get_all_settings(session: Session = Depends(get_session)) -> Dict[str, str]:
     rows = session.exec(select(AppSetting)).all()
-    return {row.key: row.value for row in rows}
+    return {row.key: row.value for row in rows if row.key not in _SENSITIVE_SETTING_KEYS}
 
 
 @router.patch("")
