@@ -12,15 +12,16 @@ jobs:
       - name: Install discord.py
         run: pip install discord.py
 
-      - name: Update Discord voice channels with repo stats
+      - name: Update Discord voice channels
         env:
           DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BEACON_STATS_SECRET: ${{ secrets.BEACON_STATS_SECRET }}
           STARS_CHANNEL_ID: "1489728864384188536"
           WATCHERS_CHANNEL_ID: "1489728833232834760"
+          ACTIVE_INSTALLS_CHANNEL_ID: "1502007833938497666"
         run: |
           python3 << 'EOF'
-          import asyncio
           import json
           import os
           import sys
@@ -30,9 +31,12 @@ jobs:
 
           TOKEN = os.environ["DISCORD_BOT_TOKEN"]
           GITHUB_TOKEN = os.environ["GITHUB_TOKEN"]
+          BEACON_STATS_SECRET = os.environ["BEACON_STATS_SECRET"]
           STARS_CHANNEL_ID = os.environ["STARS_CHANNEL_ID"]
           WATCHERS_CHANNEL_ID = os.environ["WATCHERS_CHANNEL_ID"]
+          ACTIVE_INSTALLS_CHANNEL_ID = os.environ["ACTIVE_INSTALLS_CHANNEL_ID"]
 
+          # Fetch GitHub stats
           req = urllib.request.Request(
               "https://api.github.com/repos/kylejschultz/nestview",
               headers={
@@ -43,10 +47,23 @@ jobs:
           )
           with urllib.request.urlopen(req) as resp:
               data = json.loads(resp.read())
-
           stars = data["stargazers_count"]
           watchers = data["subscribers_count"]
           print(f"Stars: {stars}, Watchers: {watchers}")
+
+          # Fetch beacon stats
+          try:
+              req = urllib.request.Request(
+                  f"https://beacon.kjschultz.com/summary?key={BEACON_STATS_SECRET}&project=nestview",
+                  headers={"User-Agent": "nestview-stats-bot/1.0"},
+              )
+              with urllib.request.urlopen(req) as resp:
+                  beacon_data = json.loads(resp.read())
+              active = beacon_data["active"]
+              print(f"Active installs: {active}")
+          except Exception as e:
+              print(f"Failed to fetch beacon stats: {e}")
+              active = None
 
           class StatsBot(discord.Client):
               async def setup_hook(self):
@@ -59,89 +76,24 @@ jobs:
                       (STARS_CHANNEL_ID, f"⭐ GitHub Stars: {stars}"),
                       (WATCHERS_CHANNEL_ID, f"🔭 GitHub Watchers: {watchers}"),
                   ]
+                  if active is not None:
+                      updates.append((ACTIVE_INSTALLS_CHANNEL_ID, f"🛜 Active Installs: {active}"))
                   for channel_id, name in updates:
                       channel = guild.get_channel(int(channel_id))
                       if channel is None:
                           print(f"Channel {channel_id} not found")
-                          await self.close()
-                          sys.exit(1)
+                          continue
                       try:
                           await channel.edit(name=name)
                           print(f"Updated channel {channel_id} to '{name}'")
                       except discord.Forbidden as e:
-                          print(f"Missing permissions to edit channel {channel_id}: {e}")
-                          await self.close()
-                          sys.exit(1)
+                          print(f"Missing permissions for channel {channel_id}: {e}")
                       except discord.HTTPException as e:
                           print(f"Failed to edit channel {channel_id}: {e}")
-                          await self.close()
-                          sys.exit(1)
                   await self.close()
 
           intents = discord.Intents.default()
           intents.guilds = True
           bot = StatsBot(intents=intents)
-          bot.run(TOKEN)
-          EOF
-
-      - name: Update Discord voice channel with active install count
-        continue-on-error: true
-        env:
-          DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
-          BEACON_STATS_SECRET: ${{ secrets.BEACON_STATS_SECRET }}
-          ACTIVE_INSTALLS_CHANNEL_ID: "1502007833938497666"
-        run: |
-          python3 << 'EOF'
-          import asyncio
-          import json
-          import os
-          import sys
-          import urllib.request
-
-          import discord
-
-          TOKEN = os.environ["DISCORD_BOT_TOKEN"]
-          BEACON_STATS_SECRET = os.environ["BEACON_STATS_SECRET"]
-          ACTIVE_INSTALLS_CHANNEL_ID = os.environ["ACTIVE_INSTALLS_CHANNEL_ID"]
-
-          req = urllib.request.Request(
-            f"https://beacon.kjschultz.com/summary?key={BEACON_STATS_SECRET}&project=nestview",
-            headers={"User-Agent": "nestview-stats-bot/1.0"},
-                )
-          with urllib.request.urlopen(req) as resp:
-              data = json.loads(resp.read())
-
-          active = data["active"]
-          print(f"Active installs: {active}")
-
-          class InstallsBot(discord.Client):
-              async def setup_hook(self):
-                  self.loop.create_task(self.update_channel())
-
-              async def update_channel(self):
-                  await self.wait_until_ready()
-                  guild = self.guilds[0]
-                  name = f"🛜 Active Installs: {active}"
-                  channel = guild.get_channel(int(ACTIVE_INSTALLS_CHANNEL_ID))
-                  if channel is None:
-                      print(f"Channel {ACTIVE_INSTALLS_CHANNEL_ID} not found")
-                      await self.close()
-                      sys.exit(1)
-                  try:
-                      await channel.edit(name=name)
-                      print(f"Updated channel {ACTIVE_INSTALLS_CHANNEL_ID} to '{name}'")
-                  except discord.Forbidden as e:
-                      print(f"Full error: {e}, status: {e.status}, code: {e.code}, text: {e.text}")
-                      await self.close()
-                      sys.exit(1)
-                  except discord.HTTPException as e:
-                      print(f"Failed to edit channel {ACTIVE_INSTALLS_CHANNEL_ID}: {e}")
-                      await self.close()
-                      sys.exit(1)
-                  await self.close()
-
-          intents = discord.Intents.default()
-          intents.guilds = True
-          bot = InstallsBot(intents=intents)
           bot.run(TOKEN)
           EOF
