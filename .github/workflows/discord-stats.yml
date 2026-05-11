@@ -59,11 +59,11 @@ jobs:
               )
               with urllib.request.urlopen(req) as resp:
                   beacon_data = json.loads(resp.read())
-              active = beacon_data["active"]
-              print(f"Active installs: {active}")
+              all_time = beacon_data["all_time"]
+              print(f"All-time installs: {all_time}")
           except Exception as e:
               print(f"Failed to fetch beacon stats: {e}")
-              active = None
+              all_time = None
 
           class StatsBot(discord.Client):
               async def setup_hook(self):
@@ -76,8 +76,8 @@ jobs:
                       (STARS_CHANNEL_ID, f"⭐ GitHub Stars: {stars}"),
                       (WATCHERS_CHANNEL_ID, f"🔭 GitHub Watchers: {watchers}"),
                   ]
-                  if active is not None:
-                      updates.append((ACTIVE_INSTALLS_CHANNEL_ID, f"🛜 Active Installs: {active}"))
+                  if all_time is not None:
+                      updates.append((ACTIVE_INSTALLS_CHANNEL_ID, f"🛜 Nestview Installs: {all_time}"))
                   for channel_id, name in updates:
                       channel = guild.get_channel(int(channel_id))
                       if channel is None:
