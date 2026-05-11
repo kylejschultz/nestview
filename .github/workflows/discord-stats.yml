@@ -59,7 +59,7 @@ jobs:
               )
               with urllib.request.urlopen(req) as resp:
                   beacon_data = json.loads(resp.read())
-              all_time = beacon_data["all_time"]
+              all_time = beacon_data["total"]
               print(f"All-time installs: {all_time}")
           except Exception as e:
               print(f"Failed to fetch beacon stats: {e}")
