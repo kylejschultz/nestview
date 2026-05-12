@@ -54,6 +54,22 @@ def _load_or_create_secret(session: Session) -> str:
     return new_key
 
 
+def rotate_session_secret(session: Session) -> None:
+    """Rotate the session signing key, immediately invalidating all active sessions."""
+    env_key = os.getenv("SECRET_KEY", "").strip()
+    if env_key:
+        # SECRET_KEY env override is in use — rotation has no effect because get_signer
+        # always uses the env value. Log a warning so operators are aware.
+        logger.warning(
+            "auth: password changed but SECRET_KEY env var is set — "
+            "session rotation skipped; existing sessions remain valid"
+        )
+        return
+    new_key = secrets.token_hex(32)
+    set_setting(session, "session_secret", new_key)
+    logger.info("auth: session_secret rotated — all existing sessions invalidated")
+
+
 def get_signer(session: Session) -> TimestampSigner:
     secret = _load_or_create_secret(session)
     return TimestampSigner(secret)

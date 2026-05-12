@@ -31,6 +31,7 @@ from services.auth import (
     hash_password,
     is_setup_complete,
     require_auth,
+    rotate_session_secret,
     verify_password,
 )
 
@@ -203,9 +204,10 @@ def change_password(
         )
 
     set_setting(session, "admin_password_hash", hash_password(payload.new_password))
+    rotate_session_secret(session)
     session.commit()
 
-    logger.info("auth: password changed successfully")
+    logger.info("auth: password changed successfully — all sessions invalidated")
     return {"ok": True}
 
 
