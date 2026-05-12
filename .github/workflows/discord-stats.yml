@@ -16,7 +16,7 @@ jobs:
         env:
           DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          BEACON_STATS_SECRET: ${{ secrets.BEACON_STATS_SECRET }}
+          BEACON_API_SECRET: ${{ secrets.BEACON_API_SECRET }}
           STARS_CHANNEL_ID: "1489728864384188536"
           WATCHERS_CHANNEL_ID: "1489728833232834760"
           ACTIVE_INSTALLS_CHANNEL_ID: "1502007833938497666"
@@ -31,7 +31,7 @@ jobs:
 
           TOKEN = os.environ["DISCORD_BOT_TOKEN"]
           GITHUB_TOKEN = os.environ["GITHUB_TOKEN"]
-          BEACON_STATS_SECRET = os.environ["BEACON_STATS_SECRET"]
+          BEACON_API_SECRET = os.environ["BEACON_API_SECRET"]
           STARS_CHANNEL_ID = os.environ["STARS_CHANNEL_ID"]
           WATCHERS_CHANNEL_ID = os.environ["WATCHERS_CHANNEL_ID"]
           ACTIVE_INSTALLS_CHANNEL_ID = os.environ["ACTIVE_INSTALLS_CHANNEL_ID"]
@@ -54,12 +54,15 @@ jobs:
           # Fetch beacon stats
           try:
               req = urllib.request.Request(
-                  f"https://beacon.kjschultz.com/summary?key={BEACON_STATS_SECRET}&project=nestview",
-                  headers={"User-Agent": "nestview-stats-bot/1.0"},
+                  "https://beacon.kjschultz.com/summary?project=nestview",
+                  headers={
+                      "Authorization": f"Bearer {BEACON_API_SECRET}",
+                      "User-Agent": "nestview-stats-bot/1.0",
+                  },
               )
               with urllib.request.urlopen(req) as resp:
                   beacon_data = json.loads(resp.read())
-              all_time = beacon_data["all_time"]
+              all_time = beacon_data["total"]
               print(f"All-time installs: {all_time}")
           except Exception as e:
               print(f"Failed to fetch beacon stats: {e}")
