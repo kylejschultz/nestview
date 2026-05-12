@@ -2,8 +2,25 @@ import type { AlertEventType, AlertSetting, AnalyticsStatus, AuthStatus, Contain
 
 const BASE = "/api";
 
+let _on401: (() => void) | null = null;
+
+export function setOn401Handler(fn: () => void) {
+  _on401 = fn;
+}
+
+// Fire the 401 handler for all paths except the login endpoint, which intentionally
+// returns 401 on bad credentials and handles it locally in the login form.
+function handle401(path: string) {
+  if (path === "/auth/login") return;
+  _on401?.();
+}
+
 async function get<T>(path: string): Promise<T> {
   const res = await fetch(`${BASE}${path}`);
+  if (res.status === 401) {
+    handle401(path);
+    throw new Error("401 Unauthorized");
+  }
   if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
   return res.json();
 }
@@ -14,6 +31,10 @@ async function patch<T>(path: string, body: unknown): Promise<T> {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
+  if (res.status === 401) {
+    handle401(path);
+    throw new Error("401 Unauthorized");
+  }
   if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
   return res.json();
 }
@@ -24,6 +45,11 @@ async function post<T>(path: string, body?: unknown): Promise<T> {
     headers: body !== undefined ? { "Content-Type": "application/json" } : {},
     ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
   });
+  if (res.status === 401) {
+    handle401(path);
+    const resBody = await res.json().catch(() => ({}));
+    throw new Error((resBody as { detail?: string }).detail ?? "401 Unauthorized");
+  }
   if (!res.ok) {
     const resBody = await res.json().catch(() => ({}));
     throw new Error((resBody as { detail?: string }).detail ?? `${res.status} ${res.statusText}`);

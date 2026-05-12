@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Routes, Route, Navigate, useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import Dashboard from "./pages/Dashboard";
@@ -10,7 +10,7 @@ import Header from "./components/Header";
 import SetupWizard from "./components/SetupWizard";
 import { TimezoneProvider } from "./TimezoneContext";
 import { AuthContext } from "./AuthContext";
-import { api } from "./api";
+import { api, setOn401Handler } from "./api";
 import type { AuthStatus, MeResponse, WizardStatus } from "./types";
 
 export default function App() {
@@ -71,6 +71,14 @@ export default function App() {
     refetchOnMount: false,
     refetchOnReconnect: false,
   });
+
+  useEffect(() => {
+    setOn401Handler(() => {
+      if (window.location.pathname === "/login") return;
+      queryClient.clear();
+      navigate("/login", { replace: true });
+    });
+  }, [queryClient, navigate]);
 
   async function handleLogin() {
     await queryClient.invalidateQueries({ queryKey: ["auth-me"] });
