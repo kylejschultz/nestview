@@ -1,8 +1,9 @@
 import csv
 import io
+import os
 import re
 from datetime import datetime
-from typing import Optional
+from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
@@ -10,6 +11,8 @@ from sqlmodel import Session, select
 
 from database import get_session
 from models import ContainerLog
+
+_LOG_EXPORT_MAX_LINES = int(os.getenv("LOG_EXPORT_MAX_LINES", "50000"))
 
 router = APIRouter(prefix="/api", tags=["logs"])
 
@@ -48,7 +51,7 @@ def export_container_logs(
         except ValueError:
             raise HTTPException(status_code=400, detail="Invalid 'since' timestamp — use ISO 8601 format")
 
-    query = query.order_by(ContainerLog.timestamp.asc())
+    query = query.order_by(ContainerLog.timestamp.asc()).limit(_LOG_EXPORT_MAX_LINES)
     logs = session.exec(query).all()
 
     safe_id = container_id[:12]
