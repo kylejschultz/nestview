@@ -2,11 +2,12 @@ import logging
 
 import docker
 import docker.errors
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlmodel import Session, select
 
 from constants import _VALID_STATES
 from database import get_session
+from limiter import limiter
 from models import Container
 from services.image_checker import check_single_container
 
@@ -40,7 +41,8 @@ def restart_stack(compose_project: str, session: Session = Depends(get_session))
 
 
 @router.post("/{compose_project}/check-for-updates")
-def check_for_updates_stack(compose_project: str, session: Session = Depends(get_session)):
+@limiter.limit("5/minute")
+def check_for_updates_stack(request: Request, compose_project: str, session: Session = Depends(get_session)):
     containers = _get_project_containers(compose_project, session)
 
     for db_container in containers:

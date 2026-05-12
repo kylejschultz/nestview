@@ -3,11 +3,12 @@ from typing import Literal
 
 import docker
 import docker.errors
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlmodel import Session, select
 
 from constants import _VALID_STATES
 from database import get_session
+from limiter import limiter
 from models import Container
 from services.image_checker import check_single_container
 
@@ -45,7 +46,8 @@ def start_container(docker_id: str, session: Session = Depends(get_session)):
 
 
 @router.post("/{docker_id}/check-for-updates")
-def check_for_updates(docker_id: str, session: Session = Depends(get_session)):
+@limiter.limit("10/minute")
+def check_for_updates(request: Request, docker_id: str, session: Session = Depends(get_session)):
     db_container = _get_db_container(docker_id, session)
     check_single_container(db_container)
     # check_single_container opens its own session; expire and re-fetch to read updated fields
@@ -60,7 +62,8 @@ def check_for_updates(docker_id: str, session: Session = Depends(get_session)):
 
 
 @router.post("/{docker_id}/update-and-restart")
-def update_and_restart(docker_id: str, session: Session = Depends(get_session)):
+@limiter.limit("5/minute")
+def update_and_restart(request: Request, docker_id: str, session: Session = Depends(get_session)):
     db_container = _get_db_container(docker_id, session)
 
     if db_container.state not in _UPDATE_RESTART_VALID_STATES:
