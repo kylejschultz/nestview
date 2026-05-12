@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 _version_file = Path("/app/VERSION")
 _raw_version = _version_file.read_text().strip() if _version_file.exists() else "dev"
 _build_channel = os.environ.get("BUILD_CHANNEL", "")
-APP_VERSION = f"{_raw_version}-dev" if _build_channel == "dev" else _raw_version
+APP_VERSION = f"{_raw_version}-{_build_channel}" if _build_channel else _raw_version
 _raw_sha = os.environ.get("BUILD_SHA", "")
 BUILD_SHA: str | None = _raw_sha if _raw_sha and _raw_sha != "unknown" else None
 
@@ -165,12 +165,15 @@ app.include_router(analytics_router.router,   dependencies=[Depends(require_auth
 
 @app.get("/api/version")
 def version():
+    # Intentionally public — version info is useful for unauthenticated users
+    # (e.g., confirming an upgrade took effect from the login page) and carries
+    # no meaningful attack surface beyond what's visible in the image tag.
     return {"version": APP_VERSION, "build_sha": BUILD_SHA}
 
 
 @app.get("/api/health")
 def health():
-    return {"status": "ok", "version": APP_VERSION}
+    return {"status": "ok"}
 
 
 @app.get("/{full_path:path}", include_in_schema=False)

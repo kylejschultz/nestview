@@ -8,6 +8,7 @@ Endpoints:
   POST /api/auth/logout   — clear the session cookie
 """
 
+import hmac
 import logging
 import os
 from typing import Literal, Optional
@@ -22,6 +23,7 @@ from models import AppSetting
 from services.app_settings import get_setting, set_setting
 from services.auth import (
     COOKIE_NAME,
+    DUMMY_BCRYPT_HASH,
     create_session_token,
     get_auth_mode,
     get_session_expiry_days,
@@ -29,6 +31,7 @@ from services.auth import (
     hash_password,
     is_setup_complete,
     require_auth,
+    rotate_session_secret,
     verify_password,
 )
 
@@ -114,10 +117,11 @@ def login(
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="setup_required")
 
     stored_username = get_setting(session, "admin_username") or ""
-    stored_hash = get_setting(session, "admin_password_hash") or ""
+    stored_hash = get_setting(session, "admin_password_hash") or DUMMY_BCRYPT_HASH
 
-    hash_ok = verify_password(payload.password, stored_hash) if stored_hash else False
-    username_ok = payload.username == stored_username
+    # Always run bcrypt regardless of username validity to prevent timing side-channels.
+    hash_ok = verify_password(payload.password, stored_hash)
+    username_ok = hmac.compare_digest(payload.username, stored_username)
 
     if not (username_ok and hash_ok):
         raise HTTPException(
@@ -200,9 +204,10 @@ def change_password(
         )
 
     set_setting(session, "admin_password_hash", hash_password(payload.new_password))
+    rotate_session_secret(session)
     session.commit()
 
-    logger.info("auth: password changed successfully")
+    logger.info("auth: password changed successfully — all sessions invalidated")
     return {"ok": True}
 
 

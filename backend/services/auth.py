@@ -32,6 +32,10 @@ logger = logging.getLogger(__name__)
 COOKIE_NAME = "nestview_session"
 _DEFAULT_SESSION_EXPIRY_DAYS = 7
 
+# Pre-computed hash used as a timing-safe fallback when no password hash is stored.
+# Ensures bcrypt always runs during login regardless of whether the username is valid.
+DUMMY_BCRYPT_HASH = bcrypt.hashpw(b"nestview-timing-sentinel", bcrypt.gensalt(rounds=12)).decode()
+
 # ---------------------------------------------------------------------------
 # Secret key — env override or auto-generated + persisted
 # ---------------------------------------------------------------------------
@@ -48,6 +52,22 @@ def _load_or_create_secret(session: Session) -> str:
     session.commit()
     logger.info("auth: generated new session_secret and persisted to DB")
     return new_key
+
+
+def rotate_session_secret(session: Session) -> None:
+    """Rotate the session signing key, immediately invalidating all active sessions."""
+    env_key = os.getenv("SECRET_KEY", "").strip()
+    if env_key:
+        # SECRET_KEY env override is in use — rotation has no effect because get_signer
+        # always uses the env value. Log a warning so operators are aware.
+        logger.warning(
+            "auth: password changed but SECRET_KEY env var is set — "
+            "session rotation skipped; existing sessions remain valid"
+        )
+        return
+    new_key = secrets.token_hex(32)
+    set_setting(session, "session_secret", new_key)
+    logger.info("auth: session_secret rotated — all existing sessions invalidated")
 
 
 def get_signer(session: Session) -> TimestampSigner:
