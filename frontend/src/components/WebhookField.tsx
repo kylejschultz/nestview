@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { api } from "../api";
+import DiscordWebhookHelpModal from "./DiscordWebhookHelpModal";
 
 interface WebhookFieldProps {
   value: string;
@@ -13,6 +14,7 @@ interface WebhookFieldProps {
 export default function WebhookField({ value, onChange, disabled, onTestSuccess, onTestError }: WebhookFieldProps) {
   const [testStatus, setTestStatus] = useState<"idle" | "ok" | "error">("idle");
   const [testMessage, setTestMessage] = useState<string>("");
+  const [showHelp, setShowHelp] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   function scheduleReset() {
@@ -55,6 +57,7 @@ export default function WebhookField({ value, onChange, disabled, onTestSuccess,
 
   return (
     <div className="space-y-2">
+      {showHelp && <DiscordWebhookHelpModal onClose={() => setShowHelp(false)} />}
       <div className="flex gap-2">
         <input
           type="url"
@@ -73,6 +76,13 @@ export default function WebhookField({ value, onChange, disabled, onTestSuccess,
           {isTesting ? "Sending…" : "Test"}
         </button>
       </div>
+      <button
+        type="button"
+        onClick={() => setShowHelp(true)}
+        className="text-xs text-slate-500 hover:text-accent transition-colors"
+      >
+        How do I get this?
+      </button>
       {testStatus === "ok" && (
         <p className="text-xs text-green-400">{testMessage}</p>
       )}

@@ -21,8 +21,6 @@ export interface Container {
   update_available: boolean;
   image_size: number | null;
   last_digest_check: string | null;
-  image_digest: string | null;
-  registry_digest: string | null;
   net_rx_bytes: number | null;
   net_tx_bytes: number | null;
 }
