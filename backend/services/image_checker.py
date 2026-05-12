@@ -9,6 +9,7 @@ import asyncio
 import logging
 from datetime import datetime
 from typing import Optional, Tuple
+from urllib.parse import urlparse
 
 import docker
 import requests
@@ -22,6 +23,16 @@ from services.app_settings import get_setting
 logger = logging.getLogger(__name__)
 
 _SELF_IMAGES_PREFIX = "ghcr.io/kylejschultz/nestview:"
+
+# Allowlist of registry hostnames permitted to issue bearer token challenges.
+# The realm URL in a WWW-Authenticate header is attacker-influenced if Nestview
+# monitors an image from a malicious registry — validate before following.
+_ALLOWED_TOKEN_REALMS = {
+    "auth.docker.io",
+    "index.docker.io",
+    "ghcr.io",
+    "lscr.io",
+}
 
 
 # ---------------------------------------------------------------------------
@@ -134,6 +145,17 @@ def _resolve_bearer_token(www_authenticate: str) -> Optional[str]:
 
     realm = params.get("realm")
     if not realm:
+        return None
+
+    # Validate realm against the allowlist before following — the URL originates
+    # from a registry-controlled header and could point to an internal host.
+    try:
+        parsed = urlparse(realm)
+        if parsed.scheme != "https" or parsed.hostname not in _ALLOWED_TOKEN_REALMS:
+            logger.warning("image_checker: blocked token realm from untrusted host: %r", realm)
+            return None
+    except Exception:
+        logger.warning("image_checker: could not parse token realm URL: %r", realm)
         return None
 
     query: dict = {}
