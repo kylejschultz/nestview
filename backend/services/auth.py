@@ -32,6 +32,10 @@ logger = logging.getLogger(__name__)
 COOKIE_NAME = "nestview_session"
 _DEFAULT_SESSION_EXPIRY_DAYS = 7
 
+# Pre-computed hash used as a timing-safe fallback when no password hash is stored.
+# Ensures bcrypt always runs during login regardless of whether the username is valid.
+DUMMY_BCRYPT_HASH = bcrypt.hashpw(b"nestview-timing-sentinel", bcrypt.gensalt(rounds=12)).decode()
+
 # ---------------------------------------------------------------------------
 # Secret key — env override or auto-generated + persisted
 # ---------------------------------------------------------------------------
