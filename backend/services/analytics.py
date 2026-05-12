@@ -63,6 +63,9 @@ async def run_analytics_ping() -> None:
             "os": platform.system(),
         }
 
+        if os.environ.get("BEACON_DEV", "").lower() == "true":
+            payload["dev"] = True
+
         async with httpx.AsyncClient(timeout=10.0) as client:
             await client.post(_BEACON_URL, json=payload)
 
