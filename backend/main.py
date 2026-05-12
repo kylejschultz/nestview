@@ -165,12 +165,15 @@ app.include_router(analytics_router.router,   dependencies=[Depends(require_auth
 
 @app.get("/api/version")
 def version():
+    # Intentionally public — version info is useful for unauthenticated users
+    # (e.g., confirming an upgrade took effect from the login page) and carries
+    # no meaningful attack surface beyond what's visible in the image tag.
     return {"version": APP_VERSION, "build_sha": BUILD_SHA}
 
 
 @app.get("/api/health")
 def health():
-    return {"status": "ok", "version": APP_VERSION}
+    return {"status": "ok"}
 
 
 @app.get("/{full_path:path}", include_in_schema=False)
