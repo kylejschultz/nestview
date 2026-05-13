@@ -218,6 +218,7 @@ def _apply_batch(containers_data: list[dict]) -> None:
                         select(Container).where(
                             Container.name == c["name"],
                             Container.compose_project == new_project,
+                            Container.docker_id != docker_id,
                         )
                     ).all()
 
