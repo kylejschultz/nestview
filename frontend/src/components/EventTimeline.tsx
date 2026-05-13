@@ -21,8 +21,13 @@ const EVENT_STYLES: Record<string, { dot: string; label: string }> = {
   restart: { dot: "bg-yellow-500", label: "Restarted" },
 };
 
+function stripContainerIds(details: string): string {
+  return details.replace(/:\s*[0-9a-f]{12}(\s*→\s*[0-9a-f]{12})?/gi, "").trim();
+}
+
 function EventRow({ event, tz }: { event: ContainerEvent; tz: string }) {
   const style = EVENT_STYLES[event.event_type] ?? { dot: "bg-slate-400", label: event.event_type };
+  const details = event.details ? stripContainerIds(event.details) : null;
   return (
     <div className="flex items-start gap-3 py-2">
       <div className="mt-1.5 flex-shrink-0 relative">
@@ -33,8 +38,8 @@ function EventRow({ event, tz }: { event: ContainerEvent; tz: string }) {
           <span className="font-medium">{event.container_name}</span>
           {" · "}
           <span className="text-slate-400">{style.label}</span>
-          {event.details && (
-            <span className="ml-1 text-xs text-slate-500 font-mono">({event.details})</span>
+          {details && (
+            <span className="ml-1 text-xs text-slate-500 font-mono">({details})</span>
           )}
           {event.alerted && (
             <span className="ml-2 badge bg-indigo-500/15 text-indigo-400 border border-indigo-500/30">notified</span>

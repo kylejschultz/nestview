@@ -855,11 +855,6 @@ export default function ContainerDetail() {
         <div className="flex items-center gap-3 flex-wrap">
           <h1 className="text-xl font-semibold text-slate-100">{container.name}</h1>
           <StatusBadge state={container.state} />
-          {container.compose_project && (
-            <span className="badge bg-surface-3 text-slate-400 border border-border">
-              {container.compose_project}{container.compose_service ? ` / ${container.compose_service}` : ""}
-            </span>
-          )}
         </div>
         <p className="text-sm text-slate-500 font-mono">{container.image}</p>
       </div>
@@ -965,6 +960,9 @@ export default function ContainerDetail() {
             <InfoRow label="Tag" value={container.image.split(":").pop()!} />
           )}
           <InfoRow label="State" value={<StatusBadge state={container.state} />} />
+          {container.compose_project && (
+            <InfoRow label="Compose Project" value={container.compose_project} />
+          )}
           {container.ports.length > 0 && (
             <InfoRow
               label="Ports"
