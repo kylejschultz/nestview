@@ -556,16 +556,6 @@ def _watch_events() -> None:
                         )
                         session.add(db_event)
 
-                        # Clear network history when a container stops — the history
-                        # only represents the current run, so stale points are removed
-                        # here rather than waiting for the stats loop to detect it.
-                        if action in {"stop", "die", "kill"}:
-                            session.exec(
-                                delete(ContainerNetworkHistory).where(
-                                    ContainerNetworkHistory.container_id == container_id
-                                )
-                            )
-
                         session.commit()
                         session.refresh(db_event)
 
