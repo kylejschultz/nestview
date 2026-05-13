@@ -1023,7 +1023,7 @@ export default function ContainerDetail() {
         </div>
 
         {/* Events — 1/3 width */}
-        <EventTimeline dockerId={container.docker_id} showHeader />
+        <EventTimeline dockerId={container.docker_id} showHeader showContainerName={false} />
       </div>
 
       {/* Logs */}
