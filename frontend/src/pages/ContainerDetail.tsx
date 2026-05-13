@@ -14,7 +14,6 @@ import { api } from "../api";
 import { useAuth } from "../AuthContext";
 import type { Container, MetricsHistoryPoint, NetworkHistoryPoint } from "../types";
 import StatusBadge from "../components/StatusBadge";
-import MetricBar from "../components/MetricBar";
 import LogViewer from "../components/LogViewer";
 import EventTimeline from "../components/EventTimeline";
 import ConfirmModal from "../components/ConfirmModal";
@@ -781,14 +780,25 @@ function InfoRow({ label, value }: { label: string; value: React.ReactNode }) {
   );
 }
 
+// ── Stat tile ─────────────────────────────────────────────────────────────────
+
+function StatTile({ label, value, highlight = false }: { label: string; value: React.ReactNode; highlight?: boolean }) {
+  return (
+    <div className="card px-4 py-3 flex flex-col gap-1">
+      <span className="text-xs text-slate-500">{label}</span>
+      <span className={`text-sm font-mono font-medium truncate ${highlight ? "text-yellow-400" : "text-slate-200"}`}>
+        {value}
+      </span>
+    </div>
+  );
+}
+
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function ContainerDetail() {
   const { id } = useParams<{ id: string }>();
   const tz = useTimezone();
   const { isAuthenticated } = useAuth();
-  const [netExpanded, setNetExpanded] = useState(true);
-  const [metricsExpanded, setMetricsExpanded] = useState(false);
 
   const { data: container, isLoading, isError } = useQuery<Container>({
     queryKey: ["container", id],
@@ -832,8 +842,6 @@ export default function ContainerDetail() {
     );
   }
 
-  const memPct = container.mem_limit > 0 ? (container.mem_usage / container.mem_limit) * 100 : 0;
-
   return (
     <div className="space-y-6">
       {/* Breadcrumb + title */}
@@ -859,57 +867,97 @@ export default function ContainerDetail() {
       {/* Action buttons */}
       <ActionButtons container={container} />
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Stats */}
-        {container.state === "running" && (
-          <div className="card p-4 space-y-4">
-            <h2 className="text-sm font-medium text-slate-300">Live Stats</h2>
-            <MetricBar
-              label="CPU"
-              value={container.cpu_percent}
-              display={`${container.cpu_percent.toFixed(2)}%`}
-            />
-            <MetricBar
-              label="Memory"
-              value={memPct}
-              display={
-                container.mem_limit > 0
-                  ? `${formatBytes(container.mem_usage)} / ${formatBytes(container.mem_limit)}`
-                  : formatBytes(container.mem_usage)
-              }
-            />
-            <div className="pt-2 space-y-1 text-sm">
-              <div className="flex justify-between text-slate-400">
-                <span>Uptime</span>
-                <span className="font-mono">
-                  {container.started_at ? formatUptime(container.started_at) : "-"}
-                </span>
-              </div>
-              <div className="flex justify-between text-slate-400">
-                <span>Restarts</span>
-                <span className={`font-mono ${container.restart_count > 0 ? "text-yellow-400" : ""}`}>
-                  {container.restart_count}
-                </span>
-              </div>
-              {container.created_at && (
-                <div className="flex justify-between text-slate-400">
-                  <span>Created</span>
-                  <span className="font-mono text-xs">{formatDateTime(container.created_at, tz)}</span>
-                </div>
-              )}
-              {container.started_at && (
-                <div className="flex justify-between text-slate-400">
-                  <span>Started</span>
-                  <span className="font-mono text-xs">{formatDateTime(container.started_at, tz)}</span>
-                </div>
-              )}
+      {/* Live stats strip — only when running */}
+      {container.state === "running" && (
+        <div className="grid grid-cols-4 gap-3">
+          <StatTile label="CPU" value={`${container.cpu_percent.toFixed(2)}%`} />
+          <StatTile
+            label="Memory"
+            value={
+              container.mem_limit > 0
+                ? `${formatBytes(container.mem_usage)} / ${formatBytes(container.mem_limit)}`
+                : formatBytes(container.mem_usage)
+            }
+          />
+          <StatTile
+            label="Uptime"
+            value={container.started_at ? formatUptime(container.started_at) : "-"}
+          />
+          <StatTile
+            label="Restarts"
+            value={container.restart_count}
+            highlight={container.restart_count > 0}
+          />
+        </div>
+      )}
+
+      {/* Charts row */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        {/* CPU */}
+        <div className="card">
+          <div className="px-4 pt-3 pb-2 space-y-2">
+            <h2 className="text-sm font-medium text-slate-300">CPU</h2>
+            <div className="flex gap-4 text-xs text-slate-400">
+              <span className="flex items-center gap-1.5">
+                <svg width="16" height="2" aria-hidden="true">
+                  <line x1="0" y1="1" x2="16" y2="1" stroke="#22d3ee" strokeWidth="2" />
+                </svg>
+                CPU %
+              </span>
             </div>
-
           </div>
-        )}
+          <div className="pb-4">
+            <CpuChart data={metricsHistory} />
+          </div>
+        </div>
 
-        {/* Info */}
-        <div className={`card px-4 ${container.state === "running" ? "lg:col-span-2" : "lg:col-span-3"}`}>
+        {/* Memory */}
+        <div className="card">
+          <div className="px-4 pt-3 pb-2 space-y-2">
+            <h2 className="text-sm font-medium text-slate-300">Memory</h2>
+            <div className="flex gap-4 text-xs text-slate-400">
+              <span className="flex items-center gap-1.5">
+                <svg width="16" height="2" aria-hidden="true">
+                  <line x1="0" y1="1" x2="16" y2="1" stroke="#a78bfa" strokeWidth="2" />
+                </svg>
+                Memory
+              </span>
+            </div>
+          </div>
+          <div className="pb-4">
+            <MemChart data={metricsHistory} />
+          </div>
+        </div>
+
+        {/* Network I/O */}
+        <div className="card">
+          <div className="px-4 pt-3 pb-2 space-y-2">
+            <h2 className="text-sm font-medium text-slate-300">Network I/O</h2>
+            <div className="flex gap-4 text-xs text-slate-400">
+              <span className="flex items-center gap-1.5">
+                <svg width="16" height="2" aria-hidden="true">
+                  <line x1="0" y1="1" x2="16" y2="1" stroke="#22d3ee" strokeWidth="2" />
+                </svg>
+                RX
+              </span>
+              <span className="flex items-center gap-1.5">
+                <svg width="16" height="2" aria-hidden="true">
+                  <line x1="0" y1="1" x2="16" y2="1" stroke="#f97316" strokeWidth="2" />
+                </svg>
+                TX
+              </span>
+            </div>
+          </div>
+          <div className="pb-4">
+            <NetworkIOChart data={networkHistory} />
+          </div>
+        </div>
+      </div>
+
+      {/* Details + Events row */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        {/* Details — 2/3 width */}
+        <div className="card px-4 md:col-span-2">
           <h2 className="text-sm font-medium text-slate-300 py-3">Details</h2>
           <InfoRow label="ID" value={container.short_id} />
           <InfoRow label="Image" value={container.image.includes(":") ? container.image.slice(0, container.image.lastIndexOf(":")) : container.image} />
@@ -975,95 +1023,15 @@ export default function ContainerDetail() {
             />
           )}
         </div>
-      </div>
 
-      {/* Network I/O */}
-      <div className="card">
-        <button
-          onClick={() => setNetExpanded((v) => !v)}
-          className="w-full flex items-center justify-between px-4 py-3 text-left"
-        >
-          <span className="text-sm font-medium text-slate-300">Network I/O</span>
-          <svg
-            className={`w-4 h-4 text-slate-500 transition-transform ${netExpanded ? "rotate-180" : ""}`}
-            fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
-          >
-            <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-          </svg>
-        </button>
-        {netExpanded && (
-          <div className="pb-4 space-y-3">
-            <div className="flex gap-4 text-xs text-slate-400 px-4">
-              <span className="flex items-center gap-1.5">
-                <svg width="16" height="2" aria-hidden="true">
-                  <line x1="0" y1="1" x2="16" y2="1" stroke="#22d3ee" strokeWidth="2" />
-                </svg>
-                RX
-              </span>
-              <span className="flex items-center gap-1.5">
-                <svg width="16" height="2" aria-hidden="true">
-                  <line x1="0" y1="1" x2="16" y2="1" stroke="#f97316" strokeWidth="2" />
-                </svg>
-                TX
-              </span>
-            </div>
-            <NetworkIOChart data={networkHistory} />
-          </div>
-        )}
-      </div>
-
-      {/* CPU & Memory */}
-      <div className="card">
-        <button
-          onClick={() => setMetricsExpanded((v) => !v)}
-          className="w-full flex items-center justify-between px-4 py-3 text-left"
-        >
-          <span className="text-sm font-medium text-slate-300">CPU &amp; Memory</span>
-          <svg
-            className={`w-4 h-4 text-slate-500 transition-transform ${metricsExpanded ? "rotate-180" : ""}`}
-            fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
-          >
-            <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-          </svg>
-        </button>
-        {metricsExpanded && (
-          <div className="pb-4 space-y-6">
-            <div className="space-y-2">
-              <div className="flex gap-4 text-xs text-slate-400 px-4">
-                <span className="flex items-center gap-1.5">
-                  <svg width="16" height="2" aria-hidden="true">
-                    <line x1="0" y1="1" x2="16" y2="1" stroke="#22d3ee" strokeWidth="2" />
-                  </svg>
-                  CPU %
-                </span>
-              </div>
-              <CpuChart data={metricsHistory} />
-            </div>
-            <div className="space-y-2">
-              <div className="flex gap-4 text-xs text-slate-400 px-4">
-                <span className="flex items-center gap-1.5">
-                  <svg width="16" height="2" aria-hidden="true">
-                    <line x1="0" y1="1" x2="16" y2="1" stroke="#a78bfa" strokeWidth="2" />
-                  </svg>
-                  Memory
-                </span>
-              </div>
-              <MemChart data={metricsHistory} />
-            </div>
-          </div>
-        )}
+        {/* Events — 1/3 width */}
+        <EventTimeline dockerId={container.docker_id} showHeader />
       </div>
 
       {/* Logs */}
       <section className="space-y-3">
         <h2 className="text-sm font-medium text-slate-300">Logs</h2>
         <LogViewer dockerId={container.docker_id} />
-      </section>
-
-      {/* Events */}
-      <section className="space-y-3">
-        <h2 className="text-sm font-medium text-slate-300">Events</h2>
-        <EventTimeline dockerId={container.docker_id} />
       </section>
     </div>
   );

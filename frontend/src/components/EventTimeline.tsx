@@ -8,6 +8,7 @@ import { useTimezone } from "../TimezoneContext";
 interface Props {
   dockerId?: string;
   limit?: number;
+  showHeader?: boolean;
 }
 
 const EVENT_STYLES: Record<string, { dot: string; label: string }> = {
@@ -47,7 +48,7 @@ function EventRow({ event, tz }: { event: ContainerEvent; tz: string }) {
   );
 }
 
-export default function EventTimeline({ dockerId, limit = 30 }: Props) {
+export default function EventTimeline({ dockerId, limit = 30, showHeader = false }: Props) {
   const tz = useTimezone();
   const { isAuthenticated } = useAuth();
   const { data: events = [] } = useQuery<ContainerEvent[]>({
@@ -56,6 +57,23 @@ export default function EventTimeline({ dockerId, limit = 30 }: Props) {
     refetchInterval: 15_000,
     enabled: isAuthenticated,
   });
+
+  if (showHeader) {
+    return (
+      <div className="card px-4">
+        <h2 className="text-sm font-medium text-slate-300 py-3">Events</h2>
+        {events.length === 0 ? (
+          <div className="py-6 text-center text-sm text-slate-500">No events recorded yet.</div>
+        ) : (
+          <div className="divide-y divide-border">
+            {events.map((e) => (
+              <EventRow key={e.id} event={e} tz={tz} />
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
 
   if (events.length === 0) {
     return (
