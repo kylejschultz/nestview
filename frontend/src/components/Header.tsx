@@ -74,7 +74,7 @@ export default function Header({ onLogout, authMode }: HeaderProps) {
           )}
 
           <a
-            href="https://discord.gg/UQAZ3bJ6"
+            href="https://discord.gg/aDEBQq3XtN"
             target="_blank"
             rel="noopener noreferrer"
             aria-label="Join the Nestview Discord"

@@ -107,7 +107,7 @@ function AboutSection({ version }: { version?: string }) {
       <div className="space-y-3">
         {/* Discord — most prominent */}
         <a
-          href="https://discord.gg/UQAZ3bJ6"
+          href="https://discord.gg/aDEBQq3XtN"
           target="_blank"
           rel="noopener noreferrer"
           className="flex items-center gap-3 p-3 rounded-lg bg-accent/10 border border-accent/30 text-accent hover:bg-accent/20 transition-colors group"
