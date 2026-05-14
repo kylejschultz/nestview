@@ -1,5 +1,5 @@
-import React, { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import React, { useState, useRef, useMemo, useEffect } from "react";
+import { useNavigate, useBlocker } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
 import { useAuth } from "../AuthContext";
@@ -43,52 +43,59 @@ function Toggle({ checked, onChange, disabled, label }: ToggleProps) {
   );
 }
 
-// ── Alert settings helpers ────────────────────────────────────────────────────
+// ── Notifications tab types and helpers ───────────────────────────────────────
 
-const ALERT_TYPES: { key: AlertEventType; label: string }[] = [
+type AlertDefaults = Record<AlertEventType, boolean>;
+type ExceptionMap = Record<string, Record<AlertEventType, boolean>>;
+
+const NOTIF_TYPES: { key: AlertEventType; label: string }[] = [
   { key: "crash", label: "Crash" },
   { key: "restart", label: "Restart" },
   { key: "oom", label: "OOM" },
-  { key: "update_available", label: "Update Avail" },
+  { key: "update_available", label: "Update available" },
 ];
 
-function buildDisabledSet(settings: AlertSetting[]): Set<string> {
-  const s = new Set<string>();
-  for (const row of settings) {
-    if (!row.enabled) s.add(`${row.container_name}:${row.event_type}`);
+function buildDefaultsFromRaw(raw: { event_type: string; enabled: boolean }[]): AlertDefaults {
+  const base: AlertDefaults = { crash: true, restart: true, oom: true, update_available: true };
+  for (const r of raw) {
+    if (r.event_type === "crash" || r.event_type === "restart" || r.event_type === "oom" || r.event_type === "update_available") {
+      base[r.event_type] = r.enabled;
+    }
   }
-  return s;
+  return base;
 }
 
-// ── Per-container row (table) ─────────────────────────────────────────────────
-
-const COL_W = "w-24";
-
-interface ContainerRowProps {
-  container: Container;
-  disabledSet: Set<string>;
-  onToggle: (container_name: string, event_type: AlertEventType, enabled: boolean) => void;
-  isDisabled: boolean;
+function buildExceptionsFromSettings(settings: AlertSetting[], defaults: AlertDefaults): ExceptionMap {
+  const byContainer: Record<string, Partial<Record<AlertEventType, boolean>>> = {};
+  for (const row of settings) {
+    byContainer[row.container_name] ??= {};
+    byContainer[row.container_name][row.event_type as AlertEventType] = row.enabled;
+  }
+  const result: ExceptionMap = {};
+  for (const [name, vals] of Object.entries(byContainer)) {
+    result[name] = {
+      crash: vals.crash ?? defaults.crash,
+      restart: vals.restart ?? defaults.restart,
+      oom: vals.oom ?? defaults.oom,
+      update_available: vals.update_available ?? defaults.update_available,
+    };
+  }
+  return result;
 }
 
-function ContainerRow({ container: c, disabledSet, onToggle, isDisabled }: ContainerRowProps) {
-  return (
-    <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border last:border-0">
-      <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium text-slate-200 truncate">{c.name}</p>
-        <p className="text-xs text-slate-500 font-mono truncate mt-0.5">{c.image}</p>
-      </div>
-      {ALERT_TYPES.map(({ key }) => (
-        <div key={key} className={`${COL_W} flex justify-center`}>
-          <Toggle
-            checked={!disabledSet.has(`${c.name}:${key}`)}
-            disabled={isDisabled}
-            onChange={(enabled) => onToggle(c.name, key, enabled)}
-          />
-        </div>
-      ))}
-    </div>
-  );
+function defaultsEqual(a: AlertDefaults | null, b: AlertDefaults | null): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  return NOTIF_TYPES.every(({ key }) => a[key] === b[key]);
+}
+
+function exceptionsEqual(a: ExceptionMap | null, b: ExceptionMap | null): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  const ka = Object.keys(a).sort();
+  const kb = Object.keys(b).sort();
+  if (ka.join() !== kb.join()) return false;
+  return ka.every(k => NOTIF_TYPES.every(({ key }) => a[k][key] === b[k][key]));
 }
 
 // ── About & Support ───────────────────────────────────────────────────────────
@@ -695,156 +702,326 @@ function GeneralTab({ authMode, version }: { authMode?: string; version?: string
   );
 }
 
+// ── Add exception modal ───────────────────────────────────────────────────────
+
+function AddExceptionModal({
+  allContainers,
+  existingNames,
+  onAdd,
+  onClose,
+}: {
+  allContainers: Container[];
+  existingNames: Set<string>;
+  onAdd: (name: string) => void;
+  onClose: () => void;
+}) {
+  const [search, setSearch] = useState("");
+  const seen = new Set<string>();
+  const filtered = allContainers.filter(c => {
+    if (existingNames.has(c.name) || seen.has(c.name)) return false;
+    seen.add(c.name);
+    return c.name.toLowerCase().includes(search.toLowerCase());
+  });
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onClose}>
+      <div
+        className="bg-surface-2 border border-border rounded-xl shadow-xl w-full max-w-sm mx-4 p-4 space-y-3"
+        onClick={e => e.stopPropagation()}
+      >
+        <h3 className="text-sm font-semibold text-slate-200">Add exception</h3>
+        <input
+          type="text"
+          placeholder="Search containers..."
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          autoFocus
+          className="w-full bg-surface-3 border border-border rounded-lg px-3 py-1.5 text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:border-accent"
+        />
+        <div className="max-h-52 overflow-y-auto">
+          {filtered.length === 0 ? (
+            <p className="text-sm text-slate-500 py-3 text-center">No containers available to add</p>
+          ) : (
+            <div className="space-y-0.5">
+              {filtered.map(c => (
+                <button
+                  key={c.name}
+                  onClick={() => { onAdd(c.name); onClose(); }}
+                  className="w-full text-left px-3 py-2 rounded-lg text-sm text-slate-300 hover:bg-surface-3 hover:text-slate-100 transition-colors"
+                >
+                  {c.name}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+        <div className="flex justify-end pt-1">
+          <button
+            onClick={onClose}
+            className="px-3 py-1.5 text-xs rounded-lg border border-border text-slate-400 hover:text-slate-200 transition-colors"
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Notifications tab ─────────────────────────────────────────────────────────
 
-function NotificationsTab() {
+function NotificationsTab({ onDirtyChange }: { onDirtyChange: (dirty: boolean) => void }) {
   const queryClient = useQueryClient();
   const { isAuthenticated } = useAuth();
+  const { toastState, showToast, dismissToast } = useToast();
+  const [showAddModal, setShowAddModal] = useState(false);
 
-  const { data: containers = [], isLoading: loadingContainers } = useQuery<Container[]>({
-    queryKey: ["containers"],
-    queryFn: api.containers.list,
+  const { data: defaultsRaw = [], isLoading: loadingDefaults } = useQuery<{ event_type: string; enabled: boolean }[]>({
+    queryKey: ["alert-defaults"],
+    queryFn: api.settings.alertDefaults,
     enabled: isAuthenticated,
   });
 
-  const { data: alertSettings = [], isLoading: loadingSettings } = useQuery<AlertSetting[]>({
+  const { data: alertSettings = [], isLoading: loadingAlerts } = useQuery<AlertSetting[]>({
     queryKey: ["alert-settings"],
     queryFn: api.settings.alerts,
     enabled: isAuthenticated,
   });
 
-  const { mutate, isPending } = useMutation({
-    mutationFn: ({
-      container_name,
-      event_type,
-      enabled,
-    }: {
-      container_name: string;
-      event_type: AlertEventType;
-      enabled: boolean;
-    }) => api.settings.setAlert(container_name, event_type, enabled),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["alert-settings"] });
-    },
+  const { data: allContainers = [] } = useQuery<Container[]>({
+    queryKey: ["containers"],
+    queryFn: api.containers.list,
+    enabled: isAuthenticated,
   });
 
-  const { mutate: bulkToggle, isPending: isBulkPending } = useMutation({
-    mutationFn: (changes: Array<{ container_name: string; event_type: AlertEventType; enabled: boolean }>) =>
-      Promise.all(changes.map((c) => api.settings.setAlert(c.container_name, c.event_type, c.enabled))),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["alert-settings"] });
-    },
-  });
+  const savedDefaults = useMemo(() => buildDefaultsFromRaw(defaultsRaw), [defaultsRaw]);
+  const savedExceptions = useMemo(
+    () => buildExceptionsFromSettings(alertSettings, savedDefaults),
+    [alertSettings, savedDefaults]
+  );
 
-  const isDisabled = isPending || isBulkPending;
-  const isLoading = loadingContainers || loadingSettings;
-  const disabledSet = buildDisabledSet(alertSettings);
+  const [draftDefaults, setDraftDefaults] = useState<AlertDefaults | null>(null);
+  const [draftExceptions, setDraftExceptions] = useState<ExceptionMap | null>(null);
+  const [lastSavedDefaults, setLastSavedDefaults] = useState<AlertDefaults | null>(null);
+  const [lastSavedExceptions, setLastSavedExceptions] = useState<ExceptionMap | null>(null);
+  const initialized = useRef(false);
 
-  const groups: Record<string, Container[]> = {};
-  const ungrouped: Container[] = [];
-  for (const c of containers) {
-    if (c.compose_project) {
-      (groups[c.compose_project] ??= []).push(c);
-    } else {
-      ungrouped.push(c);
+  useEffect(() => {
+    if (!initialized.current && !loadingDefaults && !loadingAlerts) {
+      setDraftDefaults(savedDefaults);
+      setDraftExceptions(savedExceptions);
+      setLastSavedDefaults(savedDefaults);
+      setLastSavedExceptions(savedExceptions);
+      initialized.current = true;
     }
+  }, [loadingDefaults, loadingAlerts]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const isDirty =
+    !defaultsEqual(draftDefaults, lastSavedDefaults) ||
+    !exceptionsEqual(draftExceptions, lastSavedExceptions);
+
+  useEffect(() => { onDirtyChange(isDirty); }, [isDirty, onDirtyChange]);
+
+  const blocker = useBlocker(isDirty);
+  useEffect(() => {
+    if (blocker.state === "blocked") {
+      if (window.confirm("You have unsaved changes. Leave without saving?")) {
+        blocker.proceed();
+      } else {
+        blocker.reset();
+      }
+    }
+  }, [blocker]);
+
+  useEffect(() => {
+    if (!isDirty) return;
+    const handler = (e: BeforeUnloadEvent) => { e.preventDefault(); };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [isDirty]);
+
+  const { mutate: save, isPending: isSaving } = useMutation({
+    mutationFn: async () => {
+      if (!draftDefaults || draftExceptions === null || lastSavedExceptions === null) return;
+
+      await api.settings.setAlertDefaults(
+        NOTIF_TYPES.map(({ key }) => ({ event_type: key, enabled: draftDefaults[key] }))
+      );
+
+      const calls: Promise<unknown>[] = [];
+      for (const [name, vals] of Object.entries(draftExceptions)) {
+        for (const { key } of NOTIF_TYPES) {
+          if (vals[key] !== draftDefaults[key]) {
+            calls.push(api.settings.setAlert(name, key, vals[key]));
+          }
+        }
+      }
+      for (const name of Object.keys(lastSavedExceptions)) {
+        if (!draftExceptions[name]) {
+          for (const { key } of NOTIF_TYPES) {
+            calls.push(api.settings.setAlert(name, key, draftDefaults[key]));
+          }
+        }
+      }
+      await Promise.all(calls);
+    },
+    onSuccess: () => {
+      if (!draftDefaults || draftExceptions === null) return;
+      const cleaned: ExceptionMap = {};
+      for (const [name, vals] of Object.entries(draftExceptions)) {
+        if (NOTIF_TYPES.some(({ key }) => vals[key] !== draftDefaults[key])) {
+          cleaned[name] = vals;
+        }
+      }
+      setDraftExceptions(cleaned);
+      setLastSavedDefaults({ ...draftDefaults });
+      setLastSavedExceptions(cleaned);
+      queryClient.invalidateQueries({ queryKey: ["alert-defaults"] });
+      queryClient.invalidateQueries({ queryKey: ["alert-settings"] });
+      showToast("Saved", "success");
+    },
+    onError: (err: Error) => showToast(err.message, "error"),
+  });
+
+  const isLoading = loadingDefaults || loadingAlerts;
+
+  if (isLoading || draftDefaults === null || draftExceptions === null) {
+    return <div className="py-12 text-center text-slate-500">Loading...</div>;
   }
 
-  function handleToggleAll(members: Container[]) {
-    const allEnabled = members.every((c) =>
-      ALERT_TYPES.every((t) => !disabledSet.has(`${c.name}:${t.key}`))
-    );
-    const targetEnabled = !allEnabled;
-    bulkToggle(
-      members.flatMap((c) =>
-        ALERT_TYPES.map((t) => ({ container_name: c.name, event_type: t.key, enabled: targetEnabled }))
-      )
-    );
-  }
-
-  if (isLoading) {
-    return <div className="py-12 text-center text-slate-500">Loading…</div>;
-  }
-
-  if (containers.length === 0) {
-    return (
-      <div className="card p-6 text-center text-slate-500">
-        No containers found. Is the collector running?
-      </div>
-    );
-  }
-
-  const togglesWidth = `${ALERT_TYPES.length * 6}rem`; // 4 × w-24 (6rem)
+  const exceptionNames = new Set(Object.keys(draftExceptions));
+  const sortedExceptions = Object.entries(draftExceptions).sort(([a], [b]) => a.localeCompare(b));
 
   return (
-    <div className="space-y-4">
-      <div className="card overflow-hidden">
-        {/* Column header row */}
-        <div className="flex items-center gap-2 px-4 py-2 border-b border-border bg-surface-3/40">
-          <span className="flex-1 text-xs font-medium uppercase tracking-wide text-slate-500">Container</span>
-          <div className="flex shrink-0" style={{ width: togglesWidth }}>
-            {ALERT_TYPES.map(({ key, label }) => (
-              <span key={key} className={`${COL_W} text-center text-xs font-medium uppercase tracking-wide text-slate-500`}>
-                {label}
-              </span>
-            ))}
+    <>
+      {toastState && (
+        <Toast key={toastState.id} message={toastState.message} type={toastState.type} duration={toastState.duration} onDismiss={dismissToast} />
+      )}
+
+      <div className="space-y-4">
+        {/* Global defaults card */}
+        <div className="card overflow-hidden">
+          <div className="px-5 py-3 border-b border-border">
+            <h2 className="text-sm font-semibold text-slate-200">Global defaults</h2>
+            <p className="text-xs text-slate-500 mt-0.5">Applies to all containers without an exception configured.</p>
           </div>
+          {NOTIF_TYPES.map(({ key, label }) => (
+            <div key={key} className="flex items-center justify-between px-5 py-3 border-b border-border last:border-0">
+              <span className="text-sm text-slate-300">{label}</span>
+              <Toggle
+                checked={draftDefaults[key]}
+                onChange={(v) => setDraftDefaults(prev => prev ? { ...prev, [key]: v } : prev)}
+              />
+            </div>
+          ))}
         </div>
 
-        {/* Compose stacks */}
-        {Object.entries(groups).map(([project, members]) => (
-          <React.Fragment key={project}>
-            {/* Stack header */}
-            <div className="flex items-center gap-2 px-4 py-2 border-b border-border bg-surface-3/20">
-              <svg className="w-3.5 h-3.5 text-slate-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+        {/* Exceptions table */}
+        <div className="card overflow-hidden">
+          <div className="flex items-center justify-between px-5 py-3 border-b border-border">
+            <div>
+              <h2 className="text-sm font-semibold text-slate-200">Container exceptions</h2>
+              <p className="text-xs text-slate-500 mt-0.5">Overrides for individual containers.</p>
+            </div>
+            <button
+              onClick={() => setShowAddModal(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg bg-surface-3 border border-border text-slate-300 hover:text-slate-100 hover:border-slate-500 transition-colors shrink-0"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
               </svg>
-              <span className="flex-1 text-xs font-semibold uppercase tracking-widest text-slate-500 truncate">{project}</span>
+              Add exception
+            </button>
+          </div>
+
+          {sortedExceptions.length === 0 ? (
+            <div className="px-5 py-8 text-center space-y-3">
+              <p className="text-sm text-slate-500">All containers are following global defaults.</p>
               <button
-                disabled={isDisabled}
-                onClick={() => handleToggleAll(members)}
-                className="text-xs text-slate-500 hover:text-slate-300 border border-border rounded px-2 py-0.5 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                onClick={() => setShowAddModal(true)}
+                className="px-3 py-1.5 text-xs rounded-lg bg-surface-3 border border-border text-slate-300 hover:text-slate-100 hover:border-slate-500 transition-colors"
               >
-                Toggle all
+                Add exception
               </button>
             </div>
-            {members.map((c) => (
-              <ContainerRow
-                key={c.docker_id}
-                container={c}
-                disabledSet={disabledSet}
-                onToggle={(name, type, enabled) => mutate({ container_name: name, event_type: type, enabled })}
-                isDisabled={isDisabled}
-              />
-            ))}
-          </React.Fragment>
-        ))}
-
-        {/* Standalone containers */}
-        {ungrouped.length > 0 && (
-          <React.Fragment>
-            {Object.keys(groups).length > 0 && (
-              <div className="flex items-center gap-2 px-4 py-2 border-b border-border bg-surface-3/20">
-                <span className="text-xs font-semibold uppercase tracking-widest text-slate-500">Standalone</span>
+          ) : (
+            <>
+              <div className="flex items-center gap-2 px-5 py-2 border-b border-border bg-surface-3/40">
+                <span className="flex-1 text-xs font-medium uppercase tracking-wide text-slate-500">Container</span>
+                {NOTIF_TYPES.map(({ key, label }) => (
+                  <span key={key} className="w-20 shrink-0 text-center text-xs font-medium uppercase tracking-wide text-slate-500">{label}</span>
+                ))}
+                <span className="w-8 shrink-0" />
               </div>
-            )}
-            {ungrouped.map((c) => (
-              <ContainerRow
-                key={c.docker_id}
-                container={c}
-                disabledSet={disabledSet}
-                onToggle={(name, type, enabled) => mutate({ container_name: name, event_type: type, enabled })}
-                isDisabled={isDisabled}
-              />
-            ))}
-          </React.Fragment>
-        )}
+              {sortedExceptions.map(([name, vals]) => (
+                <div key={name} className="flex items-center gap-2 px-5 py-2.5 border-b border-border last:border-0">
+                  <span className="flex-1 min-w-0 text-sm text-slate-300 truncate">{name}</span>
+                  {NOTIF_TYPES.map(({ key }) => (
+                    <div key={key} className="w-20 shrink-0 flex justify-center">
+                      <Toggle
+                        checked={vals[key]}
+                        onChange={(v) =>
+                          setDraftExceptions(prev =>
+                            prev ? { ...prev, [name]: { ...prev[name], [key]: v } } : prev
+                          )
+                        }
+                      />
+                    </div>
+                  ))}
+                  <div className="w-8 shrink-0 flex justify-center">
+                    <button
+                      onClick={() =>
+                        setDraftExceptions(prev => {
+                          if (!prev) return prev;
+                          const next = { ...prev };
+                          delete next[name];
+                          return next;
+                        })
+                      }
+                      aria-label={`Remove exception for ${name}`}
+                      className="p-1 rounded text-slate-600 hover:text-red-400 hover:bg-surface-3 transition-colors"
+                    >
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </>
+          )}
+        </div>
+
+        <p className="text-xs text-slate-600">Alert toggles only take effect when a Discord webhook URL is configured. Events are always recorded regardless.</p>
+
+        {/* Save bar */}
+        <div className="sticky bottom-0 border-t border-border bg-surface-2/95 backdrop-blur-sm px-5 py-3 flex items-center justify-between">
+          <span className={`text-xs ${isDirty ? "text-amber-400" : "text-slate-600"}`}>
+            {isDirty ? "You have unsaved changes" : "No unsaved changes"}
+          </span>
+          <button
+            disabled={!isDirty || isSaving}
+            onClick={() => save()}
+            className="px-4 py-1.5 text-sm rounded-lg bg-accent hover:bg-accent-hover text-white font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            {isSaving ? "Saving..." : "Save"}
+          </button>
+        </div>
       </div>
 
-      <p className="text-xs text-slate-600">
-        Settings are only meaningful when a Discord webhook URL is configured. Events are always recorded in the timeline regardless.
-      </p>
-    </div>
+      {showAddModal && (
+        <AddExceptionModal
+          allContainers={allContainers}
+          existingNames={exceptionNames}
+          onAdd={(name) =>
+            setDraftExceptions(prev =>
+              prev ? { ...prev, [name]: { ...draftDefaults } } : prev
+            )
+          }
+          onClose={() => setShowAddModal(false)}
+        />
+      )}
+    </>
   );
 }
 
@@ -854,7 +1031,15 @@ type Tab = "general" | "notifications";
 
 export default function Settings({ authMode }: { authMode?: string }) {
   const [activeTab, setActiveTab] = useState<Tab>("general");
+  const [notifDirty, setNotifDirty] = useState(false);
   const { isAuthenticated } = useAuth();
+
+  function handleTabChange(tab: Tab) {
+    if (activeTab === "notifications" && notifDirty && tab !== "notifications") {
+      if (!window.confirm("You have unsaved changes. Leave without saving?")) return;
+    }
+    setActiveTab(tab);
+  }
   const { data: versionData } = useQuery({
     queryKey: ["version"],
     queryFn: api.version,
@@ -879,7 +1064,7 @@ export default function Settings({ authMode }: { authMode?: string }) {
         {(["general", "notifications"] as Tab[]).map((tab) => (
           <button
             key={tab}
-            onClick={() => setActiveTab(tab)}
+            onClick={() => handleTabChange(tab)}
             className={`px-4 py-2 text-sm font-medium capitalize transition-colors border-b-2 -mb-px ${
               activeTab === tab
                 ? "border-accent text-slate-100"
@@ -891,7 +1076,7 @@ export default function Settings({ authMode }: { authMode?: string }) {
         ))}
       </div>
 
-      {activeTab === "general" ? <GeneralTab authMode={authMode} version={versionData?.version} /> : <NotificationsTab />}
+      {activeTab === "general" ? <GeneralTab authMode={authMode} version={versionData?.version} /> : <NotificationsTab onDirtyChange={setNotifDirty} />}
     </div>
   );
 }

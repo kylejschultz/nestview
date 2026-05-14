@@ -116,6 +116,9 @@ export const api = {
     alerts: () => get<AlertSetting[]>("/settings/alerts"),
     setAlert: (container_name: string, event_type: AlertEventType, enabled: boolean) =>
       patch<AlertSetting>("/settings/alerts", { container_name, event_type, enabled }),
+    alertDefaults: () => get<{ event_type: string; enabled: boolean }[]>("/settings/alerts/defaults"),
+    setAlertDefaults: (payload: { event_type: AlertEventType; enabled: boolean }[]) =>
+      patch<{ event_type: string; enabled: boolean }[]>("/settings/alerts/defaults", payload),
     general: () => get<GeneralSettings>("/settings/general"),
     saveGeneral: (body: Partial<GeneralSettings>) =>
       patch<GeneralSettings>("/settings/general", body),
