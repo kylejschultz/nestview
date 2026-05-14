@@ -1,5 +1,5 @@
 import React, { useState, useRef, useMemo, useEffect } from "react";
-import { useNavigate, useBlocker } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
 import { useAuth } from "../AuthContext";
@@ -821,17 +821,6 @@ function NotificationsTab({ onDirtyChange }: { onDirtyChange: (dirty: boolean) =
     !exceptionsEqual(draftExceptions, lastSavedExceptions);
 
   useEffect(() => { onDirtyChange(isDirty); }, [isDirty, onDirtyChange]);
-
-  const blocker = useBlocker(isDirty);
-  useEffect(() => {
-    if (blocker.state === "blocked") {
-      if (window.confirm("You have unsaved changes. Leave without saving?")) {
-        blocker.proceed();
-      } else {
-        blocker.reset();
-      }
-    }
-  }, [blocker]);
 
   useEffect(() => {
     if (!isDirty) return;
