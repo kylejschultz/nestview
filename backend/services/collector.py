@@ -502,18 +502,31 @@ _SETTING_KEY: dict[str, str] = {
     "oom": "oom",
     "restart": "restart",
 }
+_GLOBAL_SENTINEL = "__global__"
 
 
 def _alert_suppressed(container_name: str, event_type: str, session: Session) -> bool:
     setting_key = _SETTING_KEY.get(event_type)
     if not setting_key:
         return False
-    setting = session.exec(
+
+    per_container = session.exec(
         select(ContainerAlertSetting)
         .where(ContainerAlertSetting.container_name == container_name)
         .where(ContainerAlertSetting.event_type == setting_key)
     ).first()
-    return setting is not None and not setting.enabled
+    if per_container is not None:
+        return not per_container.enabled
+
+    global_default = session.exec(
+        select(ContainerAlertSetting)
+        .where(ContainerAlertSetting.container_name == _GLOBAL_SENTINEL)
+        .where(ContainerAlertSetting.event_type == setting_key)
+    ).first()
+    if global_default is not None:
+        return not global_default.enabled
+
+    return False
 
 
 def _watch_events() -> None:
