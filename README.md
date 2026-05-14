@@ -5,7 +5,7 @@
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 [![GitHub Sponsors](https://img.shields.io/github/sponsors/kylejschultz?label=Sponsor&logo=githubsponsors&color=ea4aaa)](https://github.com/sponsors/kylejschultz)
 [![Ko-fi](https://img.shields.io/badge/Ko--fi-support%20the%20project-FF5E5B?logo=ko-fi&logoColor=white)](https://ko-fi.com/kylejschultz)
-[![Discord](https://img.shields.io/badge/Discord-join%20the%20community-5865F2?logo=discord&logoColor=white)](https://discord.gg/TfQ8QX3Ptr)
+[![Discord](https://img.shields.io/badge/Discord-join%20the%20community-5865F2?logo=discord&logoColor=white)](https://discord.gg/UQAZ3bJ6)
 
 </div>
 
@@ -13,7 +13,7 @@
 
 Nestview gives you a live health dashboard with per-container CPU and memory history charts, searchable log history, and Discord alerts for all your containers - no manual configuration, no Grafana stack required. Point it at your Docker socket and it discovers everything automatically. Container metrics and logs are re-associated when containers are recreated, so your history survives updates.
 
-> **Need help?** [Join the Discord](https://discord.gg/TfQ8QX3Ptr) - it's the fastest way to get support, ask questions, or report a bug. GitHub Issues is available too, but Discord is where the conversation happens.
+> **Need help?** [Join the Discord](https://discord.gg/UQAZ3bJ6) - it's the fastest way to get support, ask questions, or report a bug. GitHub Issues is available too, but Discord is where the conversation happens.
 
 ## Quick start
 ### Prerequisites
@@ -126,7 +126,7 @@ No personal data, container names, image names, or host information is collected
 [GNU General Public License v3.0](./LICENSE) - free to use, modify, and self-host. If you distribute modified versions, you must release them under the same license.
 
 ## Community & support
-**Discord is the best place to get help.** Join at [discord.gg/TfQ8QX3Ptr](https://discord.gg/TfQ8QX3Ptr) - bug reports, questions, and general chat all happen there.
+**Discord is the best place to get help.** Join at [discord.gg/UQAZ3bJ6](https://discord.gg/UQAZ3bJ6) - bug reports, questions, and general chat all happen there.
 
 [GitHub Issues](https://github.com/kylejschultz/nestview/issues) is available for bugs and feature requests, but Discord is faster and more conversational. Please search existing issues before opening a new one.
 
