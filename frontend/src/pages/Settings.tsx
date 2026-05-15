@@ -48,11 +48,11 @@ function Toggle({ checked, onChange, disabled, label }: ToggleProps) {
 type AlertDefaults = Record<AlertEventType, boolean>;
 type ExceptionMap = Record<string, Record<AlertEventType, boolean>>;
 
-const NOTIF_TYPES: { key: AlertEventType; label: string }[] = [
+const NOTIF_TYPES: { key: AlertEventType; label: string; columnLabel?: string }[] = [
   { key: "crash", label: "Crash" },
   { key: "restart", label: "Restart" },
   { key: "oom", label: "OOM" },
-  { key: "update_available", label: "Update available" },
+  { key: "update_available", label: "Update available", columnLabel: "Update" },
 ];
 
 function buildDefaultsFromRaw(raw: { event_type: string; enabled: boolean }[]): AlertDefaults {
@@ -912,15 +912,17 @@ function NotificationsTab({ onDirtyChange }: { onDirtyChange: (dirty: boolean) =
               <h2 className="text-sm font-semibold text-slate-200">Container exceptions</h2>
               <p className="text-xs text-slate-500 mt-0.5">Overrides for individual containers.</p>
             </div>
-            <button
-              onClick={() => setShowAddModal(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg bg-surface-3 border border-border text-slate-300 hover:text-slate-100 hover:border-slate-500 transition-colors shrink-0"
-            >
-              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-              </svg>
-              Add exception
-            </button>
+            {sortedExceptions.length > 0 && (
+              <button
+                onClick={() => setShowAddModal(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg bg-surface-3 border border-border text-slate-300 hover:text-slate-100 hover:border-slate-500 transition-colors shrink-0"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                </svg>
+                Add exception
+              </button>
+            )}
           </div>
 
           {sortedExceptions.length === 0 ? (
@@ -937,8 +939,8 @@ function NotificationsTab({ onDirtyChange }: { onDirtyChange: (dirty: boolean) =
             <>
               <div className="flex items-center gap-2 px-5 py-2 border-b border-border bg-surface-3/40">
                 <span className="flex-1 text-xs font-medium uppercase tracking-wide text-slate-500">Container</span>
-                {NOTIF_TYPES.map(({ key, label }) => (
-                  <span key={key} className="w-20 shrink-0 text-center text-xs font-medium uppercase tracking-wide text-slate-500">{label}</span>
+                {NOTIF_TYPES.map(({ key, label, columnLabel }) => (
+                  <span key={key} className="w-20 shrink-0 text-center text-xs font-medium uppercase tracking-wide text-slate-500">{columnLabel ?? label}</span>
                 ))}
                 <span className="w-8 shrink-0" />
               </div>
