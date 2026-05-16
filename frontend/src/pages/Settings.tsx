@@ -383,23 +383,13 @@ function GeneralTab({ authMode, version, onDirtyChange }: { authMode?: string; v
         {/* DISCORD */}
         <SectionHeader label="Discord" />
         <SettingRow label="Webhook URL" info="The Discord webhook URL used to send container event alerts. Leave blank to disable Discord notifications.">
-          <div className="space-y-1.5">
-            <WebhookField
-              value={webhook}
-              onChange={setWebhookDraft}
-              disabled={isSavingAll}
-              onTestSuccess={() => showToast("Webhook test successful", "success")}
-              onTestError={(msg) => showToast(msg, "error")}
-            />
-            <a
-              href="https://support.discord.com/hc/articles/228383668"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-xs text-accent/60 hover:text-accent transition-colors"
-            >
-              How do I get this?
-            </a>
-          </div>
+          <WebhookField
+            value={webhook}
+            onChange={setWebhookDraft}
+            disabled={isSavingAll}
+            onTestSuccess={() => showToast("Webhook test successful", "success")}
+            onTestError={(msg) => showToast(msg, "error")}
+          />
         </SettingRow>
 
         {/* RETENTION */}
@@ -457,10 +447,12 @@ function GeneralTab({ authMode, version, onDirtyChange }: { authMode?: string; v
         {/* IMAGE UPDATES */}
         <SectionHeader label="Image Updates" />
         <SettingRow label="Auto-check" info="When enabled, Nestview automatically checks for container image updates once per day at the configured time.">
-          <Toggle
-            checked={imageEnabled}
-            onChange={(v) => { setEnabledDraft(v); saveAutoCheck(v); }}
-          />
+          <div className="flex justify-end">
+            <Toggle
+              checked={imageEnabled}
+              onChange={(v) => { setEnabledDraft(v); saveAutoCheck(v); }}
+            />
+          </div>
         </SettingRow>
         <SettingRow label="Daily check time" info="The time of day to run the automatic image update check. Uses 24-hour format in the configured timezone.">
           <div className="flex items-center gap-2">
@@ -484,14 +476,16 @@ function GeneralTab({ authMode, version, onDirtyChange }: { authMode?: string; v
         {/* ANALYTICS */}
         <SectionHeader label="Analytics" />
         <SettingRow
-          label="Anonymous usage data"
+          label="Analytics"
           info="Sends a daily ping with your install ID, version, and architecture. No personal data is collected."
         >
-          <Toggle
-            checked={analyticsStatus?.analytics_enabled ?? false}
-            onChange={(v) => toggleAnalytics(v)}
-            disabled={isTogglingAnalytics}
-          />
+          <div className="flex justify-end">
+            <Toggle
+              checked={analyticsStatus?.analytics_enabled ?? false}
+              onChange={(v) => toggleAnalytics(v)}
+              disabled={isTogglingAnalytics}
+            />
+          </div>
         </SettingRow>
 
         {/* AUTHENTICATION */}
