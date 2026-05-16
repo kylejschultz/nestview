@@ -1,5 +1,4 @@
 import React, { useState, useRef, useMemo, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
 import { useAuth } from "../AuthContext";
@@ -184,9 +183,8 @@ function SettingRow({ label, info, children, last }: { label: string; info?: str
   );
 }
 
-function GeneralTab({ authMode, version }: { authMode?: string; version?: string }) {
+function GeneralTab({ authMode, version, onDirtyChange }: { authMode?: string; version?: string; onDirtyChange: (dirty: boolean) => void }) {
   const queryClient = useQueryClient();
-  const navigate = useNavigate();
   const { isAuthenticated } = useAuth();
 
   const { data: general, isLoading } = useQuery<GeneralSettings>({
@@ -201,13 +199,14 @@ function GeneralTab({ authMode, version }: { authMode?: string; version?: string
     enabled: isAuthenticated,
   });
 
-  // General settings drafts
   const [webhookDraft, setWebhookDraft] = useState<string | null>(null);
   const [retentionDraft, setRetentionDraft] = useState<string | null>(null);
   const [ttlDraft, setTtlDraft] = useState<string | null>(null);
   const [netRetentionDraft, setNetRetentionDraft] = useState<number | null>(null);
   const [timezoneDraft, setTimezoneDraft] = useState<string | null>(null);
   const [sessionExpiryDraft, setSessionExpiryDraft] = useState<string | null>(null);
+  const [timeDraft, setTimeDraft] = useState<string | null>(null);
+  const [enabledDraft, setEnabledDraft] = useState<boolean | null>(null);
   const [currentPw, setCurrentPw] = useState("");
   const [newPw, setNewPw] = useState("");
   const [confirmPw, setConfirmPw] = useState("");
@@ -225,13 +224,9 @@ function GeneralTab({ authMode, version }: { authMode?: string; version?: string
     refetchOnReconnect: false,
   });
 
-  // Image check drafts
   const serverEnabled = (allSettings?.image_check_enabled ?? "true") !== "false";
   const serverTime = allSettings?.image_check_time ?? "03:00";
-  const [enabledDraft, setEnabledDraft] = useState<boolean | null>(null);
-  const [timeDraft, setTimeDraft] = useState<string | null>(null);
 
-  // Computed values
   const webhook = webhookDraft ?? general?.discord_webhook_url ?? "";
   const retention = retentionDraft ?? String(general?.log_retention_days ?? 7);
   const ttl = ttlDraft ?? String(general?.exited_container_ttl_seconds ?? 300);
@@ -242,39 +237,70 @@ function GeneralTab({ authMode, version }: { authMode?: string; version?: string
 
   const { toastState, showToast, dismissToast } = useToast();
 
-  const { mutate: save, isPending: isSaving } = useMutation({
-    mutationFn: (body: Partial<GeneralSettings>) => api.settings.saveGeneral(body),
-    onSuccess: (_, variables) => {
+  const retentionNum = parseInt(retention, 10);
+  const retentionValid = !isNaN(retentionNum) && retentionNum >= 1 && retentionNum <= 365;
+  const ttlNum = parseInt(ttl, 10);
+  const ttlValid = !isNaN(ttlNum) && ttlNum >= 0;
+  const selectedMode = authModeDraft ?? authMode ?? "password";
+  const modeHasDraft = authModeDraft !== null && authModeDraft !== authMode;
+  const sessionExpiryApplies = selectedMode === "password" && authMode === "password";
+
+  const isDirty =
+    webhookDraft !== null ||
+    retentionDraft !== null ||
+    ttlDraft !== null ||
+    netRetentionDraft !== null ||
+    timezoneDraft !== null ||
+    timeDraft !== null ||
+    (sessionExpiryDraft !== null && sessionExpiryApplies);
+
+  useEffect(() => { onDirtyChange(isDirty); }, [isDirty, onDirtyChange]);
+
+  useEffect(() => {
+    if (!isDirty) return;
+    const handler = (e: BeforeUnloadEvent) => { e.preventDefault(); };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [isDirty]);
+
+  const { mutate: saveAll, isPending: isSavingAll } = useMutation({
+    mutationFn: async () => {
+      const generalBody: Partial<GeneralSettings> = {};
+      if (webhookDraft !== null) generalBody.discord_webhook_url = webhook;
+      if (retentionDraft !== null && retentionValid) generalBody.log_retention_days = retentionNum;
+      if (ttlDraft !== null && ttlValid) generalBody.exited_container_ttl_seconds = ttlNum;
+      if (netRetentionDraft !== null) generalBody.network_history_retention_hours = netRetention;
+      if (timezoneDraft !== null) generalBody.timezone = timezone;
+
+      const rawBody: Record<string, string> = {};
+      if (timeDraft !== null) rawBody.image_check_time = imageTime;
+      if (sessionExpiryDraft !== null && sessionExpiryApplies) rawBody.session_expiry_days = sessionExpiryDraft;
+
+      const calls: Promise<unknown>[] = [];
+      if (Object.keys(generalBody).length > 0) calls.push(api.settings.saveGeneral(generalBody));
+      if (Object.keys(rawBody).length > 0) calls.push(api.settings.save(rawBody));
+      await Promise.all(calls);
+    },
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["settings-general"] });
-      if ("discord_webhook_url" in variables) setWebhookDraft(null);
-      if ("log_retention_days" in variables || "exited_container_ttl_seconds" in variables) {
-        setRetentionDraft(null);
-        setTtlDraft(null);
-      }
-      if ("network_history_retention_hours" in variables) setNetRetentionDraft(null);
-      if ("timezone" in variables) setTimezoneDraft(null);
+      queryClient.invalidateQueries({ queryKey: ["settings-all"] });
+      setWebhookDraft(null);
+      setRetentionDraft(null);
+      setTtlDraft(null);
+      setNetRetentionDraft(null);
+      setTimezoneDraft(null);
+      setTimeDraft(null);
+      setSessionExpiryDraft(null);
       showToast("Settings saved", "success");
     },
     onError: (err: Error) => showToast(err.message, "error"),
   });
 
-  const { mutate: saveImage, isPending: isSavingImage } = useMutation({
-    mutationFn: (body: Record<string, string>) => api.settings.save(body),
+  const { mutate: saveAutoCheck } = useMutation({
+    mutationFn: (enabled: boolean) => api.settings.save({ image_check_enabled: enabled ? "true" : "false" }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["settings-all"] });
       setEnabledDraft(null);
-      setTimeDraft(null);
-      showToast("Settings saved", "success");
-    },
-    onError: (err: Error) => showToast(err.message, "error"),
-  });
-
-  const { mutate: saveRaw, isPending: isSavingRaw } = useMutation({
-    mutationFn: (body: Record<string, string>) => api.settings.save(body),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["settings-all"] });
-      setSessionExpiryDraft(null);
-      showToast("Settings saved", "success");
     },
     onError: (err: Error) => showToast(err.message, "error"),
   });
@@ -337,16 +363,8 @@ function GeneralTab({ authMode, version }: { authMode?: string; version?: string
   });
 
   if (isLoading || isLoadingAll) {
-    return <div className="py-12 text-center text-slate-500">Loading…</div>;
+    return <div className="py-12 text-center text-slate-500">Loading...</div>;
   }
-
-  const retentionNum = parseInt(retention, 10);
-  const retentionValid = !isNaN(retentionNum) && retentionNum >= 1 && retentionNum <= 365;
-  const ttlNum = parseInt(ttl, 10);
-  const ttlValid = !isNaN(ttlNum) && ttlNum >= 0;
-  const imageHasDraft = enabledDraft !== null || timeDraft !== null;
-  const selectedMode = authModeDraft ?? authMode ?? "password";
-  const modeHasDraft = authModeDraft !== null && authModeDraft !== authMode;
 
   return (
     <div className="space-y-6">
@@ -365,23 +383,22 @@ function GeneralTab({ authMode, version }: { authMode?: string; version?: string
         {/* DISCORD */}
         <SectionHeader label="Discord" />
         <SettingRow label="Webhook URL" info="The Discord webhook URL used to send container event alerts. Leave blank to disable Discord notifications.">
-          <div className="space-y-2">
+          <div className="space-y-1.5">
             <WebhookField
               value={webhook}
               onChange={setWebhookDraft}
-              disabled={isSaving}
+              disabled={isSavingAll}
               onTestSuccess={() => showToast("Webhook test successful", "success")}
               onTestError={(msg) => showToast(msg, "error")}
             />
-            <div className="flex items-center gap-2">
-              <button
-                disabled={isSaving || webhookDraft === null}
-                onClick={() => save({ discord_webhook_url: webhook })}
-                className="px-3 py-1.5 text-xs rounded-lg bg-accent hover:bg-accent-hover text-white font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                Save
-              </button>
-            </div>
+            <a
+              href="https://support.discord.com/hc/articles/228383668"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs text-accent/60 hover:text-accent transition-colors"
+            >
+              How do I get this?
+            </a>
           </div>
         </SettingRow>
 
@@ -395,134 +412,80 @@ function GeneralTab({ authMode, version }: { authMode?: string; version?: string
               max={365}
               value={retention}
               onChange={(e) => setRetentionDraft(e.target.value)}
-              className="w-20 bg-surface-3 border border-border rounded-lg px-3 py-1.5 text-sm text-slate-200 focus:outline-none focus:border-accent"
+              disabled={isSavingAll}
+              className="w-20 bg-surface-3 border border-border rounded-lg px-3 py-1.5 text-sm text-slate-200 focus:outline-none focus:border-accent disabled:opacity-40 disabled:cursor-not-allowed"
             />
             <span className="text-sm text-slate-500">days</span>
           </div>
         </SettingRow>
         <SettingRow label="Exited container TTL" info="How long an exited container remains visible in the dashboard before being removed. Default is 300 seconds (5 minutes). Set to 0 to disable.">
-          <div className="space-y-2">
-            <div className="flex items-center gap-2">
-              <input
-                type="number"
-                min={0}
-                step={1}
-                value={ttl}
-                onChange={(e) => setTtlDraft(e.target.value)}
-                className="w-24 bg-surface-3 border border-border rounded-lg px-3 py-1.5 text-sm text-slate-200 focus:outline-none focus:border-accent"
-              />
-              <span className="text-sm text-slate-500">seconds</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <button
-                disabled={isSaving || (retentionDraft === null && ttlDraft === null) || !retentionValid || !ttlValid}
-                onClick={() => {
-                  const body: Partial<GeneralSettings> = {};
-                  if (retentionDraft !== null) body.log_retention_days = retentionNum;
-                  if (ttlDraft !== null) body.exited_container_ttl_seconds = ttlNum;
-                  save(body);
-                }}
-                className="px-3 py-1.5 text-xs rounded-lg bg-accent hover:bg-accent-hover text-white font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                Save
-              </button>
-            </div>
+          <div className="flex items-center gap-2">
+            <input
+              type="number"
+              min={0}
+              step={1}
+              value={ttl}
+              onChange={(e) => setTtlDraft(e.target.value)}
+              disabled={isSavingAll}
+              className="w-24 bg-surface-3 border border-border rounded-lg px-3 py-1.5 text-sm text-slate-200 focus:outline-none focus:border-accent disabled:opacity-40 disabled:cursor-not-allowed"
+            />
+            <span className="text-sm text-slate-500">seconds</span>
           </div>
         </SettingRow>
         <SettingRow label="History retention" info="How many hours of network I/O and CPU/memory history to retain per container. Affects the time range shown in the detail panel charts. Default is 6 hours.">
-          <div className="space-y-2">
-            <div className="flex items-center gap-3">
-              <input
-                type="range"
-                min={1}
-                max={48}
-                step={1}
-                value={netRetention}
-                onChange={(e) => setNetRetentionDraft(parseInt(e.target.value, 10))}
-                disabled={isSaving}
-                className="w-36 accent-accent disabled:opacity-40 disabled:cursor-not-allowed"
-              />
-              <span className="text-sm text-slate-400 w-16">{netRetention} {netRetention === 1 ? "hour" : "hours"}</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <button
-                disabled={isSaving || netRetentionDraft === null}
-                onClick={() => save({ network_history_retention_hours: netRetention })}
-                className="px-3 py-1.5 text-xs rounded-lg bg-accent hover:bg-accent-hover text-white font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                Save
-              </button>
-            </div>
+          <div className="flex items-center gap-3">
+            <input
+              type="range"
+              min={1}
+              max={48}
+              step={1}
+              value={netRetention}
+              onChange={(e) => setNetRetentionDraft(parseInt(e.target.value, 10))}
+              disabled={isSavingAll}
+              className="w-36 accent-accent disabled:opacity-40 disabled:cursor-not-allowed"
+            />
+            <span className="text-sm text-slate-400 w-16">{netRetention} {netRetention === 1 ? "hour" : "hours"}</span>
           </div>
         </SettingRow>
 
         {/* TIMEZONE */}
         <SectionHeader label="Timezone" />
-        <SettingRow label="Timezone" info="The timezone used for displaying log and event timestamps in the UI. Does not affect how data is stored." last>
-          <div className="space-y-2">
-            <TimezoneSelect value={timezone} onChange={setTimezoneDraft} disabled={isSaving} />
-            <div className="flex items-center gap-2">
-              <button
-                disabled={isSaving || timezoneDraft === null}
-                onClick={() => save({ timezone })}
-                className="px-3 py-1.5 text-xs rounded-lg bg-accent hover:bg-accent-hover text-white font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                Save
-              </button>
-            </div>
-          </div>
+        <SettingRow label="Timezone" info="The timezone used for displaying log and event timestamps in the UI. Does not affect how data is stored.">
+          <TimezoneSelect value={timezone} onChange={setTimezoneDraft} disabled={isSavingAll} />
         </SettingRow>
 
         {/* IMAGE UPDATES */}
         <SectionHeader label="Image Updates" />
         <SettingRow label="Auto-check" info="When enabled, Nestview automatically checks for container image updates once per day at the configured time.">
-          <div className="flex items-center">
-            <Toggle
-              checked={imageEnabled}
-              onChange={(v) => setEnabledDraft(v)}
-              disabled={isSavingImage}
-            />
-          </div>
+          <Toggle
+            checked={imageEnabled}
+            onChange={(v) => { setEnabledDraft(v); saveAutoCheck(v); }}
+          />
         </SettingRow>
-        <SettingRow label="Daily check time" info="The time of day to run the automatic image update check. Uses 24-hour format in the configured timezone." last>
-          <div className="space-y-2">
+        <SettingRow label="Daily check time" info="The time of day to run the automatic image update check. Uses 24-hour format in the configured timezone.">
+          <div className="flex items-center gap-2">
             <input
               type="time"
               value={imageTime}
               onChange={(e) => setTimeDraft(e.target.value)}
-              disabled={isSavingImage || !imageEnabled}
+              disabled={isSavingAll || !imageEnabled}
               className="bg-surface-3 border border-border rounded-lg px-3 py-1.5 text-sm text-slate-200 focus:outline-none focus:border-accent disabled:opacity-40 disabled:cursor-not-allowed"
             />
-            <div className="flex flex-wrap items-center gap-2">
-              <button
-                disabled={isSavingImage || !imageHasDraft}
-                onClick={() => {
-                  const body: Record<string, string> = {};
-                  if (enabledDraft !== null) body.image_check_enabled = enabledDraft ? "true" : "false";
-                  if (timeDraft !== null) body.image_check_time = imageTime;
-                  saveImage(body);
-                }}
-                className="px-3 py-1.5 text-xs rounded-lg bg-accent hover:bg-accent-hover text-white font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                Save
-              </button>
-              <button
-                disabled={isChecking}
-                onClick={() => checkNow()}
-                className="px-3 py-1.5 text-xs rounded-lg border border-border text-slate-400 hover:text-slate-200 hover:border-slate-500 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                {isChecking ? "Checking…" : "Check now"}
-              </button>
-            </div>
+            <button
+              disabled={isChecking}
+              onClick={() => checkNow()}
+              className="px-3 py-1.5 text-xs rounded-lg border border-border text-slate-400 hover:text-slate-200 hover:border-slate-500 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              {isChecking ? "Checking..." : "Check now"}
+            </button>
           </div>
         </SettingRow>
 
         {/* ANALYTICS */}
         <SectionHeader label="Analytics" />
         <SettingRow
-          label="Analytics"
+          label="Anonymous usage data"
           info="Sends a daily ping with your install ID, version, and architecture. No personal data is collected."
-          last
         >
           <Toggle
             checked={analyticsStatus?.analytics_enabled ?? false}
@@ -536,7 +499,7 @@ function GeneralTab({ authMode, version }: { authMode?: string; version?: string
         <SettingRow
           label="Auth mode"
           info="Controls how users authenticate with Nestview. Switching to No Authentication removes all login requirements and wipes stored credentials."
-          last={!(selectedMode === "password" && authMode === "password")}
+          last={!sessionExpiryApplies}
         >
           <div className="space-y-3">
             <select
@@ -549,7 +512,7 @@ function GeneralTab({ authMode, version }: { authMode?: string; version?: string
               <option value="none">No Authentication</option>
             </select>
 
-            {/* password → no auth: confirmation checkbox */}
+            {/* password -> no auth: confirmation checkbox */}
             {selectedMode === "none" && modeHasDraft && (
               <>
                 <label className="flex items-start gap-2 cursor-pointer select-none">
@@ -566,12 +529,12 @@ function GeneralTab({ authMode, version }: { authMode?: string; version?: string
                   onClick={() => saveAuthMode({ auth_mode: "none" })}
                   className="px-3 py-1.5 text-xs rounded-lg bg-accent hover:bg-accent-hover text-white font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                 >
-                  {isSavingAuthMode ? "Saving…" : "Save"}
+                  {isSavingAuthMode ? "Saving..." : "Disable password auth"}
                 </button>
               </>
             )}
 
-            {/* no auth → password: set new credentials (no current password required) */}
+            {/* no auth -> password: set new credentials (no current password required) */}
             {selectedMode === "password" && authMode === "none" && (
               <>
                 <div className="space-y-1.5">
@@ -603,44 +566,33 @@ function GeneralTab({ authMode, version }: { authMode?: string; version?: string
                   onClick={() => saveAuthMode({ auth_mode: "password", username: "admin", password: newPw })}
                   className="px-3 py-1.5 text-xs rounded-lg bg-accent hover:bg-accent-hover text-white font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                 >
-                  {isSavingAuthMode ? "Saving…" : "Enable password auth"}
+                  {isSavingAuthMode ? "Saving..." : "Enable password auth"}
                 </button>
               </>
             )}
           </div>
         </SettingRow>
 
-        {/* Session expiry + change password — only when already in password mode */}
-        {selectedMode === "password" && authMode === "password" && (
+        {/* Session expiry + change password - only when already in password mode */}
+        {sessionExpiryApplies && (
           <>
             <SettingRow label="Session expiry" info="How long a login session stays active before requiring re-authentication. Changes apply to new logins only (existing sessions are unaffected).">
-              <div className="space-y-2">
-                <div className="flex items-center gap-2">
-                  <input
-                    type="number"
-                    min={1}
-                    max={365}
-                    value={sessionExpiryDraft ?? (allSettings?.session_expiry_days ?? "7")}
-                    onChange={(e) => setSessionExpiryDraft(e.target.value)}
-                    className="w-20 bg-surface-3 border border-border rounded-lg px-3 py-1.5 text-sm text-slate-200 focus:outline-none focus:border-accent"
-                  />
-                  <span className="text-sm text-slate-500">days</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    disabled={isSavingRaw || sessionExpiryDraft === null}
-                    onClick={() => {
-                      if (sessionExpiryDraft !== null) {
-                        saveRaw({ session_expiry_days: sessionExpiryDraft });
-                      }
-                    }}
-                    className="px-3 py-1.5 text-xs rounded-lg bg-accent hover:bg-accent-hover text-white font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                  >
-                    Save
-                  </button>
-                </div>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  min={1}
+                  max={365}
+                  value={sessionExpiryDraft ?? (allSettings?.session_expiry_days ?? "7")}
+                  onChange={(e) => setSessionExpiryDraft(e.target.value)}
+                  disabled={isSavingAll}
+                  className="w-20 bg-surface-3 border border-border rounded-lg px-3 py-1.5 text-sm text-slate-200 focus:outline-none focus:border-accent disabled:opacity-40 disabled:cursor-not-allowed"
+                />
+                <span className="text-sm text-slate-500">days</span>
               </div>
             </SettingRow>
+            <div className="px-5 py-2 border-b border-border bg-surface-3/20">
+              <span className="text-xs font-medium uppercase tracking-widest text-slate-600">Change password</span>
+            </div>
             <SettingRow label="Change password" last>
               <div className="space-y-2">
                 <div className="space-y-1.5">
@@ -684,7 +636,7 @@ function GeneralTab({ authMode, version }: { authMode?: string; version?: string
                     }}
                     className="px-3 py-1.5 text-xs rounded-lg bg-accent hover:bg-accent-hover text-white font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                   >
-                    {isChangingPw ? "Saving…" : "Change password"}
+                    {isChangingPw ? "Saving..." : "Change password"}
                   </button>
                 </div>
                 {pwError && pwError !== "Current password is incorrect." && (
@@ -695,6 +647,20 @@ function GeneralTab({ authMode, version }: { authMode?: string; version?: string
           </>
         )}
 
+      </div>
+
+      {/* Save bar */}
+      <div className="sticky bottom-0 border-t border-border bg-surface-2/95 backdrop-blur-sm px-5 py-3 flex items-center justify-between">
+        <span className={`text-xs ${isDirty ? "text-amber-400" : "text-slate-600"}`}>
+          {isDirty ? "You have unsaved changes." : "No unsaved changes."}
+        </span>
+        <button
+          disabled={!isDirty || isSavingAll || !retentionValid || !ttlValid}
+          onClick={() => saveAll()}
+          className="px-4 py-1.5 text-sm rounded-lg bg-accent hover:bg-accent-hover text-white font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          {isSavingAll ? "Saving..." : "Save"}
+        </button>
       </div>
 
       <AboutSection version={version} />
@@ -1023,10 +989,15 @@ type Tab = "general" | "notifications";
 export default function Settings({ authMode }: { authMode?: string }) {
   const [activeTab, setActiveTab] = useState<Tab>("general");
   const [notifDirty, setNotifDirty] = useState(false);
+  const [generalDirty, setGeneralDirty] = useState(false);
   const { isAuthenticated } = useAuth();
 
   function handleTabChange(tab: Tab) {
-    if (activeTab === "notifications" && notifDirty && tab !== "notifications") {
+    if (tab === activeTab) return;
+    if (activeTab === "notifications" && notifDirty) {
+      if (!window.confirm("You have unsaved changes. Leave without saving?")) return;
+    }
+    if (activeTab === "general" && generalDirty) {
       if (!window.confirm("You have unsaved changes. Leave without saving?")) return;
     }
     setActiveTab(tab);
@@ -1067,7 +1038,7 @@ export default function Settings({ authMode }: { authMode?: string }) {
         ))}
       </div>
 
-      {activeTab === "general" ? <GeneralTab authMode={authMode} version={versionData?.version} /> : <NotificationsTab onDirtyChange={setNotifDirty} />}
+      {activeTab === "general" ? <GeneralTab authMode={authMode} version={versionData?.version} onDirtyChange={setGeneralDirty} /> : <NotificationsTab onDirtyChange={setNotifDirty} />}
     </div>
   );
 }
