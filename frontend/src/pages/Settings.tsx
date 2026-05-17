@@ -163,25 +163,8 @@ function AboutSection({ version }: { version?: string }) {
 
 // ── General tab ───────────────────────────────────────────────────────────────
 
-function SectionHeader({ label }: { label: string }) {
-  return (
-    <div className="px-5 py-2 border-b border-border bg-surface-3/40">
-      <span className="text-xs font-semibold uppercase tracking-widest text-slate-500">{label}</span>
-    </div>
-  );
-}
-
-function SettingRow({ label, info, children, last }: { label: string; info?: string; children: React.ReactNode; last?: boolean }) {
-  return (
-    <div className={`flex items-start gap-4 px-5 py-3 ${last ? "" : "border-b border-border"}`}>
-      <div className="w-44 shrink-0 flex items-center gap-1.5 pt-0.5">
-        <span className="text-sm text-slate-400">{label}</span>
-        {info && <InfoPopover content={info} />}
-      </div>
-      <div className="flex-1 min-w-0">{children}</div>
-    </div>
-  );
-}
+const inputBase = "bg-surface-3 border border-border rounded-lg px-3 py-1.5 text-sm text-slate-200 focus:outline-none focus:border-accent disabled:opacity-40 disabled:cursor-not-allowed";
+const narrowInput = `${inputBase} w-12 text-right px-2`;
 
 function GeneralTab({ authMode, version, onDirtyChange }: { authMode?: string; version?: string; onDirtyChange: (dirty: boolean) => void }) {
   const queryClient = useQueryClient();
@@ -201,7 +184,6 @@ function GeneralTab({ authMode, version, onDirtyChange }: { authMode?: string; v
 
   const [webhookDraft, setWebhookDraft] = useState<string | null>(null);
   const [retentionDraft, setRetentionDraft] = useState<string | null>(null);
-  const [ttlDraft, setTtlDraft] = useState<string | null>(null);
   const [netRetentionDraft, setNetRetentionDraft] = useState<number | null>(null);
   const [timezoneDraft, setTimezoneDraft] = useState<string | null>(null);
   const [sessionExpiryDraft, setSessionExpiryDraft] = useState<string | null>(null);
@@ -229,7 +211,6 @@ function GeneralTab({ authMode, version, onDirtyChange }: { authMode?: string; v
 
   const webhook = webhookDraft ?? general?.discord_webhook_url ?? "";
   const retention = retentionDraft ?? String(general?.log_retention_days ?? 7);
-  const ttl = ttlDraft ?? String(general?.exited_container_ttl_seconds ?? 300);
   const netRetention = netRetentionDraft ?? general?.network_history_retention_hours ?? 6;
   const timezone = timezoneDraft ?? general?.timezone ?? "UTC";
   const imageEnabled = enabledDraft ?? serverEnabled;
@@ -239,8 +220,7 @@ function GeneralTab({ authMode, version, onDirtyChange }: { authMode?: string; v
 
   const retentionNum = parseInt(retention, 10);
   const retentionValid = !isNaN(retentionNum) && retentionNum >= 1 && retentionNum <= 365;
-  const ttlNum = parseInt(ttl, 10);
-  const ttlValid = !isNaN(ttlNum) && ttlNum >= 0;
+  const netRetentionValid = !isNaN(netRetention) && netRetention >= 1 && netRetention <= 48;
   const selectedMode = authModeDraft ?? authMode ?? "password";
   const modeHasDraft = authModeDraft !== null && authModeDraft !== authMode;
   const sessionExpiryApplies = selectedMode === "password" && authMode === "password";
@@ -248,7 +228,6 @@ function GeneralTab({ authMode, version, onDirtyChange }: { authMode?: string; v
   const isDirty =
     webhookDraft !== null ||
     retentionDraft !== null ||
-    ttlDraft !== null ||
     netRetentionDraft !== null ||
     timezoneDraft !== null ||
     timeDraft !== null ||
@@ -268,8 +247,7 @@ function GeneralTab({ authMode, version, onDirtyChange }: { authMode?: string; v
       const generalBody: Partial<GeneralSettings> = {};
       if (webhookDraft !== null) generalBody.discord_webhook_url = webhook;
       if (retentionDraft !== null && retentionValid) generalBody.log_retention_days = retentionNum;
-      if (ttlDraft !== null && ttlValid) generalBody.exited_container_ttl_seconds = ttlNum;
-      if (netRetentionDraft !== null) generalBody.network_history_retention_hours = netRetention;
+      if (netRetentionDraft !== null && netRetentionValid) generalBody.network_history_retention_hours = netRetention;
       if (timezoneDraft !== null) generalBody.timezone = timezone;
 
       const rawBody: Record<string, string> = {};
@@ -286,7 +264,6 @@ function GeneralTab({ authMode, version, onDirtyChange }: { authMode?: string; v
       queryClient.invalidateQueries({ queryKey: ["settings-all"] });
       setWebhookDraft(null);
       setRetentionDraft(null);
-      setTtlDraft(null);
       setNetRetentionDraft(null);
       setTimezoneDraft(null);
       setTimeDraft(null);
@@ -334,8 +311,8 @@ function GeneralTab({ authMode, version, onDirtyChange }: { authMode?: string; v
       await api.auth.patchMode(body);
       return body.auth_mode;
     },
-    onSuccess: async (authMode) => {
-      if (authMode === "none") {
+    onSuccess: async (mode) => {
+      if (mode === "none") {
         queryClient.invalidateQueries({ queryKey: ["auth-status"] });
         setAuthModeDraft(null);
         setNoAuthConfirmed(false);
@@ -367,7 +344,7 @@ function GeneralTab({ authMode, version, onDirtyChange }: { authMode?: string; v
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-2">
       {toastState && (
         <Toast
           key={toastState.id}
@@ -378,200 +355,203 @@ function GeneralTab({ authMode, version, onDirtyChange }: { authMode?: string; v
         />
       )}
 
-      <div className="card overflow-hidden">
-
-        {/* DISCORD */}
-        <SectionHeader label="Discord" />
-        <SettingRow label="Webhook URL" info="The Discord webhook URL used to send container event alerts. Leave blank to disable Discord notifications.">
-          <WebhookField
-            value={webhook}
-            onChange={setWebhookDraft}
-            disabled={isSavingAll}
-            onTestSuccess={() => showToast("Webhook test successful", "success")}
-            onTestError={(msg) => showToast(msg, "error")}
-          />
-        </SettingRow>
-
-        {/* RETENTION */}
-        <SectionHeader label="Retention" />
-        <SettingRow label="Log retention" info="How many days of container log history to keep. Older logs are pruned automatically. Default is 7 days.">
-          <div className="flex items-center gap-2">
-            <input
-              type="number"
-              min={1}
-              max={365}
-              value={retention}
-              onChange={(e) => setRetentionDraft(e.target.value)}
+      {/* Row 1: Discord Webhook URL - full width */}
+      <div className="bg-surface-2 border border-border rounded-xl overflow-hidden">
+        <div className="flex items-start gap-4 px-4 py-2.5">
+          <div className="flex items-center gap-1.5 pt-1 shrink-0">
+            <span className="text-sm text-slate-300">Discord Webhook URL</span>
+            <InfoPopover content="The Discord webhook URL used to send container event alerts. Leave blank to disable Discord notifications." />
+          </div>
+          <div className="flex-1 min-w-0">
+            <WebhookField
+              value={webhook}
+              onChange={setWebhookDraft}
               disabled={isSavingAll}
-              className="w-20 bg-surface-3 border border-border rounded-lg px-3 py-1.5 text-sm text-slate-200 focus:outline-none focus:border-accent disabled:opacity-40 disabled:cursor-not-allowed"
-            />
-            <span className="text-sm text-slate-500">days</span>
-          </div>
-        </SettingRow>
-        <SettingRow label="Exited container TTL" info="How long an exited container remains visible in the dashboard before being removed. Default is 300 seconds (5 minutes). Set to 0 to disable.">
-          <div className="flex items-center gap-2">
-            <input
-              type="number"
-              min={0}
-              step={1}
-              value={ttl}
-              onChange={(e) => setTtlDraft(e.target.value)}
-              disabled={isSavingAll}
-              className="w-24 bg-surface-3 border border-border rounded-lg px-3 py-1.5 text-sm text-slate-200 focus:outline-none focus:border-accent disabled:opacity-40 disabled:cursor-not-allowed"
-            />
-            <span className="text-sm text-slate-500">seconds</span>
-          </div>
-        </SettingRow>
-        <SettingRow label="History retention" info="How many hours of network I/O and CPU/memory history to retain per container. Affects the time range shown in the detail panel charts. Default is 6 hours.">
-          <div className="flex items-center gap-3">
-            <input
-              type="range"
-              min={1}
-              max={48}
-              step={1}
-              value={netRetention}
-              onChange={(e) => setNetRetentionDraft(parseInt(e.target.value, 10))}
-              disabled={isSavingAll}
-              className="w-36 accent-accent disabled:opacity-40 disabled:cursor-not-allowed"
-            />
-            <span className="text-sm text-slate-400 w-16">{netRetention} {netRetention === 1 ? "hour" : "hours"}</span>
-          </div>
-        </SettingRow>
-
-        {/* TIMEZONE */}
-        <SectionHeader label="Timezone" />
-        <SettingRow label="Timezone" info="The timezone used for displaying log and event timestamps in the UI. Does not affect how data is stored.">
-          <TimezoneSelect value={timezone} onChange={setTimezoneDraft} disabled={isSavingAll} />
-        </SettingRow>
-
-        {/* IMAGE UPDATES */}
-        <SectionHeader label="Image Updates" />
-        <SettingRow label="Auto-check" info="When enabled, Nestview automatically checks for container image updates once per day at the configured time.">
-          <div className="flex justify-end">
-            <Toggle
-              checked={imageEnabled}
-              onChange={(v) => { setEnabledDraft(v); saveAutoCheck(v); }}
+              onTestSuccess={() => showToast("Webhook test successful", "success")}
+              onTestError={(msg) => showToast(msg, "error")}
             />
           </div>
-        </SettingRow>
-        <SettingRow label="Daily check time" info="The time of day to run the automatic image update check. Uses 24-hour format in the configured timezone.">
-          <div className="flex items-center gap-2">
-            <input
-              type="time"
-              value={imageTime}
-              onChange={(e) => setTimeDraft(e.target.value)}
-              disabled={isSavingAll || !imageEnabled}
-              className="bg-surface-3 border border-border rounded-lg px-3 py-1.5 text-sm text-slate-200 focus:outline-none focus:border-accent disabled:opacity-40 disabled:cursor-not-allowed"
-            />
-            <button
-              disabled={isChecking}
-              onClick={() => checkNow()}
-              className="px-3 py-1.5 text-xs rounded-lg border border-border text-slate-400 hover:text-slate-200 hover:border-slate-500 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              {isChecking ? "Checking..." : "Check now"}
-            </button>
+        </div>
+      </div>
+
+      {/* Row 2: Retention (left) + Display/Analytics/Image Updates (right) */}
+      <div className="grid grid-cols-2 gap-2">
+
+        {/* Retention card */}
+        <div className="bg-surface-2 border border-border rounded-xl overflow-hidden">
+          <div className="flex items-center justify-between px-4 py-2.5 border-b border-border">
+            <span className="text-sm text-slate-300">Log Retention</span>
+            <div className="flex items-center gap-1">
+              <input
+                type="number"
+                min={1}
+                max={365}
+                value={retention}
+                onChange={(e) => setRetentionDraft(e.target.value)}
+                disabled={isSavingAll}
+                className={narrowInput}
+              />
+              <span className="w-14 text-slate-500 text-sm">days</span>
+            </div>
           </div>
-        </SettingRow>
-
-        {/* ANALYTICS */}
-        <SectionHeader label="Analytics" />
-        <SettingRow
-          label="Analytics"
-          info="Sends a daily ping with your install ID, version, and architecture. No personal data is collected."
-        >
-          <div className="flex justify-end">
-            <Toggle
-              checked={analyticsStatus?.analytics_enabled ?? false}
-              onChange={(v) => toggleAnalytics(v)}
-              disabled={isTogglingAnalytics}
-            />
+          <div className="flex items-center justify-between px-4 py-2.5">
+            <span className="text-sm text-slate-300">Metrics History</span>
+            <div className="flex items-center gap-1">
+              <input
+                type="number"
+                min={1}
+                max={48}
+                step={1}
+                value={netRetention}
+                onChange={(e) => setNetRetentionDraft(parseInt(e.target.value, 10))}
+                disabled={isSavingAll}
+                className={narrowInput}
+              />
+              <span className="w-14 text-slate-500 text-sm">hours</span>
+            </div>
           </div>
-        </SettingRow>
+        </div>
 
-        {/* AUTHENTICATION */}
-        <SectionHeader label="Authentication" />
-        <SettingRow
-          label="Auth mode"
-          info="Controls how users authenticate with Nestview. Switching to No Authentication removes all login requirements and wipes stored credentials."
-          last={!sessionExpiryApplies}
-        >
-          <div className="space-y-3">
-            <select
-              value={selectedMode}
-              onChange={(e) => { setAuthModeDraft(e.target.value as "password" | "none"); setNoAuthConfirmed(false); setNewPw(""); setConfirmPw(""); }}
-              disabled={isSavingAuthMode}
-              className="bg-surface-3 border border-border rounded-lg px-3 py-1.5 text-sm text-slate-200 focus:outline-none focus:border-accent disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              <option value="password">Password Authentication</option>
-              <option value="none">No Authentication</option>
-            </select>
+        {/* Right column: three stacked cards */}
+        <div className="flex flex-col gap-2">
 
-            {/* password -> no auth: confirmation checkbox */}
-            {selectedMode === "none" && modeHasDraft && (
-              <>
-                <label className="flex items-start gap-2 cursor-pointer select-none">
-                  <input
-                    type="checkbox"
-                    checked={noAuthConfirmed}
-                    onChange={(e) => setNoAuthConfirmed(e.target.checked)}
-                    className="mt-0.5 accent-accent"
-                  />
-                  <span className="text-xs text-slate-400">I understand this will remove all authentication requirements.</span>
-                </label>
-                <button
-                  disabled={isSavingAuthMode || !noAuthConfirmed}
-                  onClick={() => saveAuthMode({ auth_mode: "none" })}
-                  className="px-3 py-1.5 text-xs rounded-lg bg-accent hover:bg-accent-hover text-white font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                >
-                  {isSavingAuthMode ? "Saving..." : "Disable password auth"}
-                </button>
-              </>
-            )}
-
-            {/* no auth -> password: set new credentials (no current password required) */}
-            {selectedMode === "password" && authMode === "none" && (
-              <>
-                <div className="space-y-1.5">
-                  <input
-                    type="password"
-                    placeholder="New password (min 8 characters)"
-                    value={newPw}
-                    onChange={(e) => setNewPw(e.target.value)}
-                    disabled={isSavingAuthMode}
-                    className="w-full max-w-xs bg-surface-3 border border-border rounded-lg px-3 py-1.5 text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:border-accent disabled:opacity-40"
-                  />
-                  <input
-                    type="password"
-                    placeholder="Confirm new password"
-                    value={confirmPw}
-                    onChange={(e) => setConfirmPw(e.target.value)}
-                    disabled={isSavingAuthMode}
-                    className="w-full max-w-xs bg-surface-3 border border-border rounded-lg px-3 py-1.5 text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:border-accent disabled:opacity-40"
-                  />
-                  {newPw.length > 0 && newPw.length < 8 && (
-                    <p className="text-xs text-red-400">Password must be at least 8 characters.</p>
-                  )}
-                  {confirmPw && newPw !== confirmPw && (
-                    <p className="text-xs text-red-400">Passwords do not match.</p>
-                  )}
-                </div>
-                <button
-                  disabled={isSavingAuthMode || !newPw || newPw.length < 8 || newPw !== confirmPw}
-                  onClick={() => saveAuthMode({ auth_mode: "password", username: "admin", password: newPw })}
-                  className="px-3 py-1.5 text-xs rounded-lg bg-accent hover:bg-accent-hover text-white font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                >
-                  {isSavingAuthMode ? "Saving..." : "Enable password auth"}
-                </button>
-              </>
-            )}
+          {/* Display Timezone */}
+          <div className="bg-surface-2 border border-border rounded-xl overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-2.5">
+              <span className="text-sm text-slate-300">Display Timezone</span>
+              <TimezoneSelect value={timezone} onChange={setTimezoneDraft} disabled={isSavingAll} />
+            </div>
           </div>
-        </SettingRow>
 
-        {/* Session expiry + change password - only when already in password mode */}
-        {sessionExpiryApplies && (
-          <>
-            <SettingRow label="Session expiry" info="How long a login session stays active before requiring re-authentication. Changes apply to new logins only (existing sessions are unaffected).">
+          {/* Anonymous Analytics */}
+          <div className="bg-surface-2 border border-border rounded-xl overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-2.5">
+              <span className="text-sm text-slate-300">Anonymous Analytics</span>
+              <Toggle
+                checked={analyticsStatus?.analytics_enabled ?? false}
+                onChange={(v) => toggleAnalytics(v)}
+                disabled={isTogglingAnalytics}
+              />
+            </div>
+          </div>
+
+          {/* Image Updates */}
+          <div className="bg-surface-2 border border-border rounded-xl overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-2.5 border-b border-border">
+              <span className="text-sm text-slate-300">Auto-Check for Updates</span>
+              <Toggle
+                checked={imageEnabled}
+                onChange={(v) => { setEnabledDraft(v); saveAutoCheck(v); }}
+              />
+            </div>
+            <div className="flex items-center justify-between px-4 py-2.5">
+              <span className="text-sm text-slate-300">Daily Check Time</span>
               <div className="flex items-center gap-2">
+                <input
+                  type="time"
+                  value={imageTime}
+                  onChange={(e) => setTimeDraft(e.target.value)}
+                  disabled={isSavingAll || !imageEnabled}
+                  className={inputBase}
+                />
+                <button
+                  disabled={isChecking}
+                  onClick={() => checkNow()}
+                  className="px-3 py-1.5 text-xs rounded-lg border border-border text-slate-400 hover:text-slate-200 hover:border-slate-500 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  {isChecking ? "Checking..." : "Run now"}
+                </button>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      {/* Row 3: Authentication (left) + Change Password (right, state 3 only) */}
+      <div className="grid grid-cols-2 gap-2">
+
+        {/* Authentication card */}
+        <div className="bg-surface-2 border border-border rounded-xl overflow-hidden">
+          <div className={`flex items-start gap-4 px-4 py-2.5 ${sessionExpiryApplies ? "border-b border-border" : ""}`}>
+            <span className="text-sm text-slate-300 shrink-0 pt-1.5">Authentication Mode</span>
+            <div className="flex-1 space-y-3">
+              <select
+                value={selectedMode}
+                onChange={(e) => { setAuthModeDraft(e.target.value as "password" | "none"); setNoAuthConfirmed(false); setNewPw(""); setConfirmPw(""); }}
+                disabled={isSavingAuthMode}
+                className={inputBase}
+              >
+                <option value="password">Password Authentication</option>
+                <option value="none">No Authentication</option>
+              </select>
+
+              {/* State 1: password -> no auth confirmation */}
+              {selectedMode === "none" && modeHasDraft && (
+                <>
+                  <label className="flex items-start gap-2 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={noAuthConfirmed}
+                      onChange={(e) => setNoAuthConfirmed(e.target.checked)}
+                      className="mt-0.5 accent-accent"
+                    />
+                    <span className="text-xs text-slate-400">I understand this will remove all authentication requirements.</span>
+                  </label>
+                  <button
+                    disabled={isSavingAuthMode || !noAuthConfirmed}
+                    onClick={() => saveAuthMode({ auth_mode: "none" })}
+                    className="px-3 py-1.5 text-xs rounded-lg bg-accent hover:bg-accent-hover text-white font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    {isSavingAuthMode ? "Saving..." : "Disable password auth"}
+                  </button>
+                </>
+              )}
+
+              {/* State 2: no auth -> password, set new credentials */}
+              {selectedMode === "password" && authMode === "none" && (
+                <>
+                  <div className="space-y-1.5">
+                    <input
+                      type="password"
+                      placeholder="New password (min 8 characters)"
+                      value={newPw}
+                      onChange={(e) => setNewPw(e.target.value)}
+                      disabled={isSavingAuthMode}
+                      className={`${inputBase} w-full`}
+                    />
+                    <input
+                      type="password"
+                      placeholder="Confirm new password"
+                      value={confirmPw}
+                      onChange={(e) => setConfirmPw(e.target.value)}
+                      disabled={isSavingAuthMode}
+                      className={`${inputBase} w-full`}
+                    />
+                    {newPw.length > 0 && newPw.length < 8 && (
+                      <p className="text-xs text-red-400">Password must be at least 8 characters.</p>
+                    )}
+                    {confirmPw && newPw !== confirmPw && (
+                      <p className="text-xs text-red-400">Passwords do not match.</p>
+                    )}
+                  </div>
+                  <button
+                    disabled={isSavingAuthMode || !newPw || newPw.length < 8 || newPw !== confirmPw}
+                    onClick={() => saveAuthMode({ auth_mode: "password", username: "admin", password: newPw })}
+                    className="px-3 py-1.5 text-xs rounded-lg bg-accent hover:bg-accent-hover text-white font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    {isSavingAuthMode ? "Saving..." : "Enable password auth"}
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+
+          {/* State 3: session expiry row */}
+          {sessionExpiryApplies && (
+            <div className="flex items-center justify-between px-4 py-2.5">
+              <span className="text-sm text-slate-300">Session Expiry</span>
+              <div className="flex items-center gap-1">
                 <input
                   type="number"
                   min={1}
@@ -579,77 +559,75 @@ function GeneralTab({ authMode, version, onDirtyChange }: { authMode?: string; v
                   value={sessionExpiryDraft ?? (allSettings?.session_expiry_days ?? "7")}
                   onChange={(e) => setSessionExpiryDraft(e.target.value)}
                   disabled={isSavingAll}
-                  className="w-20 bg-surface-3 border border-border rounded-lg px-3 py-1.5 text-sm text-slate-200 focus:outline-none focus:border-accent disabled:opacity-40 disabled:cursor-not-allowed"
+                  className={narrowInput}
                 />
-                <span className="text-sm text-slate-500">days</span>
+                <span className="w-14 text-slate-500 text-sm">days</span>
               </div>
-            </SettingRow>
-            <div className="px-5 py-2 border-b border-border bg-surface-3/20">
-              <span className="text-xs font-medium uppercase tracking-widest text-slate-600">Change password</span>
             </div>
-            <SettingRow label="Change password" last>
-              <div className="space-y-2">
-                <div className="space-y-1.5">
-                  <input
-                    type="password"
-                    placeholder="Current password"
-                    value={currentPw}
-                    onChange={(e) => { setCurrentPw(e.target.value); setPwError(null); }}
-                    disabled={isChangingPw}
-                    className="w-full max-w-xs bg-surface-3 border border-border rounded-lg px-3 py-1.5 text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:border-accent disabled:opacity-40"
-                  />
-                  {pwError === "Current password is incorrect." && (
-                    <p className="text-xs text-red-400">{pwError}</p>
-                  )}
-                  <input
-                    type="password"
-                    placeholder="New password (min 8 characters)"
-                    value={newPw}
-                    onChange={(e) => { setNewPw(e.target.value); setPwError(null); }}
-                    disabled={isChangingPw}
-                    className="w-full max-w-xs bg-surface-3 border border-border rounded-lg px-3 py-1.5 text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:border-accent disabled:opacity-40"
-                  />
-                  <input
-                    type="password"
-                    placeholder="Confirm new password"
-                    value={confirmPw}
-                    onChange={(e) => { setConfirmPw(e.target.value); setPwError(null); }}
-                    disabled={isChangingPw}
-                    className="w-full max-w-xs bg-surface-3 border border-border rounded-lg px-3 py-1.5 text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:border-accent disabled:opacity-40"
-                  />
-                  {confirmPw && newPw !== confirmPw && (
-                    <p className="text-xs text-red-400">Passwords do not match.</p>
-                  )}
-                </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    disabled={isChangingPw || !currentPw || !newPw || !confirmPw || newPw !== confirmPw || newPw.length < 8}
-                    onClick={() => {
-                      setPwError(null);
-                      changePassword({ current_password: currentPw, new_password: newPw });
-                    }}
-                    className="px-3 py-1.5 text-xs rounded-lg bg-accent hover:bg-accent-hover text-white font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                  >
-                    {isChangingPw ? "Saving..." : "Change password"}
-                  </button>
-                </div>
-                {pwError && pwError !== "Current password is incorrect." && (
-                  <p className="text-xs text-red-400">{pwError}</p>
-                )}
-              </div>
-            </SettingRow>
-          </>
+          )}
+        </div>
+
+        {/* State 3: Change Password card */}
+        {sessionExpiryApplies && (
+          <div className="bg-surface-2 border border-border rounded-xl overflow-hidden p-4 space-y-3">
+            <span className="text-sm font-medium text-slate-300">Change Password</span>
+            <div className="space-y-1.5">
+              <input
+                type="password"
+                placeholder="Current password"
+                value={currentPw}
+                onChange={(e) => { setCurrentPw(e.target.value); setPwError(null); }}
+                disabled={isChangingPw}
+                className={`${inputBase} w-full`}
+              />
+              {pwError === "Current password is incorrect." && (
+                <p className="text-xs text-red-400">{pwError}</p>
+              )}
+              <input
+                type="password"
+                placeholder="New password (min 8 characters)"
+                value={newPw}
+                onChange={(e) => { setNewPw(e.target.value); setPwError(null); }}
+                disabled={isChangingPw}
+                className={`${inputBase} w-full`}
+              />
+              <input
+                type="password"
+                placeholder="Confirm new password"
+                value={confirmPw}
+                onChange={(e) => { setConfirmPw(e.target.value); setPwError(null); }}
+                disabled={isChangingPw}
+                className={`${inputBase} w-full`}
+              />
+              {confirmPw && newPw !== confirmPw && (
+                <p className="text-xs text-red-400">Passwords do not match.</p>
+              )}
+            </div>
+            <button
+              disabled={isChangingPw || !currentPw || !newPw || !confirmPw || newPw !== confirmPw || newPw.length < 8}
+              onClick={() => {
+                setPwError(null);
+                changePassword({ current_password: currentPw, new_password: newPw });
+              }}
+              className="px-3 py-1.5 text-xs rounded-lg bg-accent hover:bg-accent-hover text-white font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              {isChangingPw ? "Saving..." : "Change password"}
+            </button>
+            {pwError && pwError !== "Current password is incorrect." && (
+              <p className="text-xs text-red-400">{pwError}</p>
+            )}
+          </div>
         )}
 
       </div>
 
       {/* Save bar */}
-      <div className="sticky bottom-0 border-t border-border bg-surface-2/95 backdrop-blur-sm px-5 py-3 flex items-center justify-between">
+      <div className="border-t border-border bg-surface-2/95 px-5 py-3 flex items-center justify-between">
         <span className={`text-xs ${isDirty ? "text-amber-400" : "text-slate-600"}`}>
           {isDirty ? "You have unsaved changes." : "No unsaved changes."}
         </span>
         <button
-          disabled={!isDirty || isSavingAll || !retentionValid || !ttlValid}
+          disabled={!isDirty || isSavingAll || !retentionValid || !netRetentionValid}
           onClick={() => saveAll()}
           className="px-4 py-1.5 text-sm rounded-lg bg-accent hover:bg-accent-hover text-white font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
         >
@@ -1005,7 +983,7 @@ export default function Settings({ authMode }: { authMode?: string }) {
   });
 
   return (
-    <div className="max-w-3xl space-y-6">
+    <div className="max-w-4xl space-y-6">
       <div className="flex items-center gap-3">
         <h1 className="text-xl font-semibold text-slate-100">Settings</h1>
         {versionData && (
