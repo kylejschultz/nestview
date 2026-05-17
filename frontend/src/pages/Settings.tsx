@@ -643,7 +643,6 @@ function GeneralTab({ authMode, version, onDirtyChange }: { authMode?: string; v
         </button>
       </div>
 
-      <AboutSection version={version} />
     </div>
   );
 }
@@ -964,7 +963,7 @@ function NotificationsTab({ onDirtyChange }: { onDirtyChange: (dirty: boolean) =
 
 // ── Settings page ─────────────────────────────────────────────────────────────
 
-type Tab = "general" | "notifications";
+type Tab = "general" | "notifications" | "about";
 
 export default function Settings({ authMode }: { authMode?: string }) {
   const [activeTab, setActiveTab] = useState<Tab>("general");
@@ -1003,7 +1002,7 @@ export default function Settings({ authMode }: { authMode?: string }) {
 
       {/* Tab bar */}
       <div className="flex gap-1 border-b border-border">
-        {(["general", "notifications"] as Tab[]).map((tab) => (
+        {(["general", "notifications", "about"] as Tab[]).map((tab) => (
           <button
             key={tab}
             onClick={() => handleTabChange(tab)}
@@ -1018,7 +1017,9 @@ export default function Settings({ authMode }: { authMode?: string }) {
         ))}
       </div>
 
-      {activeTab === "general" ? <GeneralTab authMode={authMode} version={versionData?.version} onDirtyChange={setGeneralDirty} /> : <NotificationsTab onDirtyChange={setNotifDirty} />}
+      {activeTab === "general" && <GeneralTab authMode={authMode} version={versionData?.version} onDirtyChange={setGeneralDirty} />}
+      {activeTab === "notifications" && <NotificationsTab onDirtyChange={setNotifDirty} />}
+      {activeTab === "about" && <AboutSection version={versionData?.version} />}
     </div>
   );
 }
