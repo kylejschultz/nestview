@@ -43,6 +43,7 @@ jobs:
       - name: Build and push
         run: |
           docker build --platform ${{ matrix.platform }} \
+            --build-arg GIT_SHA=${{ steps.sha.outputs.short }} \
             -t ghcr.io/kylejschultz/nestview:sha-${{ steps.sha.outputs.short }}-${{ matrix.suffix }} \
             -t ghcr.io/kylejschultz/nestview:${{ steps.version.outputs.tag }}-${{ matrix.suffix }} \
             -f Dockerfile \
