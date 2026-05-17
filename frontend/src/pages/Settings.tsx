@@ -577,8 +577,8 @@ function GeneralTab({ authMode, version, onDirtyChange }: { authMode?: string; v
           </div>
 
           {/* Display Timezone */}
-          <div className="bg-surface-2 border border-border rounded-xl overflow-hidden">
-            <div className="flex items-center justify-between px-4 py-2.5">
+          <div className="bg-surface-2 border border-border rounded-xl">
+            <div className="flex items-center justify-between px-4 py-2.5 rounded-xl">
               <span className="text-sm text-slate-300">Display Timezone</span>
               <TimezoneSelect value={timezone} onChange={setTimezoneDraft} disabled={isSavingAll} />
             </div>
