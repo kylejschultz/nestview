@@ -7,6 +7,48 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [1.3.0] — 2026-05-18
+
+### Added
+
+- Settings > About tab showing version, build channel, commit SHA, uptime, database size, and Docker connection status
+- `GET /api/system` endpoint (authenticated) backing the About tab data
+- Discord community link in the top navbar
+
+### Changed
+
+- Notifications tab redesigned with a global defaults model and per-container exceptions table; single save bar with unsaved-changes guard
+- Settings General tab redesigned as a card grid with a unified save bar; per-field save buttons removed; Exited Container TTL field removed from UI (backend retention enforcement unchanged); About & Support moved to its own tab
+- Container detail page restructured with a live stats strip, three side-by-side charts (CPU, memory, network I/O), a two-column details and events row, and full-width logs; events panel shows human-readable past-tense labels with pagination
+- Dashboard stack action buttons consolidated into a "Stack Actions" dropdown menu; exited container cards are visually dimmed; standalone section label removed
+
+### Fixed
+
+- Network history records are now re-associated before the restart detection path clears them, preserving history across force-recreate
+- Unmatched `/api/` paths now return 404 instead of serving the SPA index
+
+---
+
+## [1.2.1] — 2026-05-12
+
+### Added
+
+- All active sessions are invalidated when the admin password is changed
+- Any API call returning 401 now automatically redirects to `/login` in the frontend
+- Discord webhook animated setup guide embedded in the webhook URL field in Settings
+- Rate limiting applied to container action endpoints
+- BUILD_CHANNEL suffix now applied to any non-release channel, not just `dev`
+
+### Fixed
+
+- Internal container fields stripped from all API responses
+- Version field removed from `/api/health` response
+- Log export capped at 50,000 lines to prevent memory exhaustion on large containers
+- SSRF allowlist added for bearer token realm URLs in the image update checker
+- Login response timing hardened to prevent username enumeration
+
+---
+
 ## [1.2.0] — 2026-05-09
 
 ### Added
