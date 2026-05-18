@@ -96,7 +96,7 @@ On first launch, you'll be prompted to create an admin username and password bef
 | `TZ` | `UTC` | Timezone for log timestamps and scheduled tasks. Use a standard tz database name (e.g. `America/Chicago`, `Europe/London`). |
 | `LOG_RETENTION_DAYS` | `7` | How many days of container log history to keep. Seeded from this env var on first run only; changes after initial setup must be made in the Settings UI. |
 
-Log retention and exited container TTL are configured in the Settings UI.
+Log retention is configured in the Settings UI.
 
 ## Discord alerts
 1. In your Discord server, Create a new channel for notifications.

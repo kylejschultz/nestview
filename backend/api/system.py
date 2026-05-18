@@ -1,15 +1,13 @@
 import os
 from datetime import datetime, timezone
-from pathlib import Path
 
 import docker
 from fastapi import APIRouter
 
 from build_info import APP_VERSION, BUILD_SHA, APP_START_TIME
+from database import DB_PATH as _DB_PATH
 
 router = APIRouter(prefix="/api/system", tags=["system"])
-
-_DB_PATH = Path("nestview.db")
 
 
 @router.get("")

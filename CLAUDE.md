@@ -32,7 +32,8 @@ nestview/
 │   │   ├── events.py        # Container event history (GET endpoints only)
 │   │   ├── logs.py          # Log search + export
 │   │   ├── settings.py      # App settings, alert toggles, webhook config
-│   │   └── stack_actions.py # Compose stack-level actions (POST)
+│   │   ├── stack_actions.py # Compose stack-level actions (POST)
+│   │   └── system.py        # System info endpoint (GET /api/system)
 │   ├── services/
 │   │   ├── analytics.py     # Anonymous install ping (daily, opt-in)
 │   │   ├── app_settings.py  # DB-backed app settings helpers
@@ -78,7 +79,7 @@ nestview/
 - **Container state reconciliation** happens in `_apply_batch()` in `services/collector.py`. The stats loop sends a full `docker ps -a` snapshot; anything not in the batch is deleted. Ghost detection (same name/project, old container exited + new one running) also fires here.
 - **Ports, volumes, networks** are stored as JSON strings in SQLite and parsed to lists on read. Don't change this without updating the batch ingest and `list_containers` / `get_container` responses.
 - **Event types tracked by the collector:** `start`, `stop`, `die`, `kill`, `restart`, `oom`. `die` with non-zero exit code is mapped to `crash`. The `die` event reuses the `crash` alert setting key.
-- **Cleanup** runs hourly via APScheduler. Log/event retention is `LOG_RETENTION_DAYS`. Exited/dead container rows are TTL-purged after `exited_container_ttl_seconds` (a DB-stored setting managed via the Settings UI; set to `0` to disable).
+- **Cleanup** runs hourly via APScheduler. Log/event retention is `LOG_RETENTION_DAYS`. Exited/dead container rows are TTL-purged after `exited_container_ttl_seconds` (a DB-stored setting; not editable via the Settings UI as of v1.3.0 — set directly in the DB or set to `0` to disable).
 
 ### Collector
 
@@ -114,7 +115,7 @@ All config is in `.env` (copy from `.env.example`). Docker Compose auto-loads it
 
 > **Discord webhook URL** is configured in the Settings UI (stored in the DB), not as an environment variable.
 
-> **Exited container TTL** is configured via `exited_container_ttl_seconds` in the Settings UI (DB-stored). The old `EXITED_CONTAINER_TTL_HOURS` env var was removed in migration 006.
+> **Exited container TTL** is stored in the DB as `exited_container_ttl_seconds`. The Settings UI no longer exposes this field as of v1.3.0 (backend enforcement unchanged). The old `EXITED_CONTAINER_TTL_HOURS` env var was removed in migration 006.
 
 > **Authentication:** v0.4.0 introduces mandatory auth. On first run, the setup wizard requires a username and password before the dashboard is accessible. Credentials are bcrypt-hashed and stored in `AppSetting`. Sessions use a signed httpOnly cookie via `itsdangerous`. A `RESET_ADMIN_PASSWORD=true` env var clears credentials and re-triggers the wizard. An "auth_mode = none" escape hatch is available for users behind an external auth proxy.
 
@@ -126,6 +127,8 @@ All config is in `.env` (copy from `.env.example`). Docker Compose auto-loads it
 
 All endpoints are prefixed `/api/`. See `backend/api/` for route definitions.
 
+Notable endpoints:
+- `GET /api/system` — authenticated; returns version, build channel, commit SHA, uptime, database size, and Docker connection status. Unmatched `/api/` paths return 404 (not the SPA index).
 
 ---
 
@@ -137,6 +140,7 @@ The `VERSION` file at the repo root is the single source of truth for the app ve
 - The frontend fetches `/api/version` on load and displays it in the footer.
 - **Never hardcode the version string** in backend or frontend source files.
 - **Bump `VERSION` manually** before cutting a GitHub release, then tag the commit (e.g. `git tag v1.1.0`).
+- **`GIT_SHA` build arg** — `publish.yml` passes `--build-arg GIT_SHA=<sha>` when building production images. The backend reads this at startup and exposes it via `GET /api/system`. When building locally (without the arg), `GIT_SHA` will be absent and the system endpoint returns `null` for commit SHA.
 
 ---
 
