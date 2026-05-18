@@ -237,6 +237,19 @@ def _migrate_010(engine: Engine) -> None:
         conn.commit()
 
 
+def _migrate_011(engine: Engine) -> None:
+    """Seed global alert default rows (container_name='__global__') for all four event types."""
+    event_types = ("crash", "restart", "oom", "update_available")
+    with engine.connect() as conn:
+        for event_type in event_types:
+            conn.execute(text(
+                "INSERT OR IGNORE INTO container_alert_setting (container_name, event_type, enabled) "
+                "VALUES ('__global__', :event_type, 1)"
+            ), {"event_type": event_type})
+        conn.commit()
+    logger.info("migration 011: seeded global alert defaults for crash, restart, oom, update_available")
+
+
 MIGRATIONS: list[tuple[str, Callable]] = [
     ("001", _migrate_001),
     ("002", _migrate_002),
@@ -248,6 +261,7 @@ MIGRATIONS: list[tuple[str, Callable]] = [
     ("008", _migrate_008),
     ("009", _migrate_009),
     ("010", _migrate_010),
+    ("011", _migrate_011),
 ]
 
 

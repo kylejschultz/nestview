@@ -9,9 +9,10 @@ interface WebhookFieldProps {
   disabled?: boolean;
   onTestSuccess?: () => void;
   onTestError?: (msg: string) => void;
+  hideHelpLink?: boolean;
 }
 
-export default function WebhookField({ value, onChange, disabled, onTestSuccess, onTestError }: WebhookFieldProps) {
+export default function WebhookField({ value, onChange, disabled, onTestSuccess, onTestError, hideHelpLink }: WebhookFieldProps) {
   const [testStatus, setTestStatus] = useState<"idle" | "ok" | "error">("idle");
   const [testMessage, setTestMessage] = useState<string>("");
   const [showHelp, setShowHelp] = useState(false);
@@ -76,13 +77,15 @@ export default function WebhookField({ value, onChange, disabled, onTestSuccess,
           {isTesting ? "Sending…" : "Test"}
         </button>
       </div>
-      <button
-        type="button"
-        onClick={() => setShowHelp(true)}
-        className="text-xs text-slate-500 hover:text-accent transition-colors"
-      >
-        How do I get this?
-      </button>
+      {!hideHelpLink && (
+        <button
+          type="button"
+          onClick={() => setShowHelp(true)}
+          className="text-xs text-slate-500 hover:text-accent transition-colors"
+        >
+          How do I get this?
+        </button>
+      )}
       {testStatus === "ok" && (
         <p className="text-xs text-green-400">{testMessage}</p>
       )}

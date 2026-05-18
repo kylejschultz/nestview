@@ -93,3 +93,12 @@ export interface AnalyticsStatus {
   analytics_enabled: boolean;
   install_id: string;
 }
+
+export interface SystemInfo {
+  version: string;
+  build_channel: string;
+  build_sha: string | null;
+  uptime_seconds: number;
+  db_size_bytes: number | null;
+  docker_connected: boolean;
+}

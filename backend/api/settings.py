@@ -56,9 +56,52 @@ class AlertSettingPatch(BaseModel):
     model_config = {"json_schema_extra": {"example": {"container_name": "plex", "event_type": "crash", "enabled": False}}}
 
 
+@router.get("/alerts/defaults")
+def get_alert_defaults(session: Session = Depends(get_session)) -> List[dict]:
+    rows = session.exec(
+        select(ContainerAlertSetting)
+        .where(ContainerAlertSetting.container_name == "__global__")
+    ).all()
+    return [{"event_type": r.event_type, "enabled": r.enabled} for r in rows]
+
+
+class AlertDefaultPatch(BaseModel):
+    event_type: str = Field(max_length=32)
+    enabled: bool
+
+
+@router.patch("/alerts/defaults")
+def patch_alert_defaults(
+    payload: List[AlertDefaultPatch],
+    session: Session = Depends(get_session),
+) -> List[dict]:
+    for item in payload:
+        if item.event_type not in ALERT_EVENT_TYPES:
+            raise HTTPException(status_code=422, detail=f"event_type must be one of {ALERT_EVENT_TYPES}")
+        existing = session.exec(
+            select(ContainerAlertSetting)
+            .where(ContainerAlertSetting.container_name == "__global__")
+            .where(ContainerAlertSetting.event_type == item.event_type)
+        ).first()
+        if existing:
+            existing.enabled = item.enabled
+            session.add(existing)
+        else:
+            session.add(ContainerAlertSetting(
+                container_name="__global__",
+                event_type=item.event_type,
+                enabled=item.enabled,
+            ))
+    session.commit()
+    return get_alert_defaults(session)
+
+
 @router.get("/alerts")
 def get_alert_settings(session: Session = Depends(get_session)) -> List[dict]:
-    rows = session.exec(select(ContainerAlertSetting)).all()
+    rows = session.exec(
+        select(ContainerAlertSetting)
+        .where(ContainerAlertSetting.container_name != "__global__")
+    ).all()
     return [r.dict() for r in rows]
 
 

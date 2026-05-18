@@ -58,6 +58,8 @@ function ComposeGroup({ project, members }: ComposeGroupProps) {
   const queryClient = useQueryClient();
   const [collapsed, setCollapsed] = useState<boolean>(() => !!loadCollapsed()[project]);
   const [pendingAction, setPendingAction] = useState<StackAction | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
   const [isCheckingUpdates, setIsCheckingUpdates] = useState(false);
   const [stackProgress, setStackProgress] = useState<StackProgressMap>({});
   const [isComplete, setIsComplete] = useState(false);
@@ -90,6 +92,17 @@ function ComposeGroup({ project, members }: ComposeGroupProps) {
 
   // Cleanup on unmount
   useEffect(() => () => stopPolling(), []);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    function handleClick(e: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenuOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [menuOpen]);
 
   const { mutate: runCheckForUpdates } = useMutation({
     mutationFn: () => api.stacks.checkForUpdates(project),
@@ -391,37 +404,53 @@ function ComposeGroup({ project, members }: ComposeGroupProps) {
           )}
         </button>
 
-        {/* Stack action buttons */}
-        <div className="flex items-center gap-1 shrink-0">
-          {(["restart", "stop", "start"] as StackAction[]).map((action) => {
-            const isActive = isProgressing && pendingAction === action;
-            const labels: Record<StackAction, string> = {
-              stop:    "Stop all",
-              start:   "Start all",
-              restart: "Restart all",
-            };
-            return (
-              <button
-                key={action}
-                disabled={isPending || isProgressing || isCheckingUpdates}
-                onClick={() => setPendingAction(action)}
-                title={labels[action]}
-                className={`inline-flex items-center gap-1 px-2 py-1 text-xs rounded-md border transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${STACK_BUTTON_STYLES[action]}`}
-              >
-                {isActive ? <StackActionSpinner /> : null}
-                {labels[action]}
-              </button>
-            );
-          })}
+        {/* Stack actions overflow menu */}
+        <div className="relative shrink-0" ref={menuRef}>
           <button
             disabled={isPending || isProgressing || isCheckingUpdates}
-            onClick={() => runCheckForUpdates()}
-            title="Check for Updates"
-            className="inline-flex items-center gap-1 px-2 py-1 text-xs rounded-md border transition-colors disabled:opacity-50 disabled:cursor-not-allowed border-slate-600 text-slate-400 hover:bg-surface-3 hover:border-slate-500"
+            onClick={() => setMenuOpen((o) => !o)}
+            title="Stack Actions"
+            className="text-xs text-slate-400 border border-border rounded-md px-2 py-1 hover:bg-surface-3 hover:text-slate-300 transition-colors inline-flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {isCheckingUpdates ? <StackActionSpinner /> : null}
-            Check for Updates
+            {isProgressing || isCheckingUpdates ? <StackActionSpinner /> : "Stack Actions"}
+            <svg
+              className={`w-3 h-3 transition-transform duration-200 ${menuOpen ? "rotate-180" : ""}`}
+              fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+            </svg>
           </button>
+          {menuOpen && (
+            <div className="absolute right-0 top-8 z-20 bg-surface-2 border border-border rounded-lg shadow-xl py-1 min-w-[148px]">
+              {(["restart", "stop", "start"] as StackAction[]).map((action) => {
+                const labels: Record<StackAction, string> = {
+                  restart: "Restart all",
+                  stop:    "Stop all",
+                  start:   "Start all",
+                };
+                const colors: Record<StackAction, string> = {
+                  restart: "text-yellow-400",
+                  stop:    "text-red-400",
+                  start:   "text-green-400",
+                };
+                return (
+                  <button
+                    key={action}
+                    onClick={() => { setMenuOpen(false); setPendingAction(action); }}
+                    className={`w-full text-sm px-3 py-2 text-left hover:bg-surface-3 transition-colors ${colors[action]}`}
+                  >
+                    {labels[action]}
+                  </button>
+                );
+              })}
+              <button
+                onClick={() => { setMenuOpen(false); runCheckForUpdates(); }}
+                className="w-full text-sm px-3 py-2 text-left hover:bg-surface-3 transition-colors text-slate-300"
+              >
+                Check for Updates
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -434,7 +463,9 @@ function ComposeGroup({ project, members }: ComposeGroupProps) {
         <div className="overflow-hidden">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 p-4">
             {members.map((c) => (
-              <ContainerCard key={c.docker_id} container={c} />
+              <div key={c.docker_id} className={(c.state === "exited" || c.state === "dead") ? "opacity-60" : undefined}>
+                <ContainerCard container={c} />
+              </div>
             ))}
           </div>
         </div>
@@ -561,12 +592,11 @@ export default function Dashboard() {
         {/* Ungrouped containers */}
         {ungrouped.length > 0 && (
           <section>
-            {Object.keys(groups).length > 0 && (
-              <h2 className="text-xs font-semibold uppercase tracking-widest text-slate-500 mb-3">Standalone</h2>
-            )}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
               {ungrouped.map((c) => (
-                <ContainerCard key={c.docker_id} container={c} />
+                <div key={c.docker_id} className={(c.state === "exited" || c.state === "dead") ? "opacity-60" : undefined}>
+                  <ContainerCard container={c} />
+                </div>
               ))}
             </div>
           </section>
@@ -576,7 +606,7 @@ export default function Dashboard() {
       {/* Sidebar — recent events */}
       <aside className="space-y-3">
         <div className="flex items-center justify-between">
-          <h2 className="text-xs font-semibold uppercase tracking-widest text-slate-500">Recent Events</h2>
+          <h2 className="text-xs text-slate-500">Recent events</h2>
           <div className="relative" ref={pickerRef}>
             <button
               onClick={() => setPickerOpen((o) => !o)}

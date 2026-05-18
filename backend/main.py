@@ -14,16 +14,11 @@ from sqlmodel import Session
 
 logger = logging.getLogger(__name__)
 
-_version_file = Path("/app/VERSION")
-_raw_version = _version_file.read_text().strip() if _version_file.exists() else "dev"
-_build_channel = os.environ.get("BUILD_CHANNEL", "")
-APP_VERSION = f"{_raw_version}-{_build_channel}" if _build_channel else _raw_version
-_raw_sha = os.environ.get("BUILD_SHA", "")
-BUILD_SHA: str | None = _raw_sha if _raw_sha and _raw_sha != "unknown" else None
-
+from build_info import APP_VERSION, BUILD_SHA
 from database import create_db_and_tables, engine
 from api import containers, logs, events, settings, actions, admin, stack_actions, analytics as analytics_router
 from api import auth as auth_router
+from api import system as system_router
 from limiter import limiter
 from services.cleanup import run_cleanup
 from services.app_settings import get_setting, set_setting
@@ -161,6 +156,7 @@ app.include_router(actions.router,       dependencies=[Depends(require_auth)])
 app.include_router(admin.router,         dependencies=[Depends(require_auth)])
 app.include_router(stack_actions.router,      dependencies=[Depends(require_auth)])
 app.include_router(analytics_router.router,   dependencies=[Depends(require_auth)])
+app.include_router(system_router.router,      dependencies=[Depends(require_auth)])
 
 
 @app.get("/api/version")
@@ -178,6 +174,9 @@ def health():
 
 @app.get("/{full_path:path}", include_in_schema=False)
 async def spa_fallback(full_path: str):
+    if full_path.startswith("api/"):
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="Not found")
     static_dir = Path("/app/static").resolve()
     requested = (static_dir / full_path).resolve()
     if requested.is_file() and requested.is_relative_to(static_dir):
