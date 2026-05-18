@@ -174,6 +174,9 @@ def health():
 
 @app.get("/{full_path:path}", include_in_schema=False)
 async def spa_fallback(full_path: str):
+    if full_path.startswith("api/"):
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="Not found")
     static_dir = Path("/app/static").resolve()
     requested = (static_dir / full_path).resolve()
     if requested.is_file() and requested.is_relative_to(static_dir):
