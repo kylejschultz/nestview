@@ -15,18 +15,6 @@ Nestview gives you a live health dashboard with per-container CPU and memory his
 
 > **Need help?** [Join the Discord](https://discord.gg/aDEBQq3XtN) - it's the fastest way to get support, ask questions, or report a bug. GitHub Issues is available too, but Discord is where the conversation happens.
 
-## Features
-
-- Live health dashboard with per-container CPU, memory, and network I/O charts
-- Compose stack grouping with stack-level actions (restart all, stop all, start all, check for updates)
-- Configurable notifications with global defaults and per-container alert exceptions
-- Searchable log history with export
-- Discord alerts for crashes, OOM kills, and unexpected restarts
-- Settings > About tab showing version, uptime, database size, and Docker connection status
-- Auto-check for image updates
-- Zero-config container autodiscovery — no labels or manual config required
-- Metrics and log history survive container recreation
-
 ## Quick start
 ### Prerequisites
 - [Docker](https://docs.docker.com/get-docker/) installed and running
