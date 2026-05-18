@@ -1,10 +1,10 @@
-import React, { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import React, { useState, useRef, useMemo, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
 import { useAuth } from "../AuthContext";
-import type { AlertEventType, AlertSetting, AnalyticsStatus, Container, GeneralSettings } from "../types";
+import type { AlertEventType, AlertSetting, AnalyticsStatus, Container, GeneralSettings, SystemInfo } from "../types";
 import WebhookField from "../components/WebhookField";
+import DiscordWebhookHelpModal from "../components/DiscordWebhookHelpModal";
 import TimezoneSelect from "../components/TimezoneSelect";
 import Toast from "../components/Toast";
 import InfoPopover from "../components/InfoPopover";
@@ -43,71 +43,166 @@ function Toggle({ checked, onChange, disabled, label }: ToggleProps) {
   );
 }
 
-// ── Alert settings helpers ────────────────────────────────────────────────────
+// ── Notifications tab types and helpers ───────────────────────────────────────
 
-const ALERT_TYPES: { key: AlertEventType; label: string }[] = [
+type AlertDefaults = Record<AlertEventType, boolean>;
+type ExceptionMap = Record<string, Record<AlertEventType, boolean>>;
+
+const NOTIF_TYPES: { key: AlertEventType; label: string; columnLabel?: string }[] = [
   { key: "crash", label: "Crash" },
   { key: "restart", label: "Restart" },
   { key: "oom", label: "OOM" },
-  { key: "update_available", label: "Update Avail" },
+  { key: "update_available", label: "Update available", columnLabel: "Update" },
 ];
 
-function buildDisabledSet(settings: AlertSetting[]): Set<string> {
-  const s = new Set<string>();
-  for (const row of settings) {
-    if (!row.enabled) s.add(`${row.container_name}:${row.event_type}`);
+function buildDefaultsFromRaw(raw: { event_type: string; enabled: boolean }[]): AlertDefaults {
+  const base: AlertDefaults = { crash: true, restart: true, oom: true, update_available: true };
+  for (const r of raw) {
+    if (r.event_type === "crash" || r.event_type === "restart" || r.event_type === "oom" || r.event_type === "update_available") {
+      base[r.event_type] = r.enabled;
+    }
   }
-  return s;
+  return base;
 }
 
-// ── Per-container row (table) ─────────────────────────────────────────────────
-
-const COL_W = "w-24";
-
-interface ContainerRowProps {
-  container: Container;
-  disabledSet: Set<string>;
-  onToggle: (container_name: string, event_type: AlertEventType, enabled: boolean) => void;
-  isDisabled: boolean;
+function buildExceptionsFromSettings(settings: AlertSetting[], defaults: AlertDefaults): ExceptionMap {
+  const byContainer: Record<string, Partial<Record<AlertEventType, boolean>>> = {};
+  for (const row of settings) {
+    byContainer[row.container_name] ??= {};
+    byContainer[row.container_name][row.event_type as AlertEventType] = row.enabled;
+  }
+  const result: ExceptionMap = {};
+  for (const [name, vals] of Object.entries(byContainer)) {
+    result[name] = {
+      crash: vals.crash ?? defaults.crash,
+      restart: vals.restart ?? defaults.restart,
+      oom: vals.oom ?? defaults.oom,
+      update_available: vals.update_available ?? defaults.update_available,
+    };
+  }
+  return result;
 }
 
-function ContainerRow({ container: c, disabledSet, onToggle, isDisabled }: ContainerRowProps) {
+function defaultsEqual(a: AlertDefaults | null, b: AlertDefaults | null): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  return NOTIF_TYPES.every(({ key }) => a[key] === b[key]);
+}
+
+function exceptionsEqual(a: ExceptionMap | null, b: ExceptionMap | null): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  const ka = Object.keys(a).sort();
+  const kb = Object.keys(b).sort();
+  if (ka.join() !== kb.join()) return false;
+  return ka.every(k => NOTIF_TYPES.every(({ key }) => a[k][key] === b[k][key]));
+}
+
+// ── About tab helpers ─────────────────────────────────────────────────────────
+
+function formatUptime(seconds: number): string {
+  const totalMinutes = Math.floor(seconds / 60);
+  const days = Math.floor(totalMinutes / (60 * 24));
+  const hours = Math.floor((totalMinutes % (60 * 24)) / 60);
+  const minutes = totalMinutes % 60;
+  const parts: string[] = [];
+  if (days > 0) parts.push(`${days}d`);
+  if (hours > 0) parts.push(`${hours}h`);
+  if (minutes > 0 || parts.length === 0) parts.push(`${minutes}m`);
+  return parts.join(" ");
+}
+
+function formatDbSize(bytes: number): string {
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function resolveBuildChannel(channel: string): string {
+  if (!channel || channel === "") return "stable";
+  return channel;
+}
+
+// ── About tab ─────────────────────────────────────────────────────────────────
+
+function AboutTab() {
+  const { isAuthenticated } = useAuth();
+
+  const { data: sysInfo, isLoading, isError } = useQuery<SystemInfo>({
+    queryKey: ["system-info"],
+    queryFn: api.system.info,
+    enabled: isAuthenticated,
+    staleTime: 30_000,
+  });
+
   return (
-    <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border last:border-0">
-      <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium text-slate-200 truncate">{c.name}</p>
-        <p className="text-xs text-slate-500 font-mono truncate mt-0.5">{c.image}</p>
-      </div>
-      {ALERT_TYPES.map(({ key }) => (
-        <div key={key} className={`${COL_W} flex justify-center`}>
-          <Toggle
-            checked={!disabledSet.has(`${c.name}:${key}`)}
-            disabled={isDisabled}
-            onChange={(enabled) => onToggle(c.name, key, enabled)}
-          />
+    <div className="space-y-4">
+      {/* Card 1: System */}
+      <section className="card overflow-hidden">
+        {/* Version section */}
+        <p className="text-xs text-slate-500 uppercase tracking-wider px-5 pt-4 pb-2">Version</p>
+        <div className="border-t border-border">
+          {isLoading && (
+            <div className="px-5 py-6 text-sm text-slate-500">Loading...</div>
+          )}
+          {isError && (
+            <div className="px-5 py-6 text-sm text-red-400">Failed to load system info.</div>
+          )}
+          {sysInfo && (
+            <>
+              <div className="flex items-center justify-between px-5 py-2.5 border-b border-border">
+                <span className="text-sm text-slate-400">Version</span>
+                <span className="text-sm text-slate-200">{sysInfo.version}</span>
+              </div>
+              <div className="flex items-center justify-between px-5 py-2.5 border-b border-border">
+                <span className="text-sm text-slate-400">Build channel</span>
+                <span className="text-sm text-slate-200">{resolveBuildChannel(sysInfo.build_channel)}</span>
+              </div>
+              <div className="flex items-center justify-between px-5 py-2.5">
+                <span className="text-sm text-slate-400">Commit SHA</span>
+                {sysInfo.build_sha
+                  ? <span className="font-mono text-xs text-slate-200">{sysInfo.build_sha}</span>
+                  : <span className="text-sm text-slate-600">unavailable</span>
+                }
+              </div>
+            </>
+          )}
         </div>
-      ))}
-    </div>
-  );
-}
 
-// ── About & Support ───────────────────────────────────────────────────────────
+        {/* Runtime section */}
+        <p className="text-xs text-slate-500 uppercase tracking-wider px-5 pt-4 pb-2 border-t border-border">Runtime</p>
+        <div className="border-t border-border">
+          {isLoading && (
+            <div className="px-5 py-6 text-sm text-slate-500">Loading...</div>
+          )}
+          {sysInfo && (
+            <>
+              <div className="flex items-center justify-between px-5 py-2.5 border-b border-border">
+                <span className="text-sm text-slate-400">Uptime</span>
+                <span className="text-sm text-slate-200">{formatUptime(sysInfo.uptime_seconds)}</span>
+              </div>
+              <div className="flex items-center justify-between px-5 py-2.5 border-b border-border">
+                <span className="text-sm text-slate-400">Database size</span>
+                {sysInfo.db_size_bytes != null
+                  ? <span className="text-sm text-slate-200">{formatDbSize(sysInfo.db_size_bytes)}</span>
+                  : <span className="text-sm text-slate-600">unavailable</span>
+                }
+              </div>
+              <div className="flex items-center justify-between px-5 py-2.5">
+                <span className="text-sm text-slate-400">Docker</span>
+                <span className="flex items-center gap-1.5 text-sm text-slate-200">
+                  <span className={`w-2 h-2 rounded-full ${sysInfo.docker_connected ? "bg-green-400" : "bg-red-400"}`} />
+                  {sysInfo.docker_connected ? "Connected" : "Unreachable"}
+                </span>
+              </div>
+            </>
+          )}
+        </div>
+      </section>
 
-function AboutSection({ version }: { version?: string }) {
-  return (
-    <section className="card p-5 space-y-4">
-      <div className="flex items-center justify-between">
-        <h2 className="text-sm font-semibold text-slate-200">About &amp; Support</h2>
-        {version && (
-          <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-accent/10 text-accent border border-accent/30">
-            Nestview v{version}
-          </span>
-        )}
-      </div>
-      <div className="space-y-3">
-        {/* Discord — most prominent */}
+      {/* Card 2: Links */}
+      <section className="card p-5 space-y-3">
         <a
-          href="https://discord.gg/TfQ8QX3Ptr"
+          href="https://discord.gg/aDEBQq3XtN"
           target="_blank"
           rel="noopener noreferrer"
           className="flex items-center gap-3 p-3 rounded-lg bg-accent/10 border border-accent/30 text-accent hover:bg-accent/20 transition-colors group"
@@ -120,7 +215,6 @@ function AboutSection({ version }: { version?: string }) {
             <p className="text-xs text-accent/70">Get support &amp; chat with the community</p>
           </div>
         </a>
-        {/* GitHub */}
         <a
           href="https://github.com/kylejschultz/nestview"
           target="_blank"
@@ -135,7 +229,6 @@ function AboutSection({ version }: { version?: string }) {
             <p className="text-xs text-slate-500">View source &amp; report issues</p>
           </div>
         </a>
-        {/* Ko-fi */}
         <a
           href="https://ko-fi.com/kylejschultz"
           target="_blank"
@@ -150,36 +243,18 @@ function AboutSection({ version }: { version?: string }) {
             <p className="text-xs text-slate-500">Support the project</p>
           </div>
         </a>
-      </div>
-    </section>
+      </section>
+    </div>
   );
 }
 
 // ── General tab ───────────────────────────────────────────────────────────────
 
-function SectionHeader({ label }: { label: string }) {
-  return (
-    <div className="px-5 py-2 border-b border-border bg-surface-3/40">
-      <span className="text-xs font-semibold uppercase tracking-widest text-slate-500">{label}</span>
-    </div>
-  );
-}
+const inputBase = "bg-surface-3 border border-border rounded-lg px-3 py-1.5 text-sm text-slate-200 focus:outline-none focus:border-accent disabled:opacity-40 disabled:cursor-not-allowed";
+const narrowInput = `${inputBase} w-12 text-right px-2`;
 
-function SettingRow({ label, info, children, last }: { label: string; info?: string; children: React.ReactNode; last?: boolean }) {
-  return (
-    <div className={`flex items-start gap-4 px-5 py-3 ${last ? "" : "border-b border-border"}`}>
-      <div className="w-44 shrink-0 flex items-center gap-1.5 pt-0.5">
-        <span className="text-sm text-slate-400">{label}</span>
-        {info && <InfoPopover content={info} />}
-      </div>
-      <div className="flex-1 min-w-0">{children}</div>
-    </div>
-  );
-}
-
-function GeneralTab({ authMode, version }: { authMode?: string; version?: string }) {
+function GeneralTab({ authMode, version, onDirtyChange }: { authMode?: string; version?: string; onDirtyChange: (dirty: boolean) => void }) {
   const queryClient = useQueryClient();
-  const navigate = useNavigate();
   const { isAuthenticated } = useAuth();
 
   const { data: general, isLoading } = useQuery<GeneralSettings>({
@@ -194,19 +269,20 @@ function GeneralTab({ authMode, version }: { authMode?: string; version?: string
     enabled: isAuthenticated,
   });
 
-  // General settings drafts
   const [webhookDraft, setWebhookDraft] = useState<string | null>(null);
   const [retentionDraft, setRetentionDraft] = useState<string | null>(null);
-  const [ttlDraft, setTtlDraft] = useState<string | null>(null);
   const [netRetentionDraft, setNetRetentionDraft] = useState<number | null>(null);
   const [timezoneDraft, setTimezoneDraft] = useState<string | null>(null);
   const [sessionExpiryDraft, setSessionExpiryDraft] = useState<string | null>(null);
+  const [timeDraft, setTimeDraft] = useState<string | null>(null);
+  const [enabledDraft, setEnabledDraft] = useState<boolean | null>(null);
   const [currentPw, setCurrentPw] = useState("");
   const [newPw, setNewPw] = useState("");
   const [confirmPw, setConfirmPw] = useState("");
   const [pwError, setPwError] = useState<string | null>(null);
   const [authModeDraft, setAuthModeDraft] = useState<"password" | "none" | null>(null);
   const [noAuthConfirmed, setNoAuthConfirmed] = useState(false);
+  const [showWebhookHelp, setShowWebhookHelp] = useState(false);
 
   const { data: analyticsStatus } = useQuery<AnalyticsStatus>({
     queryKey: ["analytics-status"],
@@ -218,16 +294,11 @@ function GeneralTab({ authMode, version }: { authMode?: string; version?: string
     refetchOnReconnect: false,
   });
 
-  // Image check drafts
   const serverEnabled = (allSettings?.image_check_enabled ?? "true") !== "false";
   const serverTime = allSettings?.image_check_time ?? "03:00";
-  const [enabledDraft, setEnabledDraft] = useState<boolean | null>(null);
-  const [timeDraft, setTimeDraft] = useState<string | null>(null);
 
-  // Computed values
   const webhook = webhookDraft ?? general?.discord_webhook_url ?? "";
   const retention = retentionDraft ?? String(general?.log_retention_days ?? 7);
-  const ttl = ttlDraft ?? String(general?.exited_container_ttl_seconds ?? 300);
   const netRetention = netRetentionDraft ?? general?.network_history_retention_hours ?? 6;
   const timezone = timezoneDraft ?? general?.timezone ?? "UTC";
   const imageEnabled = enabledDraft ?? serverEnabled;
@@ -235,39 +306,66 @@ function GeneralTab({ authMode, version }: { authMode?: string; version?: string
 
   const { toastState, showToast, dismissToast } = useToast();
 
-  const { mutate: save, isPending: isSaving } = useMutation({
-    mutationFn: (body: Partial<GeneralSettings>) => api.settings.saveGeneral(body),
-    onSuccess: (_, variables) => {
+  const retentionNum = parseInt(retention, 10);
+  const retentionValid = !isNaN(retentionNum) && retentionNum >= 1 && retentionNum <= 365;
+  const netRetentionValid = !isNaN(netRetention) && netRetention >= 1 && netRetention <= 48;
+  const selectedMode = authModeDraft ?? authMode ?? "password";
+  const modeHasDraft = authModeDraft !== null && authModeDraft !== authMode;
+  const sessionExpiryApplies = selectedMode === "password" && authMode === "password";
+
+  const isDirty =
+    webhookDraft !== null ||
+    retentionDraft !== null ||
+    netRetentionDraft !== null ||
+    timezoneDraft !== null ||
+    timeDraft !== null ||
+    (sessionExpiryDraft !== null && sessionExpiryApplies);
+
+  useEffect(() => { onDirtyChange(isDirty); }, [isDirty, onDirtyChange]);
+
+  useEffect(() => {
+    if (!isDirty) return;
+    const handler = (e: BeforeUnloadEvent) => { e.preventDefault(); };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [isDirty]);
+
+  const { mutate: saveAll, isPending: isSavingAll } = useMutation({
+    mutationFn: async () => {
+      const generalBody: Partial<GeneralSettings> = {};
+      if (webhookDraft !== null) generalBody.discord_webhook_url = webhook;
+      if (retentionDraft !== null && retentionValid) generalBody.log_retention_days = retentionNum;
+      if (netRetentionDraft !== null && netRetentionValid) generalBody.network_history_retention_hours = netRetention;
+      if (timezoneDraft !== null) generalBody.timezone = timezone;
+
+      const rawBody: Record<string, string> = {};
+      if (timeDraft !== null) rawBody.image_check_time = imageTime;
+      if (sessionExpiryDraft !== null && sessionExpiryApplies) rawBody.session_expiry_days = sessionExpiryDraft;
+
+      const calls: Promise<unknown>[] = [];
+      if (Object.keys(generalBody).length > 0) calls.push(api.settings.saveGeneral(generalBody));
+      if (Object.keys(rawBody).length > 0) calls.push(api.settings.save(rawBody));
+      await Promise.all(calls);
+    },
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["settings-general"] });
-      if ("discord_webhook_url" in variables) setWebhookDraft(null);
-      if ("log_retention_days" in variables || "exited_container_ttl_seconds" in variables) {
-        setRetentionDraft(null);
-        setTtlDraft(null);
-      }
-      if ("network_history_retention_hours" in variables) setNetRetentionDraft(null);
-      if ("timezone" in variables) setTimezoneDraft(null);
+      queryClient.invalidateQueries({ queryKey: ["settings-all"] });
+      setWebhookDraft(null);
+      setRetentionDraft(null);
+      setNetRetentionDraft(null);
+      setTimezoneDraft(null);
+      setTimeDraft(null);
+      setSessionExpiryDraft(null);
       showToast("Settings saved", "success");
     },
     onError: (err: Error) => showToast(err.message, "error"),
   });
 
-  const { mutate: saveImage, isPending: isSavingImage } = useMutation({
-    mutationFn: (body: Record<string, string>) => api.settings.save(body),
+  const { mutate: saveAutoCheck } = useMutation({
+    mutationFn: (enabled: boolean) => api.settings.save({ image_check_enabled: enabled ? "true" : "false" }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["settings-all"] });
       setEnabledDraft(null);
-      setTimeDraft(null);
-      showToast("Settings saved", "success");
-    },
-    onError: (err: Error) => showToast(err.message, "error"),
-  });
-
-  const { mutate: saveRaw, isPending: isSavingRaw } = useMutation({
-    mutationFn: (body: Record<string, string>) => api.settings.save(body),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["settings-all"] });
-      setSessionExpiryDraft(null);
-      showToast("Settings saved", "success");
     },
     onError: (err: Error) => showToast(err.message, "error"),
   });
@@ -301,8 +399,8 @@ function GeneralTab({ authMode, version }: { authMode?: string; version?: string
       await api.auth.patchMode(body);
       return body.auth_mode;
     },
-    onSuccess: async (authMode) => {
-      if (authMode === "none") {
+    onSuccess: async (mode) => {
+      if (mode === "none") {
         queryClient.invalidateQueries({ queryKey: ["auth-status"] });
         setAuthModeDraft(null);
         setNoAuthConfirmed(false);
@@ -330,19 +428,11 @@ function GeneralTab({ authMode, version }: { authMode?: string; version?: string
   });
 
   if (isLoading || isLoadingAll) {
-    return <div className="py-12 text-center text-slate-500">Loading…</div>;
+    return <div className="py-12 text-center text-slate-500">Loading...</div>;
   }
 
-  const retentionNum = parseInt(retention, 10);
-  const retentionValid = !isNaN(retentionNum) && retentionNum >= 1 && retentionNum <= 365;
-  const ttlNum = parseInt(ttl, 10);
-  const ttlValid = !isNaN(ttlNum) && ttlNum >= 0;
-  const imageHasDraft = enabledDraft !== null || timeDraft !== null;
-  const selectedMode = authModeDraft ?? authMode ?? "password";
-  const modeHasDraft = authModeDraft !== null && authModeDraft !== authMode;
-
   return (
-    <div className="space-y-6">
+    <div className="space-y-2">
       {toastState && (
         <Toast
           key={toastState.id}
@@ -352,509 +442,631 @@ function GeneralTab({ authMode, version }: { authMode?: string; version?: string
           onDismiss={dismissToast}
         />
       )}
+      {showWebhookHelp && <DiscordWebhookHelpModal onClose={() => setShowWebhookHelp(false)} />}
 
-      <div className="card overflow-hidden">
-
-        {/* DISCORD */}
-        <SectionHeader label="Discord" />
-        <SettingRow label="Webhook URL" info="The Discord webhook URL used to send container event alerts. Leave blank to disable Discord notifications.">
-          <div className="space-y-2">
+      {/* Row 1: Discord Webhook URL - full width */}
+      <div className="bg-surface-2 border border-border rounded-xl overflow-hidden">
+        <div className="flex items-start gap-4 px-4 py-2.5">
+          <div className="flex flex-col shrink-0 pt-1">
+            <div className="flex items-center gap-1.5">
+              <span className="text-sm text-slate-300">Discord Webhook URL</span>
+              <InfoPopover content="The Discord webhook URL used to send container event alerts. Leave blank to disable Discord notifications." />
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowWebhookHelp(true)}
+              className="text-xs text-slate-500 hover:text-accent transition-colors text-left mt-0.5"
+            >
+              How do I get this?
+            </button>
+          </div>
+          <div className="flex-1 min-w-0">
             <WebhookField
               value={webhook}
               onChange={setWebhookDraft}
-              disabled={isSaving}
+              disabled={isSavingAll}
               onTestSuccess={() => showToast("Webhook test successful", "success")}
               onTestError={(msg) => showToast(msg, "error")}
-            />
-            <div className="flex items-center gap-2">
-              <button
-                disabled={isSaving || webhookDraft === null}
-                onClick={() => save({ discord_webhook_url: webhook })}
-                className="px-3 py-1.5 text-xs rounded-lg bg-accent hover:bg-accent-hover text-white font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                Save
-              </button>
-            </div>
-          </div>
-        </SettingRow>
-
-        {/* RETENTION */}
-        <SectionHeader label="Retention" />
-        <SettingRow label="Log retention" info="How many days of container log history to keep. Older logs are pruned automatically. Default is 7 days.">
-          <div className="flex items-center gap-2">
-            <input
-              type="number"
-              min={1}
-              max={365}
-              value={retention}
-              onChange={(e) => setRetentionDraft(e.target.value)}
-              className="w-20 bg-surface-3 border border-border rounded-lg px-3 py-1.5 text-sm text-slate-200 focus:outline-none focus:border-accent"
-            />
-            <span className="text-sm text-slate-500">days</span>
-          </div>
-        </SettingRow>
-        <SettingRow label="Exited container TTL" info="How long an exited container remains visible in the dashboard before being removed. Default is 300 seconds (5 minutes). Set to 0 to disable.">
-          <div className="space-y-2">
-            <div className="flex items-center gap-2">
-              <input
-                type="number"
-                min={0}
-                step={1}
-                value={ttl}
-                onChange={(e) => setTtlDraft(e.target.value)}
-                className="w-24 bg-surface-3 border border-border rounded-lg px-3 py-1.5 text-sm text-slate-200 focus:outline-none focus:border-accent"
-              />
-              <span className="text-sm text-slate-500">seconds</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <button
-                disabled={isSaving || (retentionDraft === null && ttlDraft === null) || !retentionValid || !ttlValid}
-                onClick={() => {
-                  const body: Partial<GeneralSettings> = {};
-                  if (retentionDraft !== null) body.log_retention_days = retentionNum;
-                  if (ttlDraft !== null) body.exited_container_ttl_seconds = ttlNum;
-                  save(body);
-                }}
-                className="px-3 py-1.5 text-xs rounded-lg bg-accent hover:bg-accent-hover text-white font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                Save
-              </button>
-            </div>
-          </div>
-        </SettingRow>
-        <SettingRow label="History retention" info="How many hours of network I/O and CPU/memory history to retain per container. Affects the time range shown in the detail panel charts. Default is 6 hours.">
-          <div className="space-y-2">
-            <div className="flex items-center gap-3">
-              <input
-                type="range"
-                min={1}
-                max={48}
-                step={1}
-                value={netRetention}
-                onChange={(e) => setNetRetentionDraft(parseInt(e.target.value, 10))}
-                disabled={isSaving}
-                className="w-36 accent-accent disabled:opacity-40 disabled:cursor-not-allowed"
-              />
-              <span className="text-sm text-slate-400 w-16">{netRetention} {netRetention === 1 ? "hour" : "hours"}</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <button
-                disabled={isSaving || netRetentionDraft === null}
-                onClick={() => save({ network_history_retention_hours: netRetention })}
-                className="px-3 py-1.5 text-xs rounded-lg bg-accent hover:bg-accent-hover text-white font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                Save
-              </button>
-            </div>
-          </div>
-        </SettingRow>
-
-        {/* TIMEZONE */}
-        <SectionHeader label="Timezone" />
-        <SettingRow label="Timezone" info="The timezone used for displaying log and event timestamps in the UI. Does not affect how data is stored." last>
-          <div className="space-y-2">
-            <TimezoneSelect value={timezone} onChange={setTimezoneDraft} disabled={isSaving} />
-            <div className="flex items-center gap-2">
-              <button
-                disabled={isSaving || timezoneDraft === null}
-                onClick={() => save({ timezone })}
-                className="px-3 py-1.5 text-xs rounded-lg bg-accent hover:bg-accent-hover text-white font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                Save
-              </button>
-            </div>
-          </div>
-        </SettingRow>
-
-        {/* IMAGE UPDATES */}
-        <SectionHeader label="Image Updates" />
-        <SettingRow label="Auto-check" info="When enabled, Nestview automatically checks for container image updates once per day at the configured time.">
-          <div className="flex items-center">
-            <Toggle
-              checked={imageEnabled}
-              onChange={(v) => setEnabledDraft(v)}
-              disabled={isSavingImage}
+              hideHelpLink
             />
           </div>
-        </SettingRow>
-        <SettingRow label="Daily check time" info="The time of day to run the automatic image update check. Uses 24-hour format in the configured timezone." last>
-          <div className="space-y-2">
-            <input
-              type="time"
-              value={imageTime}
-              onChange={(e) => setTimeDraft(e.target.value)}
-              disabled={isSavingImage || !imageEnabled}
-              className="bg-surface-3 border border-border rounded-lg px-3 py-1.5 text-sm text-slate-200 focus:outline-none focus:border-accent disabled:opacity-40 disabled:cursor-not-allowed"
-            />
-            <div className="flex flex-wrap items-center gap-2">
-              <button
-                disabled={isSavingImage || !imageHasDraft}
-                onClick={() => {
-                  const body: Record<string, string> = {};
-                  if (enabledDraft !== null) body.image_check_enabled = enabledDraft ? "true" : "false";
-                  if (timeDraft !== null) body.image_check_time = imageTime;
-                  saveImage(body);
-                }}
-                className="px-3 py-1.5 text-xs rounded-lg bg-accent hover:bg-accent-hover text-white font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+        </div>
+      </div>
+
+      {/* Row 2: Auth (left, tall) + Retention/Timezone/Analytics/Image Updates (right) */}
+      <div className="grid grid-cols-2 gap-2">
+
+        {/* Left: Auth card */}
+        <div className="bg-surface-2 border border-border rounded-xl overflow-hidden">
+          <div className={`flex items-start gap-4 px-4 py-2.5 ${sessionExpiryApplies ? "border-b border-border" : ""}`}>
+            <span className="text-sm text-slate-300 shrink-0 pt-1.5">Authentication Mode</span>
+            <div className="flex-1 space-y-3">
+              <select
+                value={selectedMode}
+                onChange={(e) => { setAuthModeDraft(e.target.value as "password" | "none"); setNoAuthConfirmed(false); setNewPw(""); setConfirmPw(""); }}
+                disabled={isSavingAuthMode}
+                className={inputBase}
               >
-                Save
-              </button>
-              <button
-                disabled={isChecking}
-                onClick={() => checkNow()}
-                className="px-3 py-1.5 text-xs rounded-lg border border-border text-slate-400 hover:text-slate-200 hover:border-slate-500 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                {isChecking ? "Checking…" : "Check now"}
-              </button>
-            </div>
-          </div>
-        </SettingRow>
+                <option value="password">Password Authentication</option>
+                <option value="none">No Authentication</option>
+              </select>
 
-        {/* ANALYTICS */}
-        <SectionHeader label="Analytics" />
-        <SettingRow
-          label="Analytics"
-          info="Sends a daily ping with your install ID, version, and architecture. No personal data is collected."
-          last
-        >
-          <Toggle
-            checked={analyticsStatus?.analytics_enabled ?? false}
-            onChange={(v) => toggleAnalytics(v)}
-            disabled={isTogglingAnalytics}
-          />
-        </SettingRow>
-
-        {/* AUTHENTICATION */}
-        <SectionHeader label="Authentication" />
-        <SettingRow
-          label="Auth mode"
-          info="Controls how users authenticate with Nestview. Switching to No Authentication removes all login requirements and wipes stored credentials."
-          last={!(selectedMode === "password" && authMode === "password")}
-        >
-          <div className="space-y-3">
-            <select
-              value={selectedMode}
-              onChange={(e) => { setAuthModeDraft(e.target.value as "password" | "none"); setNoAuthConfirmed(false); setNewPw(""); setConfirmPw(""); }}
-              disabled={isSavingAuthMode}
-              className="bg-surface-3 border border-border rounded-lg px-3 py-1.5 text-sm text-slate-200 focus:outline-none focus:border-accent disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              <option value="password">Password Authentication</option>
-              <option value="none">No Authentication</option>
-            </select>
-
-            {/* password → no auth: confirmation checkbox */}
-            {selectedMode === "none" && modeHasDraft && (
-              <>
-                <label className="flex items-start gap-2 cursor-pointer select-none">
-                  <input
-                    type="checkbox"
-                    checked={noAuthConfirmed}
-                    onChange={(e) => setNoAuthConfirmed(e.target.checked)}
-                    className="mt-0.5 accent-accent"
-                  />
-                  <span className="text-xs text-slate-400">I understand this will remove all authentication requirements.</span>
-                </label>
-                <button
-                  disabled={isSavingAuthMode || !noAuthConfirmed}
-                  onClick={() => saveAuthMode({ auth_mode: "none" })}
-                  className="px-3 py-1.5 text-xs rounded-lg bg-accent hover:bg-accent-hover text-white font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                >
-                  {isSavingAuthMode ? "Saving…" : "Save"}
-                </button>
-              </>
-            )}
-
-            {/* no auth → password: set new credentials (no current password required) */}
-            {selectedMode === "password" && authMode === "none" && (
-              <>
-                <div className="space-y-1.5">
-                  <input
-                    type="password"
-                    placeholder="New password (min 8 characters)"
-                    value={newPw}
-                    onChange={(e) => setNewPw(e.target.value)}
-                    disabled={isSavingAuthMode}
-                    className="w-full max-w-xs bg-surface-3 border border-border rounded-lg px-3 py-1.5 text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:border-accent disabled:opacity-40"
-                  />
-                  <input
-                    type="password"
-                    placeholder="Confirm new password"
-                    value={confirmPw}
-                    onChange={(e) => setConfirmPw(e.target.value)}
-                    disabled={isSavingAuthMode}
-                    className="w-full max-w-xs bg-surface-3 border border-border rounded-lg px-3 py-1.5 text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:border-accent disabled:opacity-40"
-                  />
-                  {newPw.length > 0 && newPw.length < 8 && (
-                    <p className="text-xs text-red-400">Password must be at least 8 characters.</p>
-                  )}
-                  {confirmPw && newPw !== confirmPw && (
-                    <p className="text-xs text-red-400">Passwords do not match.</p>
-                  )}
-                </div>
-                <button
-                  disabled={isSavingAuthMode || !newPw || newPw.length < 8 || newPw !== confirmPw}
-                  onClick={() => saveAuthMode({ auth_mode: "password", username: "admin", password: newPw })}
-                  className="px-3 py-1.5 text-xs rounded-lg bg-accent hover:bg-accent-hover text-white font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                >
-                  {isSavingAuthMode ? "Saving…" : "Enable password auth"}
-                </button>
-              </>
-            )}
-          </div>
-        </SettingRow>
-
-        {/* Session expiry + change password — only when already in password mode */}
-        {selectedMode === "password" && authMode === "password" && (
-          <>
-            <SettingRow label="Session expiry" info="How long a login session stays active before requiring re-authentication. Changes apply to new logins only (existing sessions are unaffected).">
-              <div className="space-y-2">
-                <div className="flex items-center gap-2">
-                  <input
-                    type="number"
-                    min={1}
-                    max={365}
-                    value={sessionExpiryDraft ?? (allSettings?.session_expiry_days ?? "7")}
-                    onChange={(e) => setSessionExpiryDraft(e.target.value)}
-                    className="w-20 bg-surface-3 border border-border rounded-lg px-3 py-1.5 text-sm text-slate-200 focus:outline-none focus:border-accent"
-                  />
-                  <span className="text-sm text-slate-500">days</span>
-                </div>
-                <div className="flex items-center gap-2">
+              {/* State 1: password -> no auth confirmation */}
+              {selectedMode === "none" && modeHasDraft && (
+                <>
+                  <label className="flex items-start gap-2 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={noAuthConfirmed}
+                      onChange={(e) => setNoAuthConfirmed(e.target.checked)}
+                      className="mt-0.5 accent-accent"
+                    />
+                    <span className="text-xs text-slate-400">I understand this will remove all authentication requirements.</span>
+                  </label>
                   <button
-                    disabled={isSavingRaw || sessionExpiryDraft === null}
-                    onClick={() => {
-                      if (sessionExpiryDraft !== null) {
-                        saveRaw({ session_expiry_days: sessionExpiryDraft });
-                      }
-                    }}
+                    disabled={isSavingAuthMode || !noAuthConfirmed}
+                    onClick={() => saveAuthMode({ auth_mode: "none" })}
                     className="px-3 py-1.5 text-xs rounded-lg bg-accent hover:bg-accent-hover text-white font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                   >
-                    Save
+                    {isSavingAuthMode ? "Saving..." : "Disable password auth"}
                   </button>
-                </div>
+                </>
+              )}
+
+              {/* State 2: no auth -> password, set new credentials */}
+              {selectedMode === "password" && authMode === "none" && (
+                <>
+                  <div className="space-y-1.5">
+                    <input
+                      type="password"
+                      placeholder="New password (min 8 characters)"
+                      value={newPw}
+                      onChange={(e) => setNewPw(e.target.value)}
+                      disabled={isSavingAuthMode}
+                      className={`${inputBase} w-full`}
+                    />
+                    <input
+                      type="password"
+                      placeholder="Confirm new password"
+                      value={confirmPw}
+                      onChange={(e) => setConfirmPw(e.target.value)}
+                      disabled={isSavingAuthMode}
+                      className={`${inputBase} w-full`}
+                    />
+                    {newPw.length > 0 && newPw.length < 8 && (
+                      <p className="text-xs text-red-400">Password must be at least 8 characters.</p>
+                    )}
+                    {confirmPw && newPw !== confirmPw && (
+                      <p className="text-xs text-red-400">Passwords do not match.</p>
+                    )}
+                  </div>
+                  <button
+                    disabled={isSavingAuthMode || !newPw || newPw.length < 8 || newPw !== confirmPw}
+                    onClick={() => saveAuthMode({ auth_mode: "password", username: "admin", password: newPw })}
+                    className="px-3 py-1.5 text-xs rounded-lg bg-accent hover:bg-accent-hover text-white font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    {isSavingAuthMode ? "Saving..." : "Enable password auth"}
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+
+          {/* State 3: Session Expiry row */}
+          {sessionExpiryApplies && (
+            <div className="flex items-center justify-between px-4 py-2.5 border-b border-border">
+              <span className="text-sm text-slate-300">Session Expiry</span>
+              <div className="flex items-center gap-1">
+                <input
+                  type="number"
+                  min={1}
+                  max={365}
+                  value={sessionExpiryDraft ?? (allSettings?.session_expiry_days ?? "7")}
+                  onChange={(e) => setSessionExpiryDraft(e.target.value)}
+                  disabled={isSavingAll}
+                  className={narrowInput}
+                />
+                <span className="w-14 text-slate-500 text-sm">days</span>
               </div>
-            </SettingRow>
-            <SettingRow label="Change password" last>
-              <div className="space-y-2">
-                <div className="space-y-1.5">
-                  <input
-                    type="password"
-                    placeholder="Current password"
-                    value={currentPw}
-                    onChange={(e) => { setCurrentPw(e.target.value); setPwError(null); }}
-                    disabled={isChangingPw}
-                    className="w-full max-w-xs bg-surface-3 border border-border rounded-lg px-3 py-1.5 text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:border-accent disabled:opacity-40"
-                  />
-                  {pwError === "Current password is incorrect." && (
-                    <p className="text-xs text-red-400">{pwError}</p>
-                  )}
-                  <input
-                    type="password"
-                    placeholder="New password (min 8 characters)"
-                    value={newPw}
-                    onChange={(e) => { setNewPw(e.target.value); setPwError(null); }}
-                    disabled={isChangingPw}
-                    className="w-full max-w-xs bg-surface-3 border border-border rounded-lg px-3 py-1.5 text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:border-accent disabled:opacity-40"
-                  />
-                  <input
-                    type="password"
-                    placeholder="Confirm new password"
-                    value={confirmPw}
-                    onChange={(e) => { setConfirmPw(e.target.value); setPwError(null); }}
-                    disabled={isChangingPw}
-                    className="w-full max-w-xs bg-surface-3 border border-border rounded-lg px-3 py-1.5 text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:border-accent disabled:opacity-40"
-                  />
-                  {confirmPw && newPw !== confirmPw && (
-                    <p className="text-xs text-red-400">Passwords do not match.</p>
-                  )}
-                </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    disabled={isChangingPw || !currentPw || !newPw || !confirmPw || newPw !== confirmPw || newPw.length < 8}
-                    onClick={() => {
-                      setPwError(null);
-                      changePassword({ current_password: currentPw, new_password: newPw });
-                    }}
-                    className="px-3 py-1.5 text-xs rounded-lg bg-accent hover:bg-accent-hover text-white font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                  >
-                    {isChangingPw ? "Saving…" : "Change password"}
-                  </button>
-                </div>
+            </div>
+          )}
+
+          {/* State 3: Change Password sub-section */}
+          {sessionExpiryApplies && (
+            <>
+              <p className="text-xs text-slate-500 uppercase tracking-wider px-4 pt-3 pb-1">Change Password</p>
+              <div className="px-4 pb-4 space-y-1.5">
+                <input
+                  type="password"
+                  placeholder="Current password"
+                  value={currentPw}
+                  onChange={(e) => { setCurrentPw(e.target.value); setPwError(null); }}
+                  disabled={isChangingPw}
+                  className={`${inputBase} w-full`}
+                />
+                {pwError === "Current password is incorrect." && (
+                  <p className="text-xs text-red-400">{pwError}</p>
+                )}
+                <input
+                  type="password"
+                  placeholder="New password (min 8 characters)"
+                  value={newPw}
+                  onChange={(e) => { setNewPw(e.target.value); setPwError(null); }}
+                  disabled={isChangingPw}
+                  className={`${inputBase} w-full`}
+                />
+                <input
+                  type="password"
+                  placeholder="Confirm new password"
+                  value={confirmPw}
+                  onChange={(e) => { setConfirmPw(e.target.value); setPwError(null); }}
+                  disabled={isChangingPw}
+                  className={`${inputBase} w-full`}
+                />
+                {confirmPw && newPw !== confirmPw && (
+                  <p className="text-xs text-red-400">Passwords do not match.</p>
+                )}
+                <button
+                  disabled={isChangingPw || !currentPw || !newPw || !confirmPw || newPw !== confirmPw || newPw.length < 8}
+                  onClick={() => {
+                    setPwError(null);
+                    changePassword({ current_password: currentPw, new_password: newPw });
+                  }}
+                  className="px-3 py-1.5 text-xs rounded-lg bg-accent hover:bg-accent-hover text-white font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  {isChangingPw ? "Saving..." : "Change password"}
+                </button>
                 {pwError && pwError !== "Current password is incorrect." && (
                   <p className="text-xs text-red-400">{pwError}</p>
                 )}
               </div>
-            </SettingRow>
-          </>
-        )}
+            </>
+          )}
+        </div>
 
+        {/* Right: four stacked cards */}
+        <div className="flex flex-col gap-2">
+
+          {/* Retention */}
+          <div className="bg-surface-2 border border-border rounded-xl overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-2.5 border-b border-border">
+              <span className="text-sm text-slate-300">Log Retention</span>
+              <div className="flex items-center gap-1">
+                <input
+                  type="number"
+                  min={1}
+                  max={365}
+                  value={retention}
+                  onChange={(e) => setRetentionDraft(e.target.value)}
+                  disabled={isSavingAll}
+                  className={narrowInput}
+                />
+                <span className="w-14 text-slate-500 text-sm">days</span>
+              </div>
+            </div>
+            <div className="flex items-center justify-between px-4 py-2.5">
+              <span className="text-sm text-slate-300">Metrics History</span>
+              <div className="flex items-center gap-1">
+                <input
+                  type="number"
+                  min={1}
+                  max={48}
+                  step={1}
+                  value={netRetention}
+                  onChange={(e) => setNetRetentionDraft(parseInt(e.target.value, 10))}
+                  disabled={isSavingAll}
+                  className={narrowInput}
+                />
+                <span className="w-14 text-slate-500 text-sm">hours</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Display Timezone */}
+          <div className="bg-surface-2 border border-border rounded-xl">
+            <div className="flex items-center justify-between px-4 py-2.5 rounded-xl">
+              <span className="text-sm text-slate-300">Display Timezone</span>
+              <TimezoneSelect value={timezone} onChange={setTimezoneDraft} disabled={isSavingAll} />
+            </div>
+          </div>
+
+          {/* Anonymous Analytics */}
+          <div className="bg-surface-2 border border-border rounded-xl overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-2.5">
+              <span className="text-sm text-slate-300">Anonymous Analytics</span>
+              <Toggle
+                checked={analyticsStatus?.analytics_enabled ?? false}
+                onChange={(v) => toggleAnalytics(v)}
+                disabled={isTogglingAnalytics}
+              />
+            </div>
+          </div>
+
+          {/* Image Updates */}
+          <div className="bg-surface-2 border border-border rounded-xl overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-2.5 border-b border-border">
+              <span className="text-sm text-slate-300">Auto-Check for Updates</span>
+              <Toggle
+                checked={imageEnabled}
+                onChange={(v) => { setEnabledDraft(v); saveAutoCheck(v); }}
+              />
+            </div>
+            <div className="flex items-center justify-between px-4 py-2.5">
+              <span className="text-sm text-slate-300">Daily Check Time</span>
+              <div className="flex items-center gap-2">
+                <input
+                  type="time"
+                  value={imageTime}
+                  onChange={(e) => setTimeDraft(e.target.value)}
+                  disabled={isSavingAll || !imageEnabled}
+                  className={inputBase}
+                />
+                <button
+                  disabled={isChecking}
+                  onClick={() => checkNow()}
+                  className="px-3 py-1.5 text-xs rounded-lg border border-border text-slate-400 hover:text-slate-200 hover:border-slate-500 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  {isChecking ? "Checking..." : "Run now"}
+                </button>
+              </div>
+            </div>
+          </div>
+
+        </div>
       </div>
 
-      <AboutSection version={version} />
+      {/* Save bar */}
+      <div className="border-t border-border bg-surface-2/95 px-5 py-3 flex items-center justify-between">
+        <span className={`text-xs ${isDirty ? "text-amber-400" : "text-slate-600"}`}>
+          {isDirty ? "You have unsaved changes." : "No unsaved changes."}
+        </span>
+        <button
+          disabled={!isDirty || isSavingAll || !retentionValid || !netRetentionValid}
+          onClick={() => saveAll()}
+          className="px-4 py-1.5 text-sm rounded-lg bg-accent hover:bg-accent-hover text-white font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          {isSavingAll ? "Saving..." : "Save"}
+        </button>
+      </div>
+
+    </div>
+  );
+}
+
+// ── Add exception modal ───────────────────────────────────────────────────────
+
+function AddExceptionModal({
+  allContainers,
+  existingNames,
+  onAdd,
+  onClose,
+}: {
+  allContainers: Container[];
+  existingNames: Set<string>;
+  onAdd: (name: string) => void;
+  onClose: () => void;
+}) {
+  const [search, setSearch] = useState("");
+  const seen = new Set<string>();
+  const filtered = allContainers.filter(c => {
+    if (existingNames.has(c.name) || seen.has(c.name)) return false;
+    seen.add(c.name);
+    return c.name.toLowerCase().includes(search.toLowerCase());
+  });
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onClose}>
+      <div
+        className="bg-surface-2 border border-border rounded-xl shadow-xl w-full max-w-sm mx-4 p-4 space-y-3"
+        onClick={e => e.stopPropagation()}
+      >
+        <h3 className="text-sm font-semibold text-slate-200">Add exception</h3>
+        <input
+          type="text"
+          placeholder="Search containers..."
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          autoFocus
+          className="w-full bg-surface-3 border border-border rounded-lg px-3 py-1.5 text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:border-accent"
+        />
+        <div className="max-h-52 overflow-y-auto">
+          {filtered.length === 0 ? (
+            <p className="text-sm text-slate-500 py-3 text-center">No containers available to add</p>
+          ) : (
+            <div className="space-y-0.5">
+              {filtered.map(c => (
+                <button
+                  key={c.name}
+                  onClick={() => { onAdd(c.name); onClose(); }}
+                  className="w-full text-left px-3 py-2 rounded-lg text-sm text-slate-300 hover:bg-surface-3 hover:text-slate-100 transition-colors"
+                >
+                  {c.name}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+        <div className="flex justify-end pt-1">
+          <button
+            onClick={onClose}
+            className="px-3 py-1.5 text-xs rounded-lg border border-border text-slate-400 hover:text-slate-200 transition-colors"
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
 
 // ── Notifications tab ─────────────────────────────────────────────────────────
 
-function NotificationsTab() {
+function NotificationsTab({ onDirtyChange }: { onDirtyChange: (dirty: boolean) => void }) {
   const queryClient = useQueryClient();
   const { isAuthenticated } = useAuth();
+  const { toastState, showToast, dismissToast } = useToast();
+  const [showAddModal, setShowAddModal] = useState(false);
 
-  const { data: containers = [], isLoading: loadingContainers } = useQuery<Container[]>({
-    queryKey: ["containers"],
-    queryFn: api.containers.list,
+  const { data: defaultsRaw = [], isLoading: loadingDefaults } = useQuery<{ event_type: string; enabled: boolean }[]>({
+    queryKey: ["alert-defaults"],
+    queryFn: api.settings.alertDefaults,
     enabled: isAuthenticated,
   });
 
-  const { data: alertSettings = [], isLoading: loadingSettings } = useQuery<AlertSetting[]>({
+  const { data: alertSettings = [], isLoading: loadingAlerts } = useQuery<AlertSetting[]>({
     queryKey: ["alert-settings"],
     queryFn: api.settings.alerts,
     enabled: isAuthenticated,
   });
 
-  const { mutate, isPending } = useMutation({
-    mutationFn: ({
-      container_name,
-      event_type,
-      enabled,
-    }: {
-      container_name: string;
-      event_type: AlertEventType;
-      enabled: boolean;
-    }) => api.settings.setAlert(container_name, event_type, enabled),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["alert-settings"] });
-    },
+  const { data: allContainers = [] } = useQuery<Container[]>({
+    queryKey: ["containers"],
+    queryFn: api.containers.list,
+    enabled: isAuthenticated,
   });
 
-  const { mutate: bulkToggle, isPending: isBulkPending } = useMutation({
-    mutationFn: (changes: Array<{ container_name: string; event_type: AlertEventType; enabled: boolean }>) =>
-      Promise.all(changes.map((c) => api.settings.setAlert(c.container_name, c.event_type, c.enabled))),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["alert-settings"] });
-    },
-  });
+  const savedDefaults = useMemo(() => buildDefaultsFromRaw(defaultsRaw), [defaultsRaw]);
+  const savedExceptions = useMemo(
+    () => buildExceptionsFromSettings(alertSettings, savedDefaults),
+    [alertSettings, savedDefaults]
+  );
 
-  const isDisabled = isPending || isBulkPending;
-  const isLoading = loadingContainers || loadingSettings;
-  const disabledSet = buildDisabledSet(alertSettings);
+  const [draftDefaults, setDraftDefaults] = useState<AlertDefaults | null>(null);
+  const [draftExceptions, setDraftExceptions] = useState<ExceptionMap | null>(null);
+  const [lastSavedDefaults, setLastSavedDefaults] = useState<AlertDefaults | null>(null);
+  const [lastSavedExceptions, setLastSavedExceptions] = useState<ExceptionMap | null>(null);
+  const initialized = useRef(false);
 
-  const groups: Record<string, Container[]> = {};
-  const ungrouped: Container[] = [];
-  for (const c of containers) {
-    if (c.compose_project) {
-      (groups[c.compose_project] ??= []).push(c);
-    } else {
-      ungrouped.push(c);
+  useEffect(() => {
+    if (!initialized.current && !loadingDefaults && !loadingAlerts) {
+      setDraftDefaults(savedDefaults);
+      setDraftExceptions(savedExceptions);
+      setLastSavedDefaults(savedDefaults);
+      setLastSavedExceptions(savedExceptions);
+      initialized.current = true;
     }
+  }, [loadingDefaults, loadingAlerts]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const isDirty =
+    !defaultsEqual(draftDefaults, lastSavedDefaults) ||
+    !exceptionsEqual(draftExceptions, lastSavedExceptions);
+
+  useEffect(() => { onDirtyChange(isDirty); }, [isDirty, onDirtyChange]);
+
+  useEffect(() => {
+    if (!isDirty) return;
+    const handler = (e: BeforeUnloadEvent) => { e.preventDefault(); };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [isDirty]);
+
+  const { mutate: save, isPending: isSaving } = useMutation({
+    mutationFn: async () => {
+      if (!draftDefaults || draftExceptions === null || lastSavedExceptions === null) return;
+
+      await api.settings.setAlertDefaults(
+        NOTIF_TYPES.map(({ key }) => ({ event_type: key, enabled: draftDefaults[key] }))
+      );
+
+      const calls: Promise<unknown>[] = [];
+      for (const [name, vals] of Object.entries(draftExceptions)) {
+        for (const { key } of NOTIF_TYPES) {
+          if (vals[key] !== draftDefaults[key]) {
+            calls.push(api.settings.setAlert(name, key, vals[key]));
+          }
+        }
+      }
+      for (const name of Object.keys(lastSavedExceptions)) {
+        if (!draftExceptions[name]) {
+          for (const { key } of NOTIF_TYPES) {
+            calls.push(api.settings.setAlert(name, key, draftDefaults[key]));
+          }
+        }
+      }
+      await Promise.all(calls);
+    },
+    onSuccess: () => {
+      if (!draftDefaults || draftExceptions === null) return;
+      const cleaned: ExceptionMap = {};
+      for (const [name, vals] of Object.entries(draftExceptions)) {
+        if (NOTIF_TYPES.some(({ key }) => vals[key] !== draftDefaults[key])) {
+          cleaned[name] = vals;
+        }
+      }
+      setDraftExceptions(cleaned);
+      setLastSavedDefaults({ ...draftDefaults });
+      setLastSavedExceptions(cleaned);
+      queryClient.invalidateQueries({ queryKey: ["alert-defaults"] });
+      queryClient.invalidateQueries({ queryKey: ["alert-settings"] });
+      showToast("Saved", "success");
+    },
+    onError: (err: Error) => showToast(err.message, "error"),
+  });
+
+  const isLoading = loadingDefaults || loadingAlerts;
+
+  if (isLoading || draftDefaults === null || draftExceptions === null) {
+    return <div className="py-12 text-center text-slate-500">Loading...</div>;
   }
 
-  function handleToggleAll(members: Container[]) {
-    const allEnabled = members.every((c) =>
-      ALERT_TYPES.every((t) => !disabledSet.has(`${c.name}:${t.key}`))
-    );
-    const targetEnabled = !allEnabled;
-    bulkToggle(
-      members.flatMap((c) =>
-        ALERT_TYPES.map((t) => ({ container_name: c.name, event_type: t.key, enabled: targetEnabled }))
-      )
-    );
-  }
-
-  if (isLoading) {
-    return <div className="py-12 text-center text-slate-500">Loading…</div>;
-  }
-
-  if (containers.length === 0) {
-    return (
-      <div className="card p-6 text-center text-slate-500">
-        No containers found. Is the collector running?
-      </div>
-    );
-  }
-
-  const togglesWidth = `${ALERT_TYPES.length * 6}rem`; // 4 × w-24 (6rem)
+  const exceptionNames = new Set(Object.keys(draftExceptions));
+  const sortedExceptions = Object.entries(draftExceptions).sort(([a], [b]) => a.localeCompare(b));
 
   return (
-    <div className="space-y-4">
-      <div className="card overflow-hidden">
-        {/* Column header row */}
-        <div className="flex items-center gap-2 px-4 py-2 border-b border-border bg-surface-3/40">
-          <span className="flex-1 text-xs font-medium uppercase tracking-wide text-slate-500">Container</span>
-          <div className="flex shrink-0" style={{ width: togglesWidth }}>
-            {ALERT_TYPES.map(({ key, label }) => (
-              <span key={key} className={`${COL_W} text-center text-xs font-medium uppercase tracking-wide text-slate-500`}>
-                {label}
-              </span>
-            ))}
+    <>
+      {toastState && (
+        <Toast key={toastState.id} message={toastState.message} type={toastState.type} duration={toastState.duration} onDismiss={dismissToast} />
+      )}
+
+      <div className="space-y-4">
+        {/* Global defaults card */}
+        <div className="card overflow-hidden">
+          <div className="px-5 py-3 border-b border-border">
+            <h2 className="text-sm font-semibold text-slate-200">Global defaults</h2>
+            <p className="text-xs text-slate-500 mt-0.5">Applies to all containers without an exception configured.</p>
           </div>
+          {NOTIF_TYPES.map(({ key, label }) => (
+            <div key={key} className="flex items-center justify-between px-5 py-3 border-b border-border last:border-0">
+              <span className="text-sm text-slate-300">{label}</span>
+              <Toggle
+                checked={draftDefaults[key]}
+                onChange={(v) => setDraftDefaults(prev => prev ? { ...prev, [key]: v } : prev)}
+              />
+            </div>
+          ))}
         </div>
 
-        {/* Compose stacks */}
-        {Object.entries(groups).map(([project, members]) => (
-          <React.Fragment key={project}>
-            {/* Stack header */}
-            <div className="flex items-center gap-2 px-4 py-2 border-b border-border bg-surface-3/20">
-              <svg className="w-3.5 h-3.5 text-slate-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-              </svg>
-              <span className="flex-1 text-xs font-semibold uppercase tracking-widest text-slate-500 truncate">{project}</span>
+        {/* Exceptions table */}
+        <div className="card overflow-hidden">
+          <div className="flex items-center justify-between px-5 py-3 border-b border-border">
+            <div>
+              <h2 className="text-sm font-semibold text-slate-200">Container exceptions</h2>
+              <p className="text-xs text-slate-500 mt-0.5">Overrides for individual containers.</p>
+            </div>
+            {sortedExceptions.length > 0 && (
               <button
-                disabled={isDisabled}
-                onClick={() => handleToggleAll(members)}
-                className="text-xs text-slate-500 hover:text-slate-300 border border-border rounded px-2 py-0.5 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                onClick={() => setShowAddModal(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg bg-surface-3 border border-border text-slate-300 hover:text-slate-100 hover:border-slate-500 transition-colors shrink-0"
               >
-                Toggle all
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                </svg>
+                Add exception
+              </button>
+            )}
+          </div>
+
+          {sortedExceptions.length === 0 ? (
+            <div className="px-5 py-8 text-center space-y-3">
+              <p className="text-sm text-slate-500">All containers are following global defaults.</p>
+              <button
+                onClick={() => setShowAddModal(true)}
+                className="px-3 py-1.5 text-xs rounded-lg bg-surface-3 border border-border text-slate-300 hover:text-slate-100 hover:border-slate-500 transition-colors"
+              >
+                Add exception
               </button>
             </div>
-            {members.map((c) => (
-              <ContainerRow
-                key={c.docker_id}
-                container={c}
-                disabledSet={disabledSet}
-                onToggle={(name, type, enabled) => mutate({ container_name: name, event_type: type, enabled })}
-                isDisabled={isDisabled}
-              />
-            ))}
-          </React.Fragment>
-        ))}
-
-        {/* Standalone containers */}
-        {ungrouped.length > 0 && (
-          <React.Fragment>
-            {Object.keys(groups).length > 0 && (
-              <div className="flex items-center gap-2 px-4 py-2 border-b border-border bg-surface-3/20">
-                <span className="text-xs font-semibold uppercase tracking-widest text-slate-500">Standalone</span>
+          ) : (
+            <>
+              <div className="flex items-center gap-2 px-5 py-2 border-b border-border bg-surface-3/40">
+                <span className="flex-1 text-xs font-medium uppercase tracking-wide text-slate-500">Container</span>
+                {NOTIF_TYPES.map(({ key, label, columnLabel }) => (
+                  <span key={key} className="w-20 shrink-0 text-center text-xs font-medium uppercase tracking-wide text-slate-500">{columnLabel ?? label}</span>
+                ))}
+                <span className="w-8 shrink-0" />
               </div>
-            )}
-            {ungrouped.map((c) => (
-              <ContainerRow
-                key={c.docker_id}
-                container={c}
-                disabledSet={disabledSet}
-                onToggle={(name, type, enabled) => mutate({ container_name: name, event_type: type, enabled })}
-                isDisabled={isDisabled}
-              />
-            ))}
-          </React.Fragment>
-        )}
+              {sortedExceptions.map(([name, vals]) => (
+                <div key={name} className="flex items-center gap-2 px-5 py-2.5 border-b border-border last:border-0">
+                  <span className="flex-1 min-w-0 text-sm text-slate-300 truncate">{name}</span>
+                  {NOTIF_TYPES.map(({ key }) => (
+                    <div key={key} className="w-20 shrink-0 flex justify-center">
+                      <Toggle
+                        checked={vals[key]}
+                        onChange={(v) =>
+                          setDraftExceptions(prev =>
+                            prev ? { ...prev, [name]: { ...prev[name], [key]: v } } : prev
+                          )
+                        }
+                      />
+                    </div>
+                  ))}
+                  <div className="w-8 shrink-0 flex justify-center">
+                    <button
+                      onClick={() =>
+                        setDraftExceptions(prev => {
+                          if (!prev) return prev;
+                          const next = { ...prev };
+                          delete next[name];
+                          return next;
+                        })
+                      }
+                      aria-label={`Remove exception for ${name}`}
+                      className="p-1 rounded text-slate-600 hover:text-red-400 hover:bg-surface-3 transition-colors"
+                    >
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </>
+          )}
+        </div>
+
+        <p className="text-xs text-slate-600">Alert toggles only take effect when a Discord webhook URL is configured. Events are always recorded regardless.</p>
+
+        {/* Save bar */}
+        <div className="sticky bottom-0 border-t border-border bg-surface-2/95 backdrop-blur-sm px-5 py-3 flex items-center justify-between">
+          <span className={`text-xs ${isDirty ? "text-amber-400" : "text-slate-600"}`}>
+            {isDirty ? "You have unsaved changes" : "No unsaved changes"}
+          </span>
+          <button
+            disabled={!isDirty || isSaving}
+            onClick={() => save()}
+            className="px-4 py-1.5 text-sm rounded-lg bg-accent hover:bg-accent-hover text-white font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            {isSaving ? "Saving..." : "Save"}
+          </button>
+        </div>
       </div>
 
-      <p className="text-xs text-slate-600">
-        Settings are only meaningful when a Discord webhook URL is configured. Events are always recorded in the timeline regardless.
-      </p>
-    </div>
+      {showAddModal && (
+        <AddExceptionModal
+          allContainers={allContainers}
+          existingNames={exceptionNames}
+          onAdd={(name) =>
+            setDraftExceptions(prev =>
+              prev ? { ...prev, [name]: { ...draftDefaults } } : prev
+            )
+          }
+          onClose={() => setShowAddModal(false)}
+        />
+      )}
+    </>
   );
 }
 
 // ── Settings page ─────────────────────────────────────────────────────────────
 
-type Tab = "general" | "notifications";
+type Tab = "general" | "notifications" | "about";
 
 export default function Settings({ authMode }: { authMode?: string }) {
   const [activeTab, setActiveTab] = useState<Tab>("general");
+  const [notifDirty, setNotifDirty] = useState(false);
+  const [generalDirty, setGeneralDirty] = useState(false);
   const { isAuthenticated } = useAuth();
+
+  function handleTabChange(tab: Tab) {
+    if (tab === activeTab) return;
+    if (activeTab === "notifications" && notifDirty) {
+      if (!window.confirm("You have unsaved changes. Leave without saving?")) return;
+    }
+    if (activeTab === "general" && generalDirty) {
+      if (!window.confirm("You have unsaved changes. Leave without saving?")) return;
+    }
+    setActiveTab(tab);
+  }
   const { data: versionData } = useQuery({
     queryKey: ["version"],
     queryFn: api.version,
@@ -864,7 +1076,7 @@ export default function Settings({ authMode }: { authMode?: string }) {
   });
 
   return (
-    <div className="max-w-3xl space-y-6">
+    <div className="max-w-4xl space-y-6">
       <div className="flex items-center gap-3">
         <h1 className="text-xl font-semibold text-slate-100">Settings</h1>
         {versionData && (
@@ -876,10 +1088,10 @@ export default function Settings({ authMode }: { authMode?: string }) {
 
       {/* Tab bar */}
       <div className="flex gap-1 border-b border-border">
-        {(["general", "notifications"] as Tab[]).map((tab) => (
+        {(["general", "notifications", "about"] as Tab[]).map((tab) => (
           <button
             key={tab}
-            onClick={() => setActiveTab(tab)}
+            onClick={() => handleTabChange(tab)}
             className={`px-4 py-2 text-sm font-medium capitalize transition-colors border-b-2 -mb-px ${
               activeTab === tab
                 ? "border-accent text-slate-100"
@@ -891,7 +1103,9 @@ export default function Settings({ authMode }: { authMode?: string }) {
         ))}
       </div>
 
-      {activeTab === "general" ? <GeneralTab authMode={authMode} version={versionData?.version} /> : <NotificationsTab />}
+      {activeTab === "general" && <GeneralTab authMode={authMode} version={versionData?.version} onDirtyChange={setGeneralDirty} />}
+      {activeTab === "notifications" && <NotificationsTab onDirtyChange={setNotifDirty} />}
+      {activeTab === "about" && <AboutTab />}
     </div>
   );
 }

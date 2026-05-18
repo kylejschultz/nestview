@@ -1,4 +1,4 @@
-import type { AlertEventType, AlertSetting, AnalyticsStatus, AuthStatus, Container, ContainerLog, ContainerEvent, GeneralSettings, MeResponse, MetricsHistoryPoint, NetworkHistoryPoint, WizardStatus } from "./types";
+import type { AlertEventType, AlertSetting, AnalyticsStatus, AuthStatus, Container, ContainerLog, ContainerEvent, GeneralSettings, MeResponse, MetricsHistoryPoint, NetworkHistoryPoint, SystemInfo, WizardStatus } from "./types";
 
 const BASE = "/api";
 
@@ -116,6 +116,9 @@ export const api = {
     alerts: () => get<AlertSetting[]>("/settings/alerts"),
     setAlert: (container_name: string, event_type: AlertEventType, enabled: boolean) =>
       patch<AlertSetting>("/settings/alerts", { container_name, event_type, enabled }),
+    alertDefaults: () => get<{ event_type: string; enabled: boolean }[]>("/settings/alerts/defaults"),
+    setAlertDefaults: (payload: { event_type: AlertEventType; enabled: boolean }[]) =>
+      patch<{ event_type: string; enabled: boolean }[]>("/settings/alerts/defaults", payload),
     general: () => get<GeneralSettings>("/settings/general"),
     saveGeneral: (body: Partial<GeneralSettings>) =>
       patch<GeneralSettings>("/settings/general", body),
@@ -129,5 +132,8 @@ export const api = {
     status: () => get<AnalyticsStatus>("/analytics/status"),
     optIn: () => post<AnalyticsStatus>("/analytics/opt-in"),
     optOut: () => post<AnalyticsStatus>("/analytics/opt-out"),
+  },
+  system: {
+    info: () => get<SystemInfo>("/system"),
   },
 };
