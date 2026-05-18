@@ -410,9 +410,15 @@ function ComposeGroup({ project, members }: ComposeGroupProps) {
             disabled={isPending || isProgressing || isCheckingUpdates}
             onClick={() => setMenuOpen((o) => !o)}
             title="Stack actions"
-            className="flex items-center justify-center w-7 h-7 rounded-md text-slate-500 hover:text-slate-300 hover:bg-surface-3 transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-lg leading-none"
+            className="text-xs text-slate-400 border border-border rounded-md px-2 py-1 hover:bg-surface-3 hover:text-slate-300 transition-colors inline-flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {isProgressing || isCheckingUpdates ? <StackActionSpinner /> : "···"}
+            {isProgressing || isCheckingUpdates ? <StackActionSpinner /> : "Actions"}
+            <svg
+              className={`w-3 h-3 transition-transform duration-200 ${menuOpen ? "rotate-180" : ""}`}
+              fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+            </svg>
           </button>
           {menuOpen && (
             <div className="absolute right-0 top-8 z-20 bg-surface-2 border border-border rounded-lg shadow-xl py-1 min-w-[148px]">
