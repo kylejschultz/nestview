@@ -1,4 +1,4 @@
-import type { AlertEventType, AlertSetting, AnalyticsStatus, AuthStatus, Container, ContainerLog, ContainerEvent, GeneralSettings, MeResponse, MetricsHistoryPoint, NetworkHistoryPoint, WizardStatus } from "./types";
+import type { AlertEventType, AlertSetting, AnalyticsStatus, AuthStatus, Container, ContainerLog, ContainerEvent, GeneralSettings, MeResponse, MetricsHistoryPoint, NetworkHistoryPoint, SystemInfo, WizardStatus } from "./types";
 
 const BASE = "/api";
 
@@ -132,5 +132,8 @@ export const api = {
     status: () => get<AnalyticsStatus>("/analytics/status"),
     optIn: () => post<AnalyticsStatus>("/analytics/opt-in"),
     optOut: () => post<AnalyticsStatus>("/analytics/opt-out"),
+  },
+  system: {
+    info: () => get<SystemInfo>("/system"),
   },
 };

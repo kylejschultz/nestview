@@ -2,7 +2,7 @@ import React, { useState, useRef, useMemo, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
 import { useAuth } from "../AuthContext";
-import type { AlertEventType, AlertSetting, AnalyticsStatus, Container, GeneralSettings } from "../types";
+import type { AlertEventType, AlertSetting, AnalyticsStatus, Container, GeneralSettings, SystemInfo } from "../types";
 import WebhookField from "../components/WebhookField";
 import DiscordWebhookHelpModal from "../components/DiscordWebhookHelpModal";
 import TimezoneSelect from "../components/TimezoneSelect";
@@ -98,21 +98,109 @@ function exceptionsEqual(a: ExceptionMap | null, b: ExceptionMap | null): boolea
   return ka.every(k => NOTIF_TYPES.every(({ key }) => a[k][key] === b[k][key]));
 }
 
-// ── About & Support ───────────────────────────────────────────────────────────
+// ── About tab helpers ─────────────────────────────────────────────────────────
 
-function AboutSection({ version }: { version?: string }) {
+function formatUptime(seconds: number): string {
+  const totalMinutes = Math.floor(seconds / 60);
+  const days = Math.floor(totalMinutes / (60 * 24));
+  const hours = Math.floor((totalMinutes % (60 * 24)) / 60);
+  const minutes = totalMinutes % 60;
+  const parts: string[] = [];
+  if (days > 0) parts.push(`${days}d`);
+  if (hours > 0) parts.push(`${hours}h`);
+  if (minutes > 0 || parts.length === 0) parts.push(`${minutes}m`);
+  return parts.join(" ");
+}
+
+function formatDbSize(bytes: number): string {
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function resolveBuildChannel(channel: string): string {
+  if (!channel || channel === "") return "stable";
+  return channel;
+}
+
+// ── About tab ─────────────────────────────────────────────────────────────────
+
+function AboutTab() {
+  const { isAuthenticated } = useAuth();
+
+  const { data: sysInfo, isLoading, isError } = useQuery<SystemInfo>({
+    queryKey: ["system-info"],
+    queryFn: api.system.info,
+    enabled: isAuthenticated,
+    staleTime: 30_000,
+  });
+
   return (
-    <section className="card p-5 space-y-4">
-      <div className="flex items-center justify-between">
-        <h2 className="text-sm font-semibold text-slate-200">About &amp; Support</h2>
-        {version && (
-          <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-accent/10 text-accent border border-accent/30">
-            Nestview v{version}
-          </span>
-        )}
-      </div>
-      <div className="space-y-3">
-        {/* Discord — most prominent */}
+    <div className="space-y-4">
+      {/* Card 1: System */}
+      <section className="card overflow-hidden">
+        {/* Version section */}
+        <p className="text-xs text-slate-500 uppercase tracking-wider px-5 pt-4 pb-2">Version</p>
+        <div className="border-t border-border">
+          {isLoading && (
+            <div className="px-5 py-6 text-sm text-slate-500">Loading...</div>
+          )}
+          {isError && (
+            <div className="px-5 py-6 text-sm text-red-400">Failed to load system info.</div>
+          )}
+          {sysInfo && (
+            <>
+              <div className="flex items-center justify-between px-5 py-2.5 border-b border-border">
+                <span className="text-sm text-slate-400">Version</span>
+                <span className="text-sm text-slate-200">{sysInfo.version}</span>
+              </div>
+              <div className="flex items-center justify-between px-5 py-2.5 border-b border-border">
+                <span className="text-sm text-slate-400">Build channel</span>
+                <span className="text-sm text-slate-200">{resolveBuildChannel(sysInfo.build_channel)}</span>
+              </div>
+              <div className="flex items-center justify-between px-5 py-2.5">
+                <span className="text-sm text-slate-400">Commit SHA</span>
+                {sysInfo.build_sha
+                  ? <span className="font-mono text-xs text-slate-200">{sysInfo.build_sha}</span>
+                  : <span className="text-sm text-slate-600">unavailable</span>
+                }
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* Runtime section */}
+        <p className="text-xs text-slate-500 uppercase tracking-wider px-5 pt-4 pb-2 border-t border-border">Runtime</p>
+        <div className="border-t border-border">
+          {isLoading && (
+            <div className="px-5 py-6 text-sm text-slate-500">Loading...</div>
+          )}
+          {sysInfo && (
+            <>
+              <div className="flex items-center justify-between px-5 py-2.5 border-b border-border">
+                <span className="text-sm text-slate-400">Uptime</span>
+                <span className="text-sm text-slate-200">{formatUptime(sysInfo.uptime_seconds)}</span>
+              </div>
+              <div className="flex items-center justify-between px-5 py-2.5 border-b border-border">
+                <span className="text-sm text-slate-400">Database size</span>
+                {sysInfo.db_size_bytes != null
+                  ? <span className="text-sm text-slate-200">{formatDbSize(sysInfo.db_size_bytes)}</span>
+                  : <span className="text-sm text-slate-600">unavailable</span>
+                }
+              </div>
+              <div className="flex items-center justify-between px-5 py-2.5">
+                <span className="text-sm text-slate-400">Docker</span>
+                <span className="flex items-center gap-1.5 text-sm text-slate-200">
+                  <span className={`w-2 h-2 rounded-full ${sysInfo.docker_connected ? "bg-green-400" : "bg-red-400"}`} />
+                  {sysInfo.docker_connected ? "Connected" : "Unreachable"}
+                </span>
+              </div>
+            </>
+          )}
+        </div>
+      </section>
+
+      {/* Card 2: Links */}
+      <section className="card p-5 space-y-3">
         <a
           href="https://discord.gg/aDEBQq3XtN"
           target="_blank"
@@ -127,7 +215,6 @@ function AboutSection({ version }: { version?: string }) {
             <p className="text-xs text-accent/70">Get support &amp; chat with the community</p>
           </div>
         </a>
-        {/* GitHub */}
         <a
           href="https://github.com/kylejschultz/nestview"
           target="_blank"
@@ -142,7 +229,6 @@ function AboutSection({ version }: { version?: string }) {
             <p className="text-xs text-slate-500">View source &amp; report issues</p>
           </div>
         </a>
-        {/* Ko-fi */}
         <a
           href="https://ko-fi.com/kylejschultz"
           target="_blank"
@@ -157,8 +243,8 @@ function AboutSection({ version }: { version?: string }) {
             <p className="text-xs text-slate-500">Support the project</p>
           </div>
         </a>
-      </div>
-    </section>
+      </section>
+    </div>
   );
 }
 
@@ -1019,7 +1105,7 @@ export default function Settings({ authMode }: { authMode?: string }) {
 
       {activeTab === "general" && <GeneralTab authMode={authMode} version={versionData?.version} onDirtyChange={setGeneralDirty} />}
       {activeTab === "notifications" && <NotificationsTab onDirtyChange={setNotifDirty} />}
-      {activeTab === "about" && <AboutSection version={versionData?.version} />}
+      {activeTab === "about" && <AboutTab />}
     </div>
   );
 }
