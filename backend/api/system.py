@@ -9,7 +9,7 @@ from build_info import APP_VERSION, BUILD_SHA, APP_START_TIME
 
 router = APIRouter(prefix="/api/system", tags=["system"])
 
-_DB_PATH = Path("nestview.db")
+_DB_PATH = Path("data/nestview.db")
 
 
 @router.get("")
