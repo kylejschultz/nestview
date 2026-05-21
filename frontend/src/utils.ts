@@ -9,6 +9,7 @@ export function formatBytes(bytes: number): string {
 export function formatUptime(startedAt: string): string {
   // Naive UTC strings from the backend have no Z suffix; append one so the
   // browser parses them as UTC rather than local time.
+  // Not ReDoS: /[Z+]/ is a simple character-class with no repetition or backtracking.
   const normalized = /[Z+]/.test(startedAt) ? startedAt : startedAt + "Z";
   const diff = Math.floor((Date.now() - new Date(normalized).getTime()) / 1000);
 

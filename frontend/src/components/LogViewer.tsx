@@ -163,12 +163,15 @@ export default function LogViewer({ dockerId }: Props) {
         <div className="flex items-center gap-1 ml-auto shrink-0">
           <span className="text-xs text-slate-600 mr-1">Export:</span>
           <button
+            // Not an open redirect: the URL is a hardcoded same-origin path (/api/logs/export);
+            // dockerId is an API-supplied container ID, not a user-controlled redirect target.
             onClick={() => { window.location.href = `/api/logs/export?container_id=${encodeURIComponent(dockerId)}&format=txt`; }}
             className="text-xs px-2 py-1 rounded border border-border text-slate-500 hover:border-slate-400 hover:text-slate-300 transition-colors"
           >
             .txt
           </button>
           <button
+            // Not an open redirect: same as above — hardcoded same-origin path, fixed format value.
             onClick={() => { window.location.href = `/api/logs/export?container_id=${encodeURIComponent(dockerId)}&format=csv`; }}
             className="text-xs px-2 py-1 rounded border border-border text-slate-500 hover:border-slate-400 hover:text-slate-300 transition-colors"
           >
