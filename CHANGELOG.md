@@ -1,38 +1,42 @@
 # Changelog
 
-All notable changes to Nestview are documented here.
+---
+## [1.3.2] - 2026-05-21
+### Changed
+- Settings controls replaced with preset dropdowns (Log Retention, Metrics History) and a stepper (Session Expiry)
+- Dark mode styling applied to the update check time picker.
+- Network I/O charts fixed to show per-interval rates instead of cumulative totals.
 
-Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
-Versioning follows [Semantic Versioning](https://semver.org/).
+---
+
+## [1.3.1] - 2026-05-20
+### Changed
+- Disabled /docs, /redoc, and /openapi.json endpoints in production
+- Added `NESTVIEW_ALLOWED_ORIGINS` env var to restrict CORS to specific origins - unset behavior unchanged, existing deployments unaffected
+- Sanitized CSV log export values to prevent formula injection in spreadsheet software
 
 ---
 
 ## [1.3.0] — 2026-05-18
-
 ### Added
-
 - Settings > About tab showing version, build channel, commit SHA, uptime, database size, and Docker connection status
 - `GET /api/system` endpoint (authenticated) backing the About tab data
 - Discord community link in the top navbar
 
 ### Changed
-
 - Notifications tab redesigned with a global defaults model and per-container exceptions table; single save bar with unsaved-changes guard
 - Settings General tab redesigned as a card grid with a unified save bar; per-field save buttons removed; Exited Container TTL field removed from UI (backend retention enforcement unchanged); About & Support moved to its own tab
 - Container detail page restructured with a live stats strip, three side-by-side charts (CPU, memory, network I/O), a two-column details and events row, and full-width logs; events panel shows human-readable past-tense labels with pagination
 - Dashboard stack action buttons consolidated into a "Stack Actions" dropdown menu; exited container cards are visually dimmed; standalone section label removed
 
 ### Fixed
-
 - Network history records are now re-associated before the restart detection path clears them, preserving history across force-recreate
 - Unmatched `/api/` paths now return 404 instead of serving the SPA index
 
 ---
 
 ## [1.2.1] — 2026-05-12
-
 ### Added
-
 - All active sessions are invalidated when the admin password is changed
 - Any API call returning 401 now automatically redirects to `/login` in the frontend
 - Discord webhook animated setup guide embedded in the webhook URL field in Settings
@@ -40,7 +44,6 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 - BUILD_CHANNEL suffix now applied to any non-release channel, not just `dev`
 
 ### Fixed
-
 - Internal container fields stripped from all API responses
 - Version field removed from `/api/health` response
 - Log export capped at 50,000 lines to prevent memory exhaustion on large containers
@@ -50,21 +53,17 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 ---
 
 ## [1.2.0] — 2026-05-09
-
 ### Added
-
 - CPU and memory usage history charts on the container detail page, showing trends over the configured retention window
 - Container history re-association: when a container is recreated (same name and Compose project, new docker ID), Nestview automatically migrates all previous logs, events, metrics, and network history to the new container instead of starting fresh; a recreation event is written to the timeline
 - "Learn more" link on the analytics opt-in banner opens a modal with full disclosure of every field collected
 
 ### Changed
-
 - Analytics daily ping now includes OS, container count, and release channel
 - CPU and Memory chart panel is collapsed by default on the container detail page
 - Sensitive settings values (Discord webhook URL, password hash, session signing key, admin username) are no longer returned by the settings API
 
 ### Fixed
-
 - Clean container shutdowns (exit code 0) no longer trigger Discord alerts - only non-zero exit crashes alert
 - Removed an inoperative stream filter from the log search endpoint that had no effect but added confusion
 - Removed a dead `/api/config` endpoint that was no longer wired up
@@ -72,41 +71,32 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 ---
 
 ## [1.1.0] — 2026-05-07
-
 ### Added
-
 - Opt-in anonymous telemetry: a setup wizard step and Settings toggle let users choose whether to participate; a daily background ping sends a randomly generated install ID and aggregate stats to the Nestview beacon; no container names, hostnames, or personal data are collected
 
 ### Changed
-
 - Internal container port aligned to 8484; `NESTVIEW_PORT` environment variable removed
 
 ### Fixed
-
 - Empty string values for `POLL_INTERVAL` and `LOG_BATCH_INTERVAL` environment variables are now treated as unset and fall back to defaults, preventing collector startup failures in environments that set blank env vars
 
 ### Breaking Changes
-
 - The internal conatiner port changed from 8080 to 8484. If coming froma prior version, you will need to redploy using `8484:8484` for your port configuration - no other changes should be needed. The `docker-compose.yml` has been updated to reflect this or you can update the port mapping manually..
 
 ---
 
 ## [1.0.0] — 2026-04-24
-
 ### Added
-
 - Auth mode selector in the setup wizard — choose between standard login or no-auth during first-run setup
 - Auth mode toggle in Settings — switch between standard and no-auth with inline credential setup and explicit confirmation flow
 
 ### Changed
-
 - Backend cleanup pass: extracted constants, fixed logging initialization order, removed dead endpoints, cleaned up imports
 - Frontend cleanup pass: extracted `NestviewLogo` component, removed dead code, fixed JSX issues, deduplicated React Query hooks
 - Docker image hardened: HEALTHCHECK added, pip cache disabled; non-root USER reverted due to Docker socket permission conflict
 - GitHub Actions workflows pinned to full commit SHAs; `github-actions` ecosystem added to Dependabot
 
 ### Fixed
-
 - Session cookie now correctly awaited and cleared before redirecting to login on logout
 - Auth mode switching flow corrected in Settings and setup wizard
 - Bumped Python and npm dependencies (fastapi, uvicorn, requests, vite, react-router-dom, postcss)
@@ -114,9 +104,7 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 ---
 
 ## [0.5.0] — 2026-04-15
-
 ### Added
-
 - Versioned migration system using SQLAlchemy inspect — replaces ad-hoc schema patching; eliminates startup boot loop
 - Per-container network I/O (rx/tx bytes) tracking with configurable history retention
 - Network I/O line chart on container detail page (Recharts), with date boundaries on X-axis and tiered Y-axis scaling
@@ -127,7 +115,6 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 - `BUILD_CHANNEL` build arg for dev image self-identification in CI
 
 ### Changed
-
 - Container card image subtitle replaced with registry badge and tag pill
 - "Pull & restart" action replaced by "Check for updates" and "Update & restart" with live progress steps
 - Exited container TTL moved to Settings UI (configurable in seconds with slider); `EXITED_CONTAINER_TTL_HOURS` env var removed
@@ -135,7 +122,6 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 - Dev image CI build scoped to arm64 (M-series) only
 
 ### Fixed
-
 - OCI and Docker manifest `Accept` headers included in digest fetch requests
 - Missing `last_pulled` field added to `Container` model (migration 002)
 - Container name included in log export filenames
@@ -144,17 +130,13 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 ---
 
 ## [0.4.1] — 2026-04-11
-
 ### Fixed
-
 - Navigating to `/login` while already authenticated now redirects to the dashboard instead of rendering a blank page
 
 ---
 
 ## [0.4.0] — 2026-04-10
-
 ### Added
-
 - Mandatory authentication — username and password required on first run; bcrypt-hashed credentials stored in SQLite `AppSetting` table
 - First-run setup page (`/setup`) — collects username, password, and auth mode before the dashboard is accessible; cannot be bypassed
 - "No authentication" escape hatch — available during setup with explicit double-confirmation; appropriate for users behind an external auth proxy (Authelia, Authentik, nginx basic auth)
@@ -175,9 +157,7 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 ---
 
 ## [0.3.0] — 2026-04-08
-
 ### Changed
-
 - Collapsed three-container stack (backend, collector, frontend) into a single image (`ghcr.io/kylejschultz/nestview`)
 - Collector logic now runs as daemon threads inside the backend process — no separate container or inter-service HTTP required
 - React frontend is embedded in the image and served directly by FastAPI via `StaticFiles` — nginx container removed
@@ -186,15 +166,12 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 - Removed `NESTVIEW_COLLECTOR_KEY` and `BACKEND_URL` environment variables
 
 ### Removed
-
 - `nestview-backend`, `nestview-collector`, and `nestview-frontend` images superseded by `nestview`
 
 ---
 
 ## [0.2.0] — 2026-04-06
-
 ### Added
-
 - Image update detection — background job checks running containers for newer digests on Docker Hub and GHCR on a configurable daily schedule
 - Discord alerts for available image updates — notification sent when a newer digest is detected for a running container
 - Image size and last digest check timestamp on the container detail page
@@ -204,11 +181,9 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 ---
 
 ## [0.1.0] — 2026-03-31
-
 Initial release.
 
 ### Added
-
 - Zero-config container autodiscovery via Docker socket (read-only mount)
 - Live health dashboard — CPU%, memory, uptime, restart count per container
 - Containers grouped by Docker Compose project in the dashboard
