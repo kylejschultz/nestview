@@ -251,7 +251,15 @@ function AboutTab() {
 // ── General tab ───────────────────────────────────────────────────────────────
 
 const inputBase = "bg-surface-3 border border-border rounded-lg px-3 py-1.5 text-sm text-slate-200 focus:outline-none focus:border-accent disabled:opacity-40 disabled:cursor-not-allowed";
-const narrowInput = `${inputBase} w-12 text-right px-2`;
+
+const LOG_RETENTION_PRESETS = [1, 3, 7, 14, 30, 90];
+const METRICS_HISTORY_PRESETS = [1, 6, 12, 24, 48];
+
+function nearestPreset(presets: number[], value: number): number {
+  return presets.reduce((prev, curr) =>
+    Math.abs(curr - value) < Math.abs(prev - value) ? curr : prev
+  );
+}
 
 function GeneralTab({ authMode, version, onDirtyChange }: { authMode?: string; version?: string; onDirtyChange: (dirty: boolean) => void }) {
   const queryClient = useQueryClient();
@@ -309,6 +317,7 @@ function GeneralTab({ authMode, version, onDirtyChange }: { authMode?: string; v
   const retentionNum = parseInt(retention, 10);
   const retentionValid = !isNaN(retentionNum) && retentionNum >= 1 && retentionNum <= 365;
   const netRetentionValid = !isNaN(netRetention) && netRetention >= 1 && netRetention <= 48;
+  const sessionExpiryDays = parseInt(sessionExpiryDraft ?? (allSettings?.session_expiry_days ?? "7"), 10);
   const selectedMode = authModeDraft ?? authMode ?? "password";
   const modeHasDraft = authModeDraft !== null && authModeDraft !== authMode;
   const sessionExpiryApplies = selectedMode === "password" && authMode === "password";
@@ -556,17 +565,22 @@ function GeneralTab({ authMode, version, onDirtyChange }: { authMode?: string; v
           {sessionExpiryApplies && (
             <div className="flex items-center justify-between px-4 py-2.5 border-b border-border">
               <span className="text-sm text-slate-300">Session Expiry</span>
-              <div className="flex items-center gap-1">
-                <input
-                  type="number"
-                  min={1}
-                  max={365}
-                  value={sessionExpiryDraft ?? (allSettings?.session_expiry_days ?? "7")}
-                  onChange={(e) => setSessionExpiryDraft(e.target.value)}
-                  disabled={isSavingAll}
-                  className={narrowInput}
-                />
-                <span className="w-14 text-slate-500 text-sm">days</span>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setSessionExpiryDraft(String(Math.max(1, sessionExpiryDays - 1)))}
+                  disabled={isSavingAll || sessionExpiryDays <= 1}
+                  aria-label="Decrease session expiry"
+                  className="w-7 h-7 flex items-center justify-center rounded-md bg-surface-3 border border-border text-slate-300 hover:text-slate-100 hover:border-slate-500 transition-colors disabled:opacity-40 disabled:cursor-not-allowed text-base font-medium leading-none"
+                >−</button>
+                <span className="w-20 text-center text-sm text-slate-200 tabular-nums">
+                  {sessionExpiryDays === 1 ? "1 day" : `${sessionExpiryDays} days`}
+                </span>
+                <button
+                  onClick={() => setSessionExpiryDraft(String(Math.min(365, sessionExpiryDays + 1)))}
+                  disabled={isSavingAll || sessionExpiryDays >= 365}
+                  aria-label="Increase session expiry"
+                  className="w-7 h-7 flex items-center justify-center rounded-md bg-surface-3 border border-border text-slate-300 hover:text-slate-100 hover:border-slate-500 transition-colors disabled:opacity-40 disabled:cursor-not-allowed text-base font-medium leading-none"
+                >+</button>
               </div>
             </div>
           )}
@@ -631,34 +645,29 @@ function GeneralTab({ authMode, version, onDirtyChange }: { authMode?: string; v
           <div className="bg-surface-2 border border-border rounded-xl overflow-hidden">
             <div className="flex items-center justify-between px-4 py-2.5 border-b border-border">
               <span className="text-sm text-slate-300">Log Retention</span>
-              <div className="flex items-center gap-1">
-                <input
-                  type="number"
-                  min={1}
-                  max={365}
-                  value={retention}
-                  onChange={(e) => setRetentionDraft(e.target.value)}
-                  disabled={isSavingAll}
-                  className={narrowInput}
-                />
-                <span className="w-14 text-slate-500 text-sm">days</span>
-              </div>
+              <select
+                value={nearestPreset(LOG_RETENTION_PRESETS, parseInt(retention, 10))}
+                onChange={(e) => setRetentionDraft(e.target.value)}
+                disabled={isSavingAll}
+                className={inputBase}
+              >
+                {LOG_RETENTION_PRESETS.map(days => (
+                  <option key={days} value={days}>{days === 1 ? "1 day" : `${days} days`}</option>
+                ))}
+              </select>
             </div>
             <div className="flex items-center justify-between px-4 py-2.5">
               <span className="text-sm text-slate-300">Metrics History</span>
-              <div className="flex items-center gap-1">
-                <input
-                  type="number"
-                  min={1}
-                  max={48}
-                  step={1}
-                  value={netRetention}
-                  onChange={(e) => setNetRetentionDraft(parseInt(e.target.value, 10))}
-                  disabled={isSavingAll}
-                  className={narrowInput}
-                />
-                <span className="w-14 text-slate-500 text-sm">hours</span>
-              </div>
+              <select
+                value={nearestPreset(METRICS_HISTORY_PRESETS, netRetention)}
+                onChange={(e) => setNetRetentionDraft(parseInt(e.target.value, 10))}
+                disabled={isSavingAll}
+                className={inputBase}
+              >
+                {METRICS_HISTORY_PRESETS.map(hours => (
+                  <option key={hours} value={hours}>{hours === 1 ? "1 hour" : `${hours} hours`}</option>
+                ))}
+              </select>
             </div>
           </div>
 
@@ -699,7 +708,7 @@ function GeneralTab({ authMode, version, onDirtyChange }: { authMode?: string; v
                   value={imageTime}
                   onChange={(e) => setTimeDraft(e.target.value)}
                   disabled={isSavingAll || !imageEnabled}
-                  className={inputBase}
+                  className={`${inputBase} [color-scheme:dark]`}
                 />
                 <button
                   disabled={isChecking}
