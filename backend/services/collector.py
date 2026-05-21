@@ -41,6 +41,9 @@ _log_lock = threading.Lock()
 # container_id → last known started_at string (used to detect restarts)
 _container_started_at: dict[str, Optional[str]] = {}
 
+# container_id → (rx_bytes, tx_bytes) cumulative totals from the previous poll
+_net_prev: dict[str, tuple[int, int]] = {}
+
 
 def _safe_name(name: str) -> str:
     """Strip control characters from container names before printing."""
@@ -180,6 +183,7 @@ def _apply_batch(containers_data: list[dict]) -> None:
                         ContainerNetworkHistory.container_id == docker_id
                     )
                 )
+                _net_prev.pop(docker_id, None)
                 logger.info("Cleared network history for %s (restart detected)", c['name'])
             _container_started_at[docker_id] = new_started
 
@@ -370,10 +374,20 @@ def _write_network_history(containers_data: list[dict]) -> None:
                 continue
 
             docker_id = c["docker_id"]
+            cum_rx, cum_tx = c["net_rx_bytes"], c["net_tx_bytes"]
+            prev = _net_prev.get(docker_id)
+            if prev is None:
+                rx_delta, tx_delta = 0, 0
+            else:
+                prev_rx, prev_tx = prev
+                rx_delta = max(0, cum_rx - prev_rx)
+                tx_delta = max(0, cum_tx - prev_tx)
+            _net_prev[docker_id] = (cum_rx, cum_tx)
+
             session.add(ContainerNetworkHistory(
                 container_id=docker_id,
-                rx_bytes=c["net_rx_bytes"],
-                tx_bytes=c["net_tx_bytes"],
+                rx_bytes=rx_delta,
+                tx_bytes=tx_delta,
                 recorded_at=now,
             ))
 
