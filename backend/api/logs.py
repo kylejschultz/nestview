@@ -60,6 +60,13 @@ def export_container_logs(
     filename = f"nestview-logs-{safe_name}-{safe_id}.{format}"
 
     if format == "csv":
+        def _csv_safe(value: str) -> str:
+            # Prefix values that start with formula-injection chars so spreadsheet
+            # software (Excel, Sheets) does not evaluate them as formulas.
+            if value and value[0] in ("=", "-", "+", "@", "\t", "\r"):
+                return "'" + value
+            return value
+
         def generate_csv():
             buf = io.StringIO()
             writer = csv.writer(buf)
@@ -68,7 +75,7 @@ def export_container_logs(
             for log in logs:
                 buf = io.StringIO()
                 writer = csv.writer(buf)
-                writer.writerow([log.timestamp.isoformat(), log.stream, log.message])
+                writer.writerow([log.timestamp.isoformat(), _csv_safe(log.stream), _csv_safe(log.message)])
                 yield buf.getvalue()
 
         return StreamingResponse(

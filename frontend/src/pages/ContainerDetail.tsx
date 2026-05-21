@@ -258,6 +258,8 @@ function ActionButtons({ container }: ActionButtonsProps) {
   const { mutate, isPending: mutationIsPending } = useMutation({
     mutationFn: (action: ActionType) => {
       if (action === "update-and-restart") return api.containers.updateAndRestart(container.docker_id);
+      // Not unsafe dynamic invocation: action is constrained by the ActionType union
+      // ("stop" | "restart" | "start") — all known methods on api.containers.
       return api.containers[action](container.docker_id);
     },
     onMutate: (action: ActionType) => {
