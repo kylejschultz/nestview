@@ -26,6 +26,8 @@ async function get<T>(path: string): Promise<T> {
 }
 
 async function patch<T>(path: string, body: unknown): Promise<T> {
+  // Not SSRF: BASE is the hardcoded relative string "/api"; path is always a
+  // compiled-in literal from the api object below, never user-supplied input.
   const res = await fetch(`${BASE}${path}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
@@ -40,6 +42,8 @@ async function patch<T>(path: string, body: unknown): Promise<T> {
 }
 
 async function post<T>(path: string, body?: unknown): Promise<T> {
+  // Not SSRF: BASE is the hardcoded relative string "/api"; path is always a
+  // compiled-in literal from the api object below, never user-supplied input.
   const res = await fetch(`${BASE}${path}`, {
     method: "POST",
     headers: body !== undefined ? { "Content-Type": "application/json" } : {},

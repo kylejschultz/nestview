@@ -138,11 +138,14 @@ app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # Port 8484 is exposed directly in docker-compose (no nginx in front).
-# CORS is permissive so local `npm run dev` works without extra config.
-# For hardened deployments, restrict allow_origins to the specific host(s) that need access.
+# CORS is permissive by default so local `npm run dev` works without extra config.
+# Set NESTVIEW_ALLOWED_ORIGINS to a comma-separated list to restrict origins in
+# hardened deployments (e.g. "https://nestview.example.com,https://other.example.com").
+_raw_origins = os.getenv("NESTVIEW_ALLOWED_ORIGINS", "").strip()
+_allow_origins: list[str] = [o.strip() for o in _raw_origins.split(",") if o.strip()] if _raw_origins else ["*"]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_allow_origins,
     allow_methods=["GET", "POST", "PATCH", "PUT"],
     allow_headers=["*"],
 )
