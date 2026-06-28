@@ -165,6 +165,10 @@ def _parse_dt(s: Optional[str]) -> Optional[datetime]:
         return None
 
 
+def _started_at_changed(previous: Optional[datetime], current: Optional[datetime]) -> bool:
+    return previous is not None and current is not None and previous != current
+
+
 def _apply_batch(containers_data: list[dict]) -> None:
     seen_ids = set()
     protected_ids: set[str] = set()
@@ -173,18 +177,14 @@ def _apply_batch(containers_data: list[dict]) -> None:
             docker_id = c["docker_id"]
             seen_ids.add(docker_id)
 
-            # Restart detection: if started_at changed, the container has restarted
-            # since the last poll — clear its network history so the chart starts fresh.
+            # Track restarts seen during this process. Network history reset uses
+            # the persisted DB started_at in _write_network_history so it also
+            # works after Nestview itself restarts.
             new_started = c["started_at"]
             prev_started = _container_started_at.get(docker_id)
             if prev_started is not None and prev_started != new_started:
-                session.exec(
-                    delete(ContainerNetworkHistory).where(
-                        ContainerNetworkHistory.container_id == docker_id
-                    )
-                )
                 _net_prev.pop(docker_id, None)
-                logger.info("Cleared network history for %s (restart detected)", c['name'])
+                logger.info("Detected restart for %s", c['name'])
             _container_started_at[docker_id] = new_started
 
             existing = session.exec(
@@ -356,6 +356,26 @@ def _apply_batch(containers_data: list[dict]) -> None:
         session.commit()
 
 
+def _load_persisted_net_prev(
+    session: Session,
+    container_data: dict,
+) -> tuple[Optional[tuple[int, int]], bool]:
+    """Return prior cumulative counters and whether history should reset."""
+    existing = session.exec(
+        select(Container).where(Container.docker_id == container_data["docker_id"])
+    ).first()
+    if not existing:
+        return None, False
+
+    current_started = _parse_dt(container_data.get("started_at"))
+    if _started_at_changed(existing.started_at, current_started):
+        return None, True
+
+    if existing.net_rx_bytes is None or existing.net_tx_bytes is None:
+        return None, False
+    return (existing.net_rx_bytes, existing.net_tx_bytes), False
+
+
 def _write_network_history(containers_data: list[dict]) -> None:
     """Write one rx/tx snapshot per running container, then prune old records.
 
@@ -376,12 +396,24 @@ def _write_network_history(containers_data: list[dict]) -> None:
             docker_id = c["docker_id"]
             cum_rx, cum_tx = c["net_rx_bytes"], c["net_tx_bytes"]
             prev = _net_prev.get(docker_id)
+            reset_history = False
             if prev is None:
-                rx_delta, tx_delta = 0, 0
-            else:
+                prev, reset_history = _load_persisted_net_prev(session, c)
+
+            if reset_history:
+                session.exec(
+                    delete(ContainerNetworkHistory).where(
+                        ContainerNetworkHistory.container_id == docker_id
+                    )
+                )
+                logger.info("Cleared network history for %s (restart detected)", c['name'])
+
+            if prev is not None:
                 prev_rx, prev_tx = prev
                 rx_delta = max(0, cum_rx - prev_rx)
                 tx_delta = max(0, cum_tx - prev_tx)
+            else:
+                rx_delta, tx_delta = 0, 0
             _net_prev[docker_id] = (cum_rx, cum_tx)
 
             session.add(ContainerNetworkHistory(
@@ -647,8 +679,8 @@ def _stats_loop() -> None:
                     del _log_threads[cid]
 
             if container_data:
-                _apply_batch(container_data)
                 _write_network_history(container_data)
+                _apply_batch(container_data)
                 _write_metrics_history(container_data)
 
             if time.time() - last_flush >= LOG_BATCH_INTERVAL:

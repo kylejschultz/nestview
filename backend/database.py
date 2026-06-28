@@ -1,6 +1,7 @@
 import os
 from pathlib import Path
 
+from sqlalchemy import event
 from sqlmodel import create_engine, SQLModel, Session
 
 # Explicit imports ensure all models are registered in SQLModel.metadata
@@ -14,6 +15,17 @@ engine = create_engine(
     f"sqlite:///{DB_PATH}",
     connect_args={"check_same_thread": False},
 )
+
+
+@event.listens_for(engine, "connect")
+def _configure_sqlite_connection(dbapi_connection, _connection_record):
+    cursor = dbapi_connection.cursor()
+    try:
+        cursor.execute("PRAGMA journal_mode=WAL")
+        cursor.execute("PRAGMA busy_timeout=5000")
+        cursor.execute("PRAGMA foreign_keys=ON")
+    finally:
+        cursor.close()
 
 
 def create_db_and_tables():

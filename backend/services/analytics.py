@@ -17,6 +17,7 @@ logger = logging.getLogger(__name__)
 _BEACON_URL = "https://beacon.kjschultz.com/ping"
 _VERSION_FILE = Path("/app/VERSION")
 _last_ping_date: str | None = None
+_LAST_PING_SETTING = "analytics_last_ping_date"
 
 
 def ensure_install_id(session: Session) -> None:
@@ -45,6 +46,10 @@ async def run_analytics_ping() -> None:
         with Session(engine) as session:
             if get_setting(session, "analytics_enabled") != "true":
                 return
+            persisted_last_ping = get_setting(session, _LAST_PING_SETTING)
+            if persisted_last_ping == today:
+                _last_ping_date = today
+                return
             install_id = get_setting(session, "install_id") or ""
             if not install_id:
                 return
@@ -69,6 +74,9 @@ async def run_analytics_ping() -> None:
         async with httpx.AsyncClient(timeout=10.0) as client:
             await client.post(_BEACON_URL, json=payload)
 
-        _last_ping_date = today
+        with Session(engine) as session:
+            set_setting(session, _LAST_PING_SETTING, today)
+            session.commit()
+            _last_ping_date = today
     except Exception:
         pass

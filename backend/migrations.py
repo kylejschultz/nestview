@@ -250,6 +250,17 @@ def _migrate_011(engine: Engine) -> None:
     logger.info("migration 011: seeded global alert defaults for crash, restart, oom, update_available")
 
 
+def _migrate_012(engine: Engine) -> None:
+    """Seed persistent analytics last-ping tracking."""
+    with engine.connect() as conn:
+        conn.execute(text(
+            "INSERT OR IGNORE INTO app_setting (key, value, updated_at) "
+            "VALUES ('analytics_last_ping_date', '', datetime('now'))"
+        ))
+        conn.commit()
+    logger.info("migration 012: seeded analytics_last_ping_date key")
+
+
 MIGRATIONS: list[tuple[str, Callable]] = [
     ("001", _migrate_001),
     ("002", _migrate_002),
@@ -262,6 +273,7 @@ MIGRATIONS: list[tuple[str, Callable]] = [
     ("009", _migrate_009),
     ("010", _migrate_010),
     ("011", _migrate_011),
+    ("012", _migrate_012),
 ]
 
 
