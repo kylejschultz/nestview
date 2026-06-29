@@ -1,0 +1,107 @@
+name: Test
+
+on:
+  pull_request:
+    branches: [main, dev]
+  push:
+    branches: [main, dev]
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    name: Backend pytest
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: backend/requirements-dev.txt
+
+      - name: Install backend dependencies
+        run: python -m pip install -r backend/requirements-dev.txt
+
+      - name: Run backend tests
+        run: python -m pytest
+
+  frontend:
+    name: Frontend build
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Set up Node
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: "26"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build frontend
+        working-directory: frontend
+        run: npm run build
+
+  docker-smoke:
+    name: Docker smoke
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Build image
+        run: |
+          docker build \
+            --build-arg GIT_SHA=test-smoke \
+            -t nestview:test \
+            -f Dockerfile \
+            .
+
+      - name: Run image
+        run: |
+          docker run -d \
+            --name nestview-smoke \
+            -p 8484:8484 \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            nestview:test
+
+      - name: Verify health and version
+        run: |
+          for attempt in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8484/api/health; then
+              break
+            fi
+            if [ "$attempt" = "30" ]; then
+              docker logs nestview-smoke
+              exit 1
+            fi
+            sleep 2
+          done
+
+          actual_version="$(
+            curl -fsS http://127.0.0.1:8484/api/version \
+              | python3 -c 'import json, sys; print(json.load(sys.stdin)["version"])'
+          )"
+          expected_version="$(cat VERSION)"
+          test "$actual_version" = "$expected_version"
+
+      - name: Show logs on failure
+        if: failure()
+        run: docker logs nestview-smoke || true
+
+      - name: Clean up smoke container
+        if: always()
+        run: docker rm -f nestview-smoke || true
