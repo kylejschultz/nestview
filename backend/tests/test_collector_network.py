@@ -97,3 +97,31 @@ def test_network_history_resets_when_container_started_at_changes(collector_engi
     assert len(rows) == 1
     assert rows[0].rx_bytes == 0
     assert rows[0].tx_bytes == 0
+
+
+def test_network_history_uses_current_counters_as_baseline_after_counter_reset(collector_engine):
+    started_at = "2026-06-28T10:00:00Z"
+    with Session(collector_engine) as session:
+        session.add(_container_row(datetime(2026, 6, 28, 10, 0, 0)))
+        session.commit()
+
+    collector._net_prev["docker-1"] = (5_000, 8_000)
+
+    collector._write_network_history([
+        _container_data(started_at=started_at, rx=100, tx=200)
+    ])
+    collector._write_network_history([
+        _container_data(started_at=started_at, rx=175, tx=260)
+    ])
+
+    with Session(collector_engine) as session:
+        rows = session.exec(
+            select(ContainerNetworkHistory)
+            .order_by(ContainerNetworkHistory.recorded_at)
+        ).all()
+
+    assert len(rows) == 2
+    assert rows[0].rx_bytes == 0
+    assert rows[0].tx_bytes == 0
+    assert rows[1].rx_bytes == 75
+    assert rows[1].tx_bytes == 60

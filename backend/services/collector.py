@@ -16,6 +16,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 import docker
+from sqlalchemy import desc
 from sqlalchemy import update as sa_update
 from sqlmodel import Session, delete, select
 
@@ -161,6 +162,35 @@ def _parse_dt(s: Optional[str]) -> Optional[datetime]:
         normalized = s.replace("Z", "+00:00") if s.endswith("Z") else s
         dt = datetime.fromisoformat(normalized)
         return dt.astimezone(timezone.utc).replace(tzinfo=None)
+    except Exception:
+        return None
+
+
+def _as_utc_aware(dt: datetime) -> datetime:
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
+def _parse_docker_timestamp(raw: Optional[str]) -> Optional[datetime]:
+    if not raw:
+        return None
+
+    value = raw.strip()
+    if not value or value.startswith("0001-01-01"):
+        return None
+
+    if value.endswith("Z"):
+        value = value[:-1] + "+00:00"
+
+    # Docker timestamps can include nanoseconds, while datetime supports
+    # microseconds. Truncate the fractional part without rounding.
+    match = re.match(r"^(.+?\.)(\d{6})\d+([+-]\d{2}:\d{2})$", value)
+    if match:
+        value = "".join(match.groups())
+
+    try:
+        return _as_utc_aware(datetime.fromisoformat(value))
     except Exception:
         return None
 
@@ -410,6 +440,11 @@ def _write_network_history(containers_data: list[dict]) -> None:
 
             if prev is not None:
                 prev_rx, prev_tx = prev
+                if cum_rx < prev_rx or cum_tx < prev_tx:
+                    logger.info(
+                        "Network counters reset for %s; using current counters as baseline",
+                        c["name"],
+                    )
                 rx_delta = max(0, cum_rx - prev_rx)
                 tx_delta = max(0, cum_tx - prev_tx)
             else:
@@ -472,12 +507,68 @@ def _write_metrics_history(containers_data: list[dict]) -> None:
 # ── Log streaming ──────────────────────────────────────────────────────────────
 
 
+def _log_retention_cutoff() -> datetime:
+    try:
+        with Session(engine) as session:
+            retention_str = get_setting(session, "log_retention_days")
+        retention_days = int(retention_str) if retention_str else 7
+    except Exception:
+        retention_days = 7
+
+    return datetime.now(timezone.utc) - timedelta(days=max(retention_days, 1))
+
+
+def _latest_buffered_log_timestamp(container_id: str) -> Optional[datetime]:
+    latest: Optional[datetime] = None
+    with _log_lock:
+        for entry in _log_buffer.get(container_id, []):
+            ts = _parse_docker_timestamp(entry.get("timestamp"))
+            if ts and (latest is None or ts > latest):
+                latest = ts
+    return latest
+
+
+def _latest_persisted_log_timestamp(container_id: str) -> Optional[datetime]:
+    try:
+        with Session(engine) as session:
+            row = session.exec(
+                select(ContainerLog)
+                .where(ContainerLog.container_id == container_id)
+                .order_by(desc(ContainerLog.timestamp))
+            ).first()
+    except Exception:
+        return None
+
+    if row is None:
+        return None
+    return _as_utc_aware(row.timestamp)
+
+
+def _log_stream_since(container_id: str, container) -> datetime:
+    latest = _latest_persisted_log_timestamp(container_id)
+    buffered = _latest_buffered_log_timestamp(container_id)
+    if buffered and (latest is None or buffered > latest):
+        latest = buffered
+
+    if latest:
+        return latest + timedelta(microseconds=1)
+
+    started_at = _parse_docker_timestamp(
+        container.attrs.get("State", {}).get("StartedAt")
+    )
+    cutoff = _log_retention_cutoff()
+    if started_at:
+        return max(started_at, cutoff)
+
+    return datetime.now(timezone.utc)
+
+
 def _stream_logs(container_id: str, container_name: str) -> None:
     """Background thread: stream logs from one container and buffer them."""
     try:
         local_client = docker.from_env()
         container = local_client.containers.get(container_id)
-        since = datetime.now(timezone.utc)
+        since = _log_stream_since(container_id, container)
 
         log_stream = container.logs(
             stream=True,
@@ -496,11 +587,8 @@ def _stream_logs(container_id: str, container_name: str) -> None:
             parts = line.split(" ", 1)
             if len(parts) == 2:
                 ts_raw, message = parts
-                try:
-                    ts = datetime.fromisoformat(
-                        ts_raw[:19].replace("T", "T")
-                    ).replace(tzinfo=timezone.utc)
-                except Exception:
+                ts = _parse_docker_timestamp(ts_raw)
+                if ts is None:
                     ts = datetime.now(timezone.utc)
                     message = line
             else:

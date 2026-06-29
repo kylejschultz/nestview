@@ -1,6 +1,14 @@
 # Changelog
 
 ---
+## [1.3.4] - 2026-06-29
+### Changed
+- Log streaming now resumes from the latest persisted or buffered log timestamp instead of starting at collector startup time.
+- First-time log collection backfills from the container start time, bounded by the configured log retention window.
+- Docker log timestamps with nanosecond precision are now parsed without dropping the fractional timestamp.
+- Network counter resets are now handled explicitly by treating the current Docker counters as the new baseline.
+
+---
 ## [1.3.3] - 2026-06-29
 ### Changed
 - Network history persistence now uses cached Docker counters so Nestview restarts preserve sane network deltas.
