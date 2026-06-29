@@ -1,6 +1,18 @@
 # Changelog
 
 ---
+## [1.3.3] - 2026-06-29
+### Changed
+- Network history persistence now uses cached Docker counters so Nestview restarts preserve sane network deltas.
+- SQLite connections now enable WAL mode, a busy timeout, and foreign key enforcement for better concurrent database behavior.
+- Analytics daily ping state is persisted in the database so restarts do not send duplicate same-day telemetry.
+- Main-line releases now post a structured Discord Components v2 release card through the release webhook workflow.
+
+### Fixed
+- Network history now resets cleanly after a watched container restart instead of carrying stale counters forward.
+- Removed the scheduled Discord repo stats channel updater workflow.
+
+---
 ## [1.3.2] - 2026-05-21
 ### Changed
 - Settings controls replaced with preset dropdowns (Log Retention, Metrics History) and a stepper (Session Expiry)

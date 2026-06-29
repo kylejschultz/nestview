@@ -85,3 +85,95 @@ jobs:
             -t ghcr.io/kylejschultz/nestview:${{ steps.version.outputs.tag }} \
             ghcr.io/kylejschultz/nestview:sha-${{ steps.sha.outputs.short }}-amd64 \
             ghcr.io/kylejschultz/nestview:sha-${{ steps.sha.outputs.short }}-arm64
+
+  announce:
+    runs-on: ubuntu-24.04
+    needs: [merge]
+    if: ${{ vars.DISABLE_DISCORD_RELEASE_ANNOUNCEMENT != 'true' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Send Discord release card
+        env:
+          DISCORD_RELEASE_WEBHOOK_URL: ${{ secrets.DISCORD_RELEASE_WEBHOOK_URL }}
+          GITHUB_SHA: ${{ github.sha }}
+          GITHUB_SERVER_URL: ${{ github.server_url }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          python3 << 'EOF'
+          import json
+          import os
+          import re
+          import sys
+          import urllib.request
+
+          webhook_url = os.environ.get("DISCORD_RELEASE_WEBHOOK_URL")
+          if not webhook_url:
+              print("DISCORD_RELEASE_WEBHOOK_URL is not configured; skipping Discord announcement.")
+              sys.exit(0)
+
+          with open("VERSION", encoding="utf-8") as version_file:
+              version = version_file.read().strip()
+
+          with open("CHANGELOG.md", encoding="utf-8") as changelog_file:
+              changelog = changelog_file.read()
+
+          section_match = re.search(
+              rf"^## \[{re.escape(version)}\].*?\n(.*?)(?=\n---\n## |\Z)",
+              changelog,
+              re.MULTILINE | re.DOTALL,
+          )
+          release_notes = section_match.group(1).strip() if section_match else "See the changelog for release notes."
+          if len(release_notes) > 1800:
+              release_notes = release_notes[:1797].rstrip() + "..."
+
+          short_sha = os.environ["GITHUB_SHA"][:7]
+          repo_url = f"{os.environ['GITHUB_SERVER_URL']}/{os.environ['GITHUB_REPOSITORY']}"
+
+          payload = {
+              "username": "Nestview Releases",
+              "flags": 32768,
+              "components": [
+                  {
+                      "type": 17,
+                      "accent_color": 5793266,
+                      "components": [
+                          {
+                              "type": 10,
+                              "content": f"# Nestview v{version}\nA new main-line Nestview release is available.",
+                          },
+                          {"type": 14, "divider": True, "spacing": 1},
+                          {
+                              "type": 10,
+                              "content": f"## What changed\n{release_notes}",
+                          },
+                          {"type": 14, "divider": True, "spacing": 1},
+                          {
+                              "type": 10,
+                              "content": (
+                                  "## Image tags\n"
+                                  f"- `ghcr.io/kylejschultz/nestview:{version}`\n"
+                                  "- `ghcr.io/kylejschultz/nestview:latest`"
+                              ),
+                          },
+                          {
+                              "type": 10,
+                              "content": f"_Build `{short_sha}` - {repo_url}/releases_",
+                          },
+                      ],
+                  }
+              ],
+          }
+
+          req = urllib.request.Request(
+              f"{webhook_url}?with_components=true",
+              data=json.dumps(payload).encode("utf-8"),
+              headers={"Content-Type": "application/json"},
+              method="POST",
+          )
+          with urllib.request.urlopen(req) as response:
+              if response.status not in (200, 204):
+                  raise RuntimeError(f"Discord webhook returned HTTP {response.status}")
+          EOF
