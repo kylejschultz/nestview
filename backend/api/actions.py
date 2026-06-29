@@ -11,6 +11,7 @@ from database import get_session
 from limiter import limiter
 from models import Container
 from services.image_checker import check_single_container
+from services.operations import create_operation, update_operation
 
 logger = logging.getLogger(__name__)
 
@@ -65,65 +66,88 @@ def check_for_updates(request: Request, docker_id: str, session: Session = Depen
 @limiter.limit("5/minute")
 def update_and_restart(request: Request, docker_id: str, session: Session = Depends(get_session)):
     db_container = _get_db_container(docker_id, session)
+    operation = create_operation(
+        session,
+        operation_type="update-and-restart",
+        target_type="container",
+        target_id=docker_id,
+        target_name=db_container.name,
+        phase="validating",
+    )
 
     if db_container.state not in _UPDATE_RESTART_VALID_STATES:
+        detail = (
+            f"Cannot update-and-restart container '{db_container.name}': "
+            f"current state is '{db_container.state}' "
+            f"(valid states: {', '.join(sorted(_UPDATE_RESTART_VALID_STATES))})"
+        )
+        update_operation(session, operation, status="failed", phase="validation-failed", error=detail)
         raise HTTPException(
             status_code=409,
-            detail=(
-                f"Cannot update-and-restart container '{db_container.name}': "
-                f"current state is '{db_container.state}' "
-                f"(valid states: {', '.join(sorted(_UPDATE_RESTART_VALID_STATES))})"
-            ),
+            detail=detail,
         )
 
     old_image_digest = db_container.image_digest
 
     try:
+        update_operation(session, operation, phase="pulling")
         client = docker.from_env()
         client.images.pull(db_container.image)
     except docker.errors.APIError as exc:
+        update_operation(session, operation, status="failed", phase="pull-failed", error=str(exc))
         raise HTTPException(status_code=500, detail=f"Image fetch failed: {exc}")
 
     # Re-check digest to determine whether the fetch actually changed the local image
     try:
+        update_operation(session, operation, phase="verifying")
         check_single_container(db_container)
     except Exception as exc:
         logger.warning("update-and-restart: digest re-check failed for %r: %s", db_container.name, exc)
+        update_operation(session, operation, status="failed", phase="verification-failed", error=str(exc))
+        raise HTTPException(status_code=500, detail=f"Digest verification failed after image fetch: {exc}")
 
     session.expire(db_container)
     session.refresh(db_container)
 
     if db_container.image_digest == old_image_digest:
         # Image did not change — already up to date, skip restart
-        return {
+        result = {
             "ok": True,
             "action": "update-and-restart",
             "container": db_container.name,
             "update_available": db_container.update_available,
             "restarted": False,
         }
+        update_operation(session, operation, status="skipped", phase="already-current", result=result)
+        return {**result, "operation_id": operation.operation_id}
 
     try:
+        update_operation(session, operation, phase="restarting")
         c = client.containers.get(docker_id)
         c.restart()
     except docker.errors.NotFound:
+        detail = (
+            f"Container '{db_container.name}' was not found in Docker after update. "
+            "It may have been removed since the last collector poll."
+        )
+        update_operation(session, operation, status="failed", phase="restart-failed", error=detail)
         raise HTTPException(
             status_code=404,
-            detail=(
-                f"Container '{db_container.name}' was not found in Docker after update. "
-                "It may have been removed since the last collector poll."
-            ),
+            detail=detail,
         )
     except docker.errors.APIError as exc:
+        update_operation(session, operation, status="failed", phase="restart-failed", error=str(exc))
         raise HTTPException(status_code=500, detail=str(exc))
 
-    return {
+    result = {
         "ok": True,
         "action": "update-and-restart",
         "container": db_container.name,
         "update_available": db_container.update_available,
         "restarted": True,
     }
+    update_operation(session, operation, status="succeeded", phase="complete", result=result)
+    return {**result, "operation_id": operation.operation_id}
 
 
 def _run_action(docker_id: str, action: str, session: Session) -> dict:

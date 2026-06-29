@@ -10,10 +10,10 @@ os.environ.setdefault(
 import docker.errors
 import pytest
 from fastapi import HTTPException
-from sqlmodel import Session, SQLModel, create_engine
+from sqlmodel import Session, SQLModel, create_engine, select
 
 from api import actions
-from models import Container
+from models import Container, Operation
 
 _update_and_restart = actions.update_and_restart.__wrapped__
 
@@ -99,6 +99,10 @@ def test_update_and_restart_rejects_invalid_state_before_pull(monkeypatch, actio
     assert exc.value.status_code == 409
     assert "current state is 'exited'" in exc.value.detail
 
+    operation = action_session.exec(select(Operation)).one()
+    assert operation.status == "failed"
+    assert operation.phase == "validation-failed"
+
 
 def test_update_and_restart_skips_restart_when_pull_keeps_same_digest(
     monkeypatch,
@@ -126,6 +130,14 @@ def test_update_and_restart_skips_restart_when_pull_keeps_same_digest(
     assert client.images.pulled == ["ghcr.io/example/app:latest"]
     assert client.container.restarts == 0
     assert result["restarted"] is False
+    assert result["operation_id"]
+
+    operation = action_session.exec(
+        select(Operation).where(Operation.operation_id == result["operation_id"])
+    ).first()
+    assert operation is not None
+    assert operation.status == "skipped"
+    assert operation.phase == "already-current"
 
 
 def test_update_and_restart_restarts_when_pull_changes_digest(
@@ -155,3 +167,43 @@ def test_update_and_restart_restarts_when_pull_changes_digest(
     assert client.containers.requested_ids == ["docker-1"]
     assert client.container.restarts == 1
     assert result["restarted"] is True
+    assert result["operation_id"]
+
+    operation = action_session.exec(
+        select(Operation).where(Operation.operation_id == result["operation_id"])
+    ).first()
+    assert operation is not None
+    assert operation.status == "succeeded"
+    assert operation.phase == "complete"
+
+
+def test_update_and_restart_fails_when_digest_verification_fails(
+    monkeypatch,
+    action_session,
+):
+    _add_container(action_session, digest="sha256:old")
+    client = FakeDockerClient()
+
+    monkeypatch.setattr(actions.docker, "from_env", lambda: client)
+    monkeypatch.setattr(
+        actions,
+        "check_single_container",
+        lambda _db_container: (_ for _ in ()).throw(RuntimeError("registry unavailable")),
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        _update_and_restart(
+            request=None,
+            docker_id="docker-1",
+            session=action_session,
+        )
+
+    assert exc.value.status_code == 500
+    assert "Digest verification failed" in exc.value.detail
+    assert client.images.pulled == ["ghcr.io/example/app:latest"]
+    assert client.container.restarts == 0
+
+    operation = action_session.exec(select(Operation)).one()
+    assert operation.status == "failed"
+    assert operation.phase == "verification-failed"
+    assert operation.error == "registry unavailable"

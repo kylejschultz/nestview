@@ -94,3 +94,21 @@ class ContainerAlertSetting(SQLModel, table=True):
     # One of: crash, restart, oom, update_available
     event_type: str = Field(max_length=32)
     enabled: bool = Field(default=True)
+
+
+class Operation(SQLModel, table=True):
+    __tablename__ = "operation"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    operation_id: str = Field(index=True, unique=True, max_length=64)
+    operation_type: str = Field(index=True, max_length=64)
+    target_type: str = Field(index=True, max_length=32)
+    target_id: str = Field(index=True, max_length=128)
+    target_name: Optional[str] = Field(default=None, max_length=256)
+    status: str = Field(index=True, max_length=32)
+    phase: str = Field(max_length=64)
+    error: Optional[str] = None
+    result_json: Optional[str] = None
+    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    completed_at: Optional[datetime] = None

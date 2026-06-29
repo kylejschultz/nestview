@@ -53,6 +53,21 @@ export interface ContainerEvent {
   alerted: boolean;
 }
 
+export interface OperationStatus {
+  operation_id: string;
+  operation_type: string;
+  target_type: string;
+  target_id: string;
+  target_name: string | null;
+  status: "running" | "succeeded" | "failed" | "skipped";
+  phase: string;
+  error: string | null;
+  result: Record<string, unknown> | null;
+  created_at: string;
+  updated_at: string;
+  completed_at: string | null;
+}
+
 export interface GeneralSettings {
   discord_webhook_url: string;
   log_retention_days: number;

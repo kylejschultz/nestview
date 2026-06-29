@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 from build_info import APP_VERSION, BUILD_SHA
 from database import create_db_and_tables, engine
-from api import containers, logs, events, settings, actions, admin, stack_actions, analytics as analytics_router
+from api import containers, logs, events, settings, actions, admin, stack_actions, operations, analytics as analytics_router
 from api import auth as auth_router
 from api import system as system_router
 from limiter import limiter
@@ -158,6 +158,7 @@ app.include_router(settings.router,      dependencies=[Depends(require_auth)])
 app.include_router(actions.router,       dependencies=[Depends(require_auth)])
 app.include_router(admin.router,         dependencies=[Depends(require_auth)])
 app.include_router(stack_actions.router,      dependencies=[Depends(require_auth)])
+app.include_router(operations.router,         dependencies=[Depends(require_auth)])
 app.include_router(analytics_router.router,   dependencies=[Depends(require_auth)])
 app.include_router(system_router.router,      dependencies=[Depends(require_auth)])
 

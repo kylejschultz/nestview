@@ -1,3 +1,4 @@
+from sqlalchemy import inspect
 from sqlmodel import Session, SQLModel, create_engine, select
 
 from migrations import run_migrations
@@ -22,7 +23,7 @@ def test_run_migrations_advances_schema_version_and_is_idempotent():
         ).all()
 
     assert schema_version is not None
-    assert schema_version.value == "012"
+    assert schema_version.value == "013"
     assert analytics_last_ping is not None
     assert analytics_last_ping.value == ""
     assert retention is not None
@@ -33,3 +34,4 @@ def test_run_migrations_advances_schema_version_and_is_idempotent():
         "oom",
         "update_available",
     }
+    assert "operation" in inspect(engine).get_table_names()

@@ -261,6 +261,46 @@ def _migrate_012(engine: Engine) -> None:
     logger.info("migration 012: seeded analytics_last_ping_date key")
 
 
+def _migrate_013(engine: Engine) -> None:
+    """Create operation table for long-running action status tracking."""
+    inspector = inspect(engine)
+    if "operation" in inspector.get_table_names():
+        logger.info("migration 013: table operation already present, skipping")
+        return
+
+    with engine.connect() as conn:
+        conn.execute(text("""
+            CREATE TABLE operation (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                operation_id TEXT NOT NULL UNIQUE,
+                operation_type TEXT NOT NULL,
+                target_type TEXT NOT NULL,
+                target_id TEXT NOT NULL,
+                target_name TEXT,
+                status TEXT NOT NULL,
+                phase TEXT NOT NULL,
+                error TEXT,
+                result_json TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                completed_at TEXT
+            )
+        """))
+        for column in (
+            "operation_id",
+            "operation_type",
+            "target_type",
+            "target_id",
+            "status",
+            "created_at",
+        ):
+            conn.execute(text(
+                f"CREATE INDEX ix_operation_{column} ON operation ({column})"
+            ))
+        conn.commit()
+    logger.info("migration 013: created table operation")
+
+
 MIGRATIONS: list[tuple[str, Callable]] = [
     ("001", _migrate_001),
     ("002", _migrate_002),
@@ -274,6 +314,7 @@ MIGRATIONS: list[tuple[str, Callable]] = [
     ("010", _migrate_010),
     ("011", _migrate_011),
     ("012", _migrate_012),
+    ("013", _migrate_013),
 ]
 
 
