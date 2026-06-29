@@ -1,6 +1,12 @@
 # Changelog
 
 ---
+## [1.3.5] - 2026-06-29
+### Added
+- Release confidence checks now run in GitHub Actions for backend pytest, frontend production builds, and Docker image smoke verification.
+- Backend test coverage now includes update-and-restart decisions and migration idempotency.
+
+---
 ## [1.3.4] - 2026-06-29
 ### Changed
 - Log streaming now resumes from the latest persisted or buffered log timestamp instead of starting at collector startup time.
