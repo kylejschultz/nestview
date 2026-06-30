@@ -1019,6 +1019,10 @@ export default function ContainerDetail() {
     );
   }
 
+  if (!container) {
+    return <div className="text-center py-16 text-slate-500">Loading…</div>;
+  }
+
   return (
     <div className="space-y-6">
       {/* Breadcrumb + title */}
