@@ -1,15 +1,17 @@
 import logging
+from datetime import datetime
 from typing import Literal
 
 import docker
 import docker.errors
 from fastapi import APIRouter, Depends, HTTPException, Request
+from sqlalchemy import update as sa_update
 from sqlmodel import Session, select
 
 from constants import _VALID_STATES
 from database import get_session
 from limiter import limiter
-from models import Container
+from models import Container, ContainerEvent, ContainerLog, ContainerMetricsHistory, ContainerNetworkHistory
 from services.docker_recreate import recreate_container_with_current_config
 from services.image_checker import check_single_container
 from services.operations import create_operation, update_operation
@@ -30,6 +32,52 @@ def _get_db_container(docker_id: str, session: Session) -> Container:
     if not container:
         raise HTTPException(status_code=404, detail="Container not found")
     return container
+
+
+def _reassociate_container_after_recreate(
+    session: Session,
+    db_container: Container,
+    new_docker_id: str,
+) -> None:
+    old_docker_id = db_container.docker_id
+    if new_docker_id == old_docker_id:
+        return
+
+    session.exec(
+        sa_update(ContainerNetworkHistory)
+        .where(ContainerNetworkHistory.container_id == old_docker_id)
+        .values(container_id=new_docker_id)
+    )
+    session.exec(
+        sa_update(ContainerMetricsHistory)
+        .where(ContainerMetricsHistory.docker_id == old_docker_id)
+        .values(docker_id=new_docker_id)
+    )
+    session.exec(
+        sa_update(ContainerLog)
+        .where(ContainerLog.container_id == old_docker_id)
+        .values(container_id=new_docker_id)
+    )
+    session.exec(
+        sa_update(ContainerEvent)
+        .where(ContainerEvent.container_id == old_docker_id)
+        .values(container_id=new_docker_id)
+    )
+
+    db_container.docker_id = new_docker_id
+    db_container.short_id = new_docker_id[:12]
+    db_container.previous_docker_id = old_docker_id
+    db_container.last_seen = datetime.utcnow()
+    session.add(db_container)
+    session.add(ContainerEvent(
+        container_id=new_docker_id,
+        container_name=db_container.name,
+        event_type="recreated",
+        details=f"Container recreated: {old_docker_id[:12]} -> {new_docker_id[:12]}",
+        timestamp=datetime.utcnow(),
+        alerted=False,
+    ))
+    session.commit()
 
 
 @router.post("/{docker_id}/stop")
@@ -143,6 +191,7 @@ def update_and_restart(request: Request, docker_id: str, session: Session = Depe
         raise HTTPException(status_code=500, detail=f"Container recreate failed: {exc}")
 
     update_operation(session, operation, phase="confirming")
+    _reassociate_container_after_recreate(session, db_container, new_docker_id)
     result = {
         "ok": True,
         "action": "update-and-restart",

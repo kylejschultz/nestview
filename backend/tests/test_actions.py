@@ -13,7 +13,7 @@ from fastapi import HTTPException
 from sqlmodel import Session, SQLModel, create_engine, select
 
 from api import actions
-from models import Container, Operation
+from models import Container, ContainerEvent, Operation
 
 _update_and_restart = actions.update_and_restart.__wrapped__
 
@@ -175,6 +175,16 @@ def test_update_and_restart_restarts_when_pull_changes_digest(
     assert result["restarted"] is True
     assert result["new_docker_id"] == "docker-2"
     assert result["operation_id"]
+
+    reassociated = action_session.exec(
+        select(Container).where(Container.docker_id == "docker-2")
+    ).first()
+    assert reassociated is not None
+    assert reassociated.previous_docker_id == "docker-1"
+
+    event = action_session.exec(select(ContainerEvent)).one()
+    assert event.container_id == "docker-2"
+    assert event.event_type == "recreated"
 
     operation = action_session.exec(
         select(Operation).where(Operation.operation_id == result["operation_id"])

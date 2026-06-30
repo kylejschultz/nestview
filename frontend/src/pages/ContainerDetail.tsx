@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { useParams, Link } from "react-router-dom";
+import { useParams, Link, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   ResponsiveContainer,
@@ -66,6 +66,7 @@ const STEP_DEFINITIONS: Record<ActionType, ProgressStep[]> = {
 
 function ActionButtons({ container }: ActionButtonsProps) {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const [pendingAction, setPendingAction] = useState<ActionType | null>(null);
   const [isCheckingUpdates, setIsCheckingUpdates] = useState(false);
   const { toastState, showToast, dismissToast } = useToast();
@@ -266,6 +267,10 @@ function ActionButtons({ container }: ActionButtonsProps) {
     if (operation.status === "succeeded" || operation.status === "skipped") {
       stopPolling();
       setIsComplete(true);
+      const newDockerId = operation.result?.new_docker_id;
+      if (typeof newDockerId === "string" && newDockerId && newDockerId !== container.docker_id) {
+        navigate(`/containers/${newDockerId}`, { replace: true });
+      }
       return;
     }
 
