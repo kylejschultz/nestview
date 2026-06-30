@@ -12,7 +12,7 @@ import {
 } from "recharts";
 import { api } from "../api";
 import { useAuth } from "../AuthContext";
-import type { Container, MetricsHistoryPoint, NetworkHistoryPoint } from "../types";
+import type { Container, MetricsHistoryPoint, NetworkHistoryPoint, OperationStatus } from "../types";
 import StatusBadge from "../components/StatusBadge";
 import LogViewer from "../components/LogViewer";
 import EventTimeline from "../components/EventTimeline";
@@ -99,6 +99,52 @@ function ActionButtons({ container }: ActionButtonsProps) {
   function setStepStatus(id: string, status: ProgressStep["status"]) {
     const updated = progressStepsRef.current.map(s => s.id === id ? { ...s, status } : s);
     updateSteps(updated);
+  }
+
+  function stepsFromUpdateOperation(operation: OperationStatus): ProgressStep[] {
+    const steps = STEP_DEFINITIONS["update-and-restart"].map(s => ({ ...s }));
+    const setStatus = (id: string, status: ProgressStep["status"]) => {
+      const step = steps.find(s => s.id === id);
+      if (step) step.status = status;
+    };
+    const markDone = (...ids: string[]) => ids.forEach(id => setStatus(id, "done"));
+
+    if (operation.status === "succeeded" || operation.status === "skipped") {
+      steps.forEach(s => { s.status = "done"; });
+      return steps;
+    }
+
+    if (operation.status === "failed") {
+      if (operation.phase === "restart-failed") {
+        markDone("fetching");
+        setStatus("restarting", "error");
+      } else {
+        setStatus("fetching", "error");
+      }
+      return steps;
+    }
+
+    switch (operation.phase) {
+      case "restarting":
+        markDone("fetching");
+        setStatus("restarting", "active");
+        break;
+      case "confirming":
+        markDone("fetching", "restarting");
+        setStatus("confirming", "active");
+        break;
+      case "complete":
+        steps.forEach(s => { s.status = "done"; });
+        break;
+      case "validating":
+      case "pulling":
+      case "verifying":
+      default:
+        setStatus("fetching", "active");
+        break;
+    }
+
+    return steps;
   }
 
   function stopPolling() {
@@ -213,6 +259,44 @@ function ActionButtons({ container }: ActionButtonsProps) {
     }, 500);
   }
 
+  async function applyOperationStatus(operation: OperationStatus) {
+    updateSteps(stepsFromUpdateOperation(operation));
+
+    if (operation.status === "succeeded" || operation.status === "skipped") {
+      stopPolling();
+      setIsComplete(true);
+      return;
+    }
+
+    if (operation.status === "failed") {
+      stopPolling();
+      setHasError(true);
+      setErrorMessage(operation.error ?? "Update operation failed.");
+    }
+  }
+
+  function startOperationPolling(operationId: string) {
+    timeoutRef.current = setTimeout(() => {
+      stopPolling();
+      const activeStep = progressStepsRef.current.find(s => s.status === "active");
+      if (activeStep) setStepStatus(activeStep.id, "error");
+      setHasError(true);
+      setErrorMessage("Timed out waiting for update operation status. The action may have completed - check the dashboard.");
+    }, 120_000);
+
+    const poll = async () => {
+      try {
+        const operation = await api.operations.get(operationId);
+        await applyOperationStatus(operation);
+      } catch {
+        // ignore transient operation polling errors until timeout
+      }
+    };
+
+    void poll();
+    pollRef.current = setInterval(poll, 500);
+  }
+
   // Cleanup on unmount
   useEffect(() => () => {
     stopPolling();
@@ -272,18 +356,11 @@ function ActionButtons({ container }: ActionButtonsProps) {
     },
     onSuccess: (data, action) => {
       if (action === "update-and-restart") {
-        setStepStatus("fetching", "done");
-        const result = data as unknown as { restarted: boolean };
-        if (!result.restarted) {
-          // Image was already up to date — no restart needed
-          setStepStatus("restarting", "done");
-          setStepStatus("confirming", "done");
-          setStepStatus("complete", "done");
-          stopPolling();
-          setIsComplete(true);
+        const result = data as unknown as { operation_id?: string };
+        if (result.operation_id) {
+          startOperationPolling(result.operation_id);
           return;
         }
-        setStepStatus("restarting", "active");
       }
       startPolling(action, initialDigestCheckRef.current);
     },
