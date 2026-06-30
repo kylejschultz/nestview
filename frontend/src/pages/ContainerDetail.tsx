@@ -40,6 +40,7 @@ type ActionType = "stop" | "restart" | "start" | "check-for-updates" | "update-a
 
 interface ActionButtonsProps {
   container: Container;
+  onModalOpenChange?: (open: boolean) => void;
 }
 
 const STEP_DEFINITIONS: Record<ActionType, ProgressStep[]> = {
@@ -68,7 +69,7 @@ const STEP_DEFINITIONS: Record<ActionType, ProgressStep[]> = {
   ],
 };
 
-function ActionButtons({ container }: ActionButtonsProps) {
+function ActionButtons({ container, onModalOpenChange }: ActionButtonsProps) {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const tz = useTimezone();
@@ -99,6 +100,10 @@ function ActionButtons({ container }: ActionButtonsProps) {
     restart:              "Container restarted",
     "update-and-restart": "Update & Restart complete",
   };
+
+  useEffect(() => {
+    onModalOpenChange?.(pendingAction !== null);
+  }, [onModalOpenChange, pendingAction]);
 
   function updateSteps(steps: ProgressStep[]) {
     progressStepsRef.current = steps;
@@ -516,6 +521,7 @@ function ActionButtons({ container }: ActionButtonsProps) {
           errorMessage={errorMessage ?? undefined}
           title={pendingAction === "check-for-updates" ? "Check for Updates" : pendingAction === "update-and-restart" ? "Update & Restart" : `${pendingAction[0].toUpperCase()}${pendingAction.slice(1)} Container`}
           details={buildModalDetails()}
+          compactProgress
         />
       )}
 
@@ -967,16 +973,19 @@ export default function ContainerDetail() {
   const { id } = useParams<{ id: string }>();
   const tz = useTimezone();
   const { isAuthenticated } = useAuth();
+  const [operationModalOpen, setOperationModalOpen] = useState(false);
 
   const { data: container, isLoading, isError } = useQuery<Container>({
     queryKey: ["container", id],
     queryFn: () => api.containers.get(id!),
     refetchInterval: (query) => {
+      if (operationModalOpen) return false;
       const state = (query.state.data as Container | undefined)?.state;
       if (state && ["restarting", "created"].includes(state)) return 2_000;
       return 10_000;
     },
     enabled: !!id && isAuthenticated,
+    retry: operationModalOpen ? false : 3,
   });
 
   const { data: networkHistory = [] } = useQuery<NetworkHistoryPoint[]>({
@@ -1001,7 +1010,7 @@ export default function ContainerDetail() {
     return <div className="text-center py-16 text-slate-500">Loading…</div>;
   }
 
-  if (isError || !container) {
+  if (!container && isError) {
     return (
       <div className="text-center py-16">
         <p className="text-red-400 mb-4">Container not found.</p>
@@ -1028,7 +1037,7 @@ export default function ContainerDetail() {
       </div>
 
       {/* Action buttons */}
-      <ActionButtons container={container} />
+      <ActionButtons container={container} onModalOpenChange={setOperationModalOpen} />
 
       {/* Live stats strip — only when running */}
       {container.state === "running" && (

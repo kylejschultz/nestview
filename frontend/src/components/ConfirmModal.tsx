@@ -17,6 +17,7 @@ interface ConfirmModalProps {
   errorMessage?: string;
   title?: string;
   details?: Array<{ label: string; value: string; tone?: "default" | "success" | "warning" | "error" }>;
+  compactProgress?: boolean;
 }
 
 function StepIcon({ status }: { status: ProgressStep["status"] }) {
@@ -76,6 +77,7 @@ export default function ConfirmModal({
   errorMessage,
   title,
   details,
+  compactProgress,
 }: ConfirmModalProps) {
   // Escape key — blocked while in progress
   useEffect(() => {
@@ -133,13 +135,29 @@ export default function ConfirmModal({
         {/* States 2–4: in progress / complete / error */}
         {isPending && (
           <>
-            {showProgress && (
+            {showProgress && compactProgress && (
+              <div className="flex items-center gap-3 rounded-lg border border-border bg-surface-1/60 p-3">
+                <span className={hasError ? "text-red-400" : isComplete ? "text-green-400" : "text-slate-200"}>
+                  <StepIcon status={hasError ? "error" : isComplete ? "done" : "active"} />
+                </span>
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-slate-100">
+                    {hasError ? "Action failed" : isComplete ? "Complete" : "Working..."}
+                  </p>
+                  {!hasError && !isComplete && (
+                    <p className="text-xs text-slate-500 truncate">{progressTitle(progressSteps!)}</p>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {showProgress && !compactProgress && (
               <p className="text-xs font-medium text-slate-400 uppercase tracking-wide">
                 {progressTitle(progressSteps!)}
               </p>
             )}
 
-            {showProgress && (
+            {showProgress && !compactProgress && (
               <div className="max-h-[60vh] overflow-y-auto">
                 <ul className="space-y-2">
                   {progressSteps!.map((step) =>
