@@ -15,6 +15,8 @@ interface ConfirmModalProps {
   isComplete?: boolean;
   hasError?: boolean;
   errorMessage?: string;
+  title?: string;
+  details?: Array<{ label: string; value: string; tone?: "default" | "success" | "warning" | "error" }>;
 }
 
 function StepIcon({ status }: { status: ProgressStep["status"] }) {
@@ -54,6 +56,15 @@ function progressTitle(steps: ProgressStep[]): string {
   return "Working\u2026";
 }
 
+function detailToneClass(tone: "default" | "success" | "warning" | "error" = "default"): string {
+  switch (tone) {
+    case "success": return "text-green-300";
+    case "warning": return "text-yellow-300";
+    case "error":   return "text-red-300";
+    default:        return "text-slate-200";
+  }
+}
+
 export default function ConfirmModal({
   message,
   onConfirm,
@@ -63,6 +74,8 @@ export default function ConfirmModal({
   isComplete,
   hasError,
   errorMessage,
+  title,
+  details,
 }: ConfirmModalProps) {
   // Escape key — blocked while in progress
   useEffect(() => {
@@ -73,14 +86,8 @@ export default function ConfirmModal({
     return () => window.removeEventListener("keydown", handler);
   }, [onCancel, isPending]);
 
-  // Auto-close after completion
-  useEffect(() => {
-    if (!isComplete) return;
-    const timer = setTimeout(onCancel, 1500);
-    return () => clearTimeout(timer);
-  }, [isComplete, onCancel]);
-
   const showProgress = isPending && progressSteps && progressSteps.length > 0;
+  const showDetails = details && details.length > 0;
 
   return (
     <div
@@ -88,9 +95,20 @@ export default function ConfirmModal({
       onClick={isPending ? undefined : onCancel}
     >
       <div
-        className="bg-surface-2 border border-border rounded-xl p-6 w-full max-w-sm min-w-80 mx-4 space-y-5 shadow-xl"
+        className="bg-surface-2 border border-border rounded-xl p-6 w-full max-w-md min-w-80 mx-4 space-y-5 shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
+        {title && (
+          <div className="space-y-1">
+            <p className="text-sm font-semibold text-slate-100">{title}</p>
+            {(isComplete || hasError) && (
+              <p className={`text-xs ${hasError ? "text-red-400" : "text-green-400"}`}>
+                {hasError ? "Action failed" : "Action complete"}
+              </p>
+            )}
+          </div>
+        )}
+
         {/* State 1: confirming */}
         {!isPending && (
           <>
@@ -145,19 +163,31 @@ export default function ConfirmModal({
               </div>
             )}
 
+            {showDetails && (
+              <dl className="grid grid-cols-[minmax(0,0.42fr)_minmax(0,0.58fr)] gap-x-3 gap-y-2 rounded-lg border border-border bg-surface-1/60 p-3 text-xs">
+                {details!.map((detail) => (
+                  <div key={detail.label} className="contents">
+                    <dt className="text-slate-500">{detail.label}</dt>
+                    <dd className={`min-w-0 break-words font-medium ${detailToneClass(detail.tone)}`}>
+                      {detail.value}
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+            )}
+
             {/* Error message */}
             {hasError && errorMessage && (
               <p className="text-xs text-red-400 leading-relaxed">{errorMessage}</p>
             )}
 
-            {/* Error close button */}
-            {hasError && (
+            {(hasError || isComplete) && (
               <div className="flex justify-end">
                 <button
                   onClick={onCancel}
                   className="px-4 py-2 text-sm rounded-lg border border-border text-slate-400 hover:text-slate-200 hover:border-slate-500 transition-colors"
                 >
-                  Close
+                  {isComplete && !hasError ? "Done" : "Close"}
                 </button>
               </div>
             )}

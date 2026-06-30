@@ -36,7 +36,7 @@ function Spinner() {
 
 // ── Action buttons ────────────────────────────────────────────────────────────
 
-type ActionType = "stop" | "restart" | "start" | "update-and-restart";
+type ActionType = "stop" | "restart" | "start" | "check-for-updates" | "update-and-restart";
 
 interface ActionButtonsProps {
   container: Container;
@@ -56,6 +56,10 @@ const STEP_DEFINITIONS: Record<ActionType, ProgressStep[]> = {
     { id: "starting",  label: "Starting container…", status: "pending" },
     { id: "confirmed", label: "Container running",   status: "pending" },
   ],
+  "check-for-updates": [
+    { id: "checking", label: "Checking registry digest…", status: "pending" },
+    { id: "complete", label: "Update check complete",     status: "pending" },
+  ],
   "update-and-restart": [
     { id: "fetching",   label: "Fetching latest image…", status: "pending" },
     { id: "restarting", label: "Restarting container…",  status: "pending" },
@@ -67,8 +71,8 @@ const STEP_DEFINITIONS: Record<ActionType, ProgressStep[]> = {
 function ActionButtons({ container }: ActionButtonsProps) {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+  const tz = useTimezone();
   const [pendingAction, setPendingAction] = useState<ActionType | null>(null);
-  const [isCheckingUpdates, setIsCheckingUpdates] = useState(false);
   const { toastState, showToast, dismissToast } = useToast();
 
   // Progress state
@@ -76,6 +80,9 @@ function ActionButtons({ container }: ActionButtonsProps) {
   const [isComplete, setIsComplete] = useState(false);
   const [hasError, setHasError] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [operationStatus, setOperationStatus] = useState<OperationStatus | null>(null);
+  const [actionResult, setActionResult] = useState<Record<string, unknown> | null>(null);
+  const [nextContainerId, setNextContainerId] = useState<string | null>(null);
 
   // Refs for polling (avoid stale closures)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -88,6 +95,7 @@ function ActionButtons({ container }: ActionButtonsProps) {
   const ACTION_SUCCESS_MESSAGES: Record<ActionType, string> = {
     stop:                 "Container stopped",
     start:                "Container started",
+    "check-for-updates":  "Update check complete",
     restart:              "Container restarted",
     "update-and-restart": "Update & Restart complete",
   };
@@ -165,6 +173,9 @@ function ActionButtons({ container }: ActionButtonsProps) {
     setIsComplete(false);
     setHasError(false);
     setErrorMessage(null);
+    setOperationStatus(null);
+    setActionResult(null);
+    setNextContainerId(null);
     stopPolling();
   }
 
@@ -262,14 +273,16 @@ function ActionButtons({ container }: ActionButtonsProps) {
   }
 
   async function applyOperationStatus(operation: OperationStatus) {
+    setOperationStatus(operation);
     updateSteps(stepsFromUpdateOperation(operation));
 
     if (operation.status === "succeeded" || operation.status === "skipped") {
       stopPolling();
       setIsComplete(true);
+      setActionResult(operation.result);
       const newDockerId = operation.result?.new_docker_id;
       if (typeof newDockerId === "string" && newDockerId && newDockerId !== container.docker_id) {
-        navigate(`/containers/${newDockerId}`, { replace: true });
+        setNextContainerId(newDockerId);
       }
       return;
     }
@@ -316,6 +329,10 @@ function ActionButtons({ container }: ActionButtonsProps) {
   useEffect(() => {
     if (!isComplete || !actionRef.current) return;
     showToast(ACTION_SUCCESS_MESSAGES[actionRef.current], "success");
+    if (actionRef.current === "update-and-restart" && nextContainerId && nextContainerId !== container.docker_id) {
+      queryClient.invalidateQueries({ queryKey: ["containers"] });
+      return;
+    }
     queryClient.invalidateQueries({ queryKey: ["container", container.docker_id] });
     queryClient.invalidateQueries({ queryKey: ["containers"] });
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -328,31 +345,18 @@ function ActionButtons({ container }: ActionButtonsProps) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hasError]);
 
-  // Separate lightweight mutation for Check for Updates (no progress modal, just toast)
-  const { mutate: runCheckForUpdates } = useMutation({
-    mutationFn: () => api.containers.checkForUpdates(container.docker_id),
-    onMutate: () => setIsCheckingUpdates(true),
-    onSuccess: (data) => {
-      setIsCheckingUpdates(false);
-      const msg = data.update_available ? "Update available" : "Already up to date";
-      showToast(msg, "success");
-      queryClient.invalidateQueries({ queryKey: ["container", container.docker_id] });
-      queryClient.invalidateQueries({ queryKey: ["containers"] });
-    },
-    onError: (err: Error) => {
-      setIsCheckingUpdates(false);
-      showToast(err.message, "error");
-    },
-  });
-
   const { mutate, isPending: mutationIsPending } = useMutation({
     mutationFn: (action: ActionType) => {
+      if (action === "check-for-updates") return api.containers.checkForUpdates(container.docker_id);
       if (action === "update-and-restart") return api.containers.updateAndRestart(container.docker_id);
       // Not unsafe dynamic invocation: action is constrained by the ActionType union
       // ("stop" | "restart" | "start") — all known methods on api.containers.
       return api.containers[action](container.docker_id);
     },
     onMutate: (action: ActionType) => {
+      setPendingAction(action);
+      setOperationStatus(null);
+      setActionResult(null);
       actionRef.current = action;
       initialDigestCheckRef.current = container.last_digest_check;
       initialStartedAtRef.current = container.started_at;
@@ -361,6 +365,15 @@ function ActionButtons({ container }: ActionButtonsProps) {
       updateSteps(steps);
     },
     onSuccess: (data, action) => {
+      setActionResult(data as Record<string, unknown>);
+      if (action === "check-for-updates") {
+        setStepStatus("checking", "done");
+        setStepStatus("complete", "done");
+        setIsComplete(true);
+        queryClient.invalidateQueries({ queryKey: ["container", container.docker_id] });
+        queryClient.invalidateQueries({ queryKey: ["containers"] });
+        return;
+      }
       if (action === "update-and-restart") {
         const result = data as unknown as { operation_id?: string };
         if (result.operation_id) {
@@ -380,12 +393,27 @@ function ActionButtons({ container }: ActionButtonsProps) {
   });
 
   function requestAction(action: ActionType) {
+    if (action === "check-for-updates") {
+      mutate(action);
+      return;
+    }
     setPendingAction(action);
   }
 
   function confirmAction() {
     if (!pendingAction) return;
     mutate(pendingAction);
+  }
+
+  function closeModal() {
+    const destinationId = nextContainerId;
+    resetProgress();
+    setPendingAction(null);
+    if (destinationId && destinationId !== container.docker_id) {
+      queryClient.invalidateQueries({ queryKey: ["container", destinationId] });
+      queryClient.invalidateQueries({ queryKey: ["containers"] });
+      navigate(`/containers/${destinationId}`, { replace: true });
+    }
   }
 
   const isPending = mutationIsPending || progressSteps.length > 0;
@@ -401,6 +429,7 @@ function ActionButtons({ container }: ActionButtonsProps) {
     stop:                 "border-red-500/50 text-red-400 hover:bg-red-500/10 hover:border-red-400",
     restart:              "border-yellow-500/50 text-yellow-400 hover:bg-yellow-500/10 hover:border-yellow-400",
     start:                "border-green-500/50 text-green-400 hover:bg-green-500/10 hover:border-green-400",
+    "check-for-updates":  "border-slate-600 text-slate-400 hover:bg-surface-3 hover:border-slate-500",
     "update-and-restart": "border-blue-400 text-blue-400 hover:bg-blue-500/10",
   };
 
@@ -408,8 +437,60 @@ function ActionButtons({ container }: ActionButtonsProps) {
     stop:                 `Are you sure you want to stop ${container.name}?`,
     restart:              `Are you sure you want to restart ${container.name}?`,
     start:                `Are you sure you want to start ${container.name}?`,
+    "check-for-updates":  `Checking ${container.name} for image updates.`,
     "update-and-restart": `Update ${container.name} to the latest image and restart? The container will only restart if a new image is available.`,
   };
+
+  function shortId(value: unknown): string | null {
+    return typeof value === "string" && value ? value.slice(0, 12) : null;
+  }
+
+  function boolLabel(value: unknown): string | null {
+    return typeof value === "boolean" ? (value ? "Yes" : "No") : null;
+  }
+
+  function buildModalDetails(): Array<{ label: string; value: string; tone?: "default" | "success" | "warning" | "error" }> {
+    const details: Array<{ label: string; value: string; tone?: "default" | "success" | "warning" | "error" }> = [
+      { label: "Container", value: container.name },
+      { label: "Action", value: pendingAction?.replace(/-/g, " ") ?? "Action" },
+    ];
+
+    if (operationStatus) {
+      details.push(
+        {
+          label: "Status",
+          value: operationStatus.status,
+          tone: operationStatus.status === "failed" ? "error" : operationStatus.status === "running" ? "warning" : "success",
+        },
+        { label: "Phase", value: operationStatus.phase },
+      );
+    }
+
+    if (isComplete && !operationStatus) {
+      details.push({ label: "Status", value: "succeeded", tone: "success" });
+    }
+
+    const updateAvailable = boolLabel(actionResult?.update_available);
+    if (updateAvailable) {
+      details.push({
+        label: "Update available",
+        value: updateAvailable,
+        tone: actionResult?.update_available === true ? "warning" : "success",
+      });
+    }
+
+    const restarted = boolLabel(actionResult?.restarted);
+    if (restarted) details.push({ label: "Restarted", value: restarted, tone: actionResult?.restarted === true ? "success" : "default" });
+
+    const newDockerId = shortId(actionResult?.new_docker_id);
+    if (newDockerId) details.push({ label: "New ID", value: newDockerId });
+
+    if (operationStatus?.completed_at) {
+      details.push({ label: "Completed", value: formatDateTime(operationStatus.completed_at, tz) });
+    }
+
+    return details;
+  }
 
   return (
     <>
@@ -427,12 +508,14 @@ function ActionButtons({ container }: ActionButtonsProps) {
         <ConfirmModal
           message={modalMessages[pendingAction]}
           onConfirm={confirmAction}
-          onCancel={() => { resetProgress(); setPendingAction(null); }}
+          onCancel={closeModal}
           isPending={isPending}
           progressSteps={progressSteps}
           isComplete={isComplete}
           hasError={hasError}
           errorMessage={errorMessage ?? undefined}
+          title={pendingAction === "check-for-updates" ? "Check for Updates" : pendingAction === "update-and-restart" ? "Update & Restart" : `${pendingAction[0].toUpperCase()}${pendingAction.slice(1)} Container`}
+          details={buildModalDetails()}
         />
       )}
 
@@ -440,7 +523,7 @@ function ActionButtons({ container }: ActionButtonsProps) {
         <div className="flex flex-wrap gap-2">
           {showRestart && (
             <button
-              disabled={isPending || isCheckingUpdates}
+              disabled={isPending}
               onClick={() => requestAction("restart")}
               className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg border transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${BUTTON_STYLES.restart}`}
             >
@@ -454,7 +537,7 @@ function ActionButtons({ container }: ActionButtonsProps) {
           )}
           {showStop && (
             <button
-              disabled={isPending || isCheckingUpdates}
+              disabled={isPending}
               onClick={() => requestAction("stop")}
               className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg border transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${BUTTON_STYLES.stop}`}
             >
@@ -469,7 +552,7 @@ function ActionButtons({ container }: ActionButtonsProps) {
           )}
           {showStart && (
             <button
-              disabled={isPending || isCheckingUpdates}
+              disabled={isPending}
               onClick={() => requestAction("start")}
               className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg border transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${BUTTON_STYLES.start}`}
             >
@@ -483,11 +566,11 @@ function ActionButtons({ container }: ActionButtonsProps) {
             </button>
           )}
           <button
-            disabled={isPending || isCheckingUpdates}
-            onClick={() => runCheckForUpdates()}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg border transition-colors disabled:opacity-50 disabled:cursor-not-allowed border-slate-600 text-slate-400 hover:bg-surface-3 hover:border-slate-500"
+            disabled={isPending}
+            onClick={() => requestAction("check-for-updates")}
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg border transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${BUTTON_STYLES["check-for-updates"]}`}
           >
-            {isCheckingUpdates ? <Spinner /> : (
+            {isPending && pendingAction === "check-for-updates" ? <Spinner /> : (
               <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
@@ -496,7 +579,7 @@ function ActionButtons({ container }: ActionButtonsProps) {
           </button>
           {showUpdateAndRestart && (
             <button
-              disabled={isPending || isCheckingUpdates}
+              disabled={isPending}
               onClick={() => requestAction("update-and-restart")}
               className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg border transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${BUTTON_STYLES["update-and-restart"]}`}
             >
