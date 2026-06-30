@@ -477,11 +477,19 @@ function ActionButtons({ container, onModalOpenChange }: ActionButtonsProps) {
 
     const updateAvailable = boolLabel(actionResult?.update_available);
     if (updateAvailable) {
-      details.push({
-        label: "Update available",
-        value: updateAvailable,
-        tone: actionResult?.update_available === true ? "warning" : "success",
-      });
+      if (pendingAction === "update-and-restart" && isComplete) {
+        details.push({
+          label: "Image current",
+          value: actionResult?.update_available === false ? "Yes" : "No",
+          tone: actionResult?.update_available === false ? "success" : "warning",
+        });
+      } else {
+        details.push({
+          label: "Update available",
+          value: updateAvailable,
+          tone: actionResult?.update_available === true ? "warning" : "success",
+        });
+      }
     }
 
     const restarted = boolLabel(actionResult?.restarted);
