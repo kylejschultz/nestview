@@ -115,7 +115,7 @@ function ActionButtons({ container }: ActionButtonsProps) {
     }
 
     if (operation.status === "failed") {
-      if (operation.phase === "restart-failed") {
+      if (operation.phase === "restart-failed" || operation.phase === "recreate-failed") {
         markDone("fetching");
         setStatus("restarting", "error");
       } else {
@@ -125,6 +125,7 @@ function ActionButtons({ container }: ActionButtonsProps) {
     }
 
     switch (operation.phase) {
+      case "recreating":
       case "restarting":
         markDone("fetching");
         setStatus("restarting", "active");

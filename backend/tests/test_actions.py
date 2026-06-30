@@ -146,6 +146,7 @@ def test_update_and_restart_restarts_when_pull_changes_digest(
 ):
     _add_container(action_session, digest="sha256:old")
     client = FakeDockerClient()
+    recreated: list[tuple[str, str]] = []
 
     def update_digest(db_container: Container):
         db_container.image_digest = "sha256:new"
@@ -154,8 +155,14 @@ def test_update_and_restart_restarts_when_pull_changes_digest(
         action_session.add(db_container)
         action_session.commit()
 
+    def recreate(_client, docker_id: str, image_ref: str):
+        assert _client is client
+        recreated.append((docker_id, image_ref))
+        return "docker-2"
+
     monkeypatch.setattr(actions.docker, "from_env", lambda: client)
     monkeypatch.setattr(actions, "check_single_container", update_digest)
+    monkeypatch.setattr(actions, "recreate_container_with_current_config", recreate)
 
     result = _update_and_restart(
         request=None,
@@ -164,9 +171,9 @@ def test_update_and_restart_restarts_when_pull_changes_digest(
     )
 
     assert client.images.pulled == ["ghcr.io/example/app:latest"]
-    assert client.containers.requested_ids == ["docker-1"]
-    assert client.container.restarts == 1
+    assert recreated == [("docker-1", "ghcr.io/example/app:latest")]
     assert result["restarted"] is True
+    assert result["new_docker_id"] == "docker-2"
     assert result["operation_id"]
 
     operation = action_session.exec(
@@ -207,3 +214,41 @@ def test_update_and_restart_fails_when_digest_verification_fails(
     assert operation.status == "failed"
     assert operation.phase == "verification-failed"
     assert operation.error == "registry unavailable"
+
+
+def test_update_and_restart_records_recreate_failure(
+    monkeypatch,
+    action_session,
+):
+    _add_container(action_session, digest="sha256:old")
+    client = FakeDockerClient()
+
+    def update_digest(db_container: Container):
+        db_container.image_digest = "sha256:new"
+        db_container.registry_digest = "sha256:new"
+        db_container.update_available = False
+        action_session.add(db_container)
+        action_session.commit()
+
+    monkeypatch.setattr(actions.docker, "from_env", lambda: client)
+    monkeypatch.setattr(actions, "check_single_container", update_digest)
+    monkeypatch.setattr(
+        actions,
+        "recreate_container_with_current_config",
+        lambda *_args: (_ for _ in ()).throw(RuntimeError("create failed")),
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        _update_and_restart(
+            request=None,
+            docker_id="docker-1",
+            session=action_session,
+        )
+
+    assert exc.value.status_code == 500
+    assert "Container recreate failed" in exc.value.detail
+
+    operation = action_session.exec(select(Operation)).one()
+    assert operation.status == "failed"
+    assert operation.phase == "recreate-failed"
+    assert operation.error == "create failed"

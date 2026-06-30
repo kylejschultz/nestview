@@ -70,7 +70,7 @@ export const api = {
     restart:          (dockerId: string) => post<{ ok: boolean; action: string; container: string }>(`/containers/${dockerId}/restart`),
     start:            (dockerId: string) => post<{ ok: boolean; action: string; container: string }>(`/containers/${dockerId}/start`),
     checkForUpdates:  (dockerId: string) => post<{ ok: boolean; action: string; container: string; update_available: boolean }>(`/containers/${dockerId}/check-for-updates`),
-    updateAndRestart: (dockerId: string) => post<{ ok: boolean; action: string; container: string; update_available: boolean; restarted: boolean; operation_id: string }>(`/containers/${dockerId}/update-and-restart`),
+    updateAndRestart: (dockerId: string) => post<{ ok: boolean; action: string; container: string; update_available: boolean; restarted: boolean; operation_id: string; new_docker_id?: string }>(`/containers/${dockerId}/update-and-restart`),
     networkHistory:   (dockerId: string) => get<NetworkHistoryPoint[]>(`/containers/${dockerId}/network-history`),
     metricsHistory:   (dockerId: string) => get<MetricsHistoryPoint[]>(`/containers/${dockerId}/metrics-history`),
   },

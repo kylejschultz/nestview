@@ -10,6 +10,7 @@ from constants import _VALID_STATES
 from database import get_session
 from limiter import limiter
 from models import Container
+from services.docker_recreate import recreate_container_with_current_config
 from services.image_checker import check_single_container
 from services.operations import create_operation, update_operation
 
@@ -122,29 +123,33 @@ def update_and_restart(request: Request, docker_id: str, session: Session = Depe
         return {**result, "operation_id": operation.operation_id}
 
     try:
-        update_operation(session, operation, phase="restarting")
-        c = client.containers.get(docker_id)
-        c.restart()
+        update_operation(session, operation, phase="recreating")
+        new_docker_id = recreate_container_with_current_config(client, docker_id, db_container.image)
     except docker.errors.NotFound:
         detail = (
             f"Container '{db_container.name}' was not found in Docker after update. "
             "It may have been removed since the last collector poll."
         )
-        update_operation(session, operation, status="failed", phase="restart-failed", error=detail)
+        update_operation(session, operation, status="failed", phase="recreate-failed", error=detail)
         raise HTTPException(
             status_code=404,
             detail=detail,
         )
     except docker.errors.APIError as exc:
-        update_operation(session, operation, status="failed", phase="restart-failed", error=str(exc))
+        update_operation(session, operation, status="failed", phase="recreate-failed", error=str(exc))
         raise HTTPException(status_code=500, detail=str(exc))
+    except Exception as exc:
+        update_operation(session, operation, status="failed", phase="recreate-failed", error=str(exc))
+        raise HTTPException(status_code=500, detail=f"Container recreate failed: {exc}")
 
+    update_operation(session, operation, phase="confirming")
     result = {
         "ok": True,
         "action": "update-and-restart",
         "container": db_container.name,
         "update_available": db_container.update_available,
         "restarted": True,
+        "new_docker_id": new_docker_id,
     }
     update_operation(session, operation, status="succeeded", phase="complete", result=result)
     return {**result, "operation_id": operation.operation_id}
