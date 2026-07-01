@@ -21,8 +21,11 @@ _update_and_restart = actions.update_and_restart.__wrapped__
 class FakeImages:
     def __init__(self):
         self.pulled: list[str] = []
+        self.error: Exception | None = None
 
     def pull(self, image: str):
+        if self.error is not None:
+            raise self.error
         self.pulled.append(image)
 
 
@@ -99,7 +102,9 @@ def test_update_and_restart_rejects_invalid_state_before_pull(monkeypatch, actio
         _update_and_restart(request=None, docker_id="docker-1", session=action_session)
 
     assert exc.value.status_code == 409
-    assert "current state is 'exited'" in exc.value.detail
+    assert "current state is 'exited'" in exc.value.detail["message"]
+    assert exc.value.detail["operation_id"]
+    assert exc.value.detail["phase"] == "validation-failed"
 
     operation = action_session.exec(select(Operation)).one()
     assert operation.status == "failed"
@@ -129,8 +134,9 @@ def test_update_and_restart_rejects_when_operation_already_running(monkeypatch, 
         _update_and_restart(request=None, docker_id="docker-1", session=action_session)
 
     assert exc.value.status_code == 409
-    assert "already running" in exc.value.detail
-    assert "op-running" in exc.value.detail
+    assert "already running" in exc.value.detail["message"]
+    assert exc.value.detail["operation_id"] == "op-running"
+    assert exc.value.detail["phase"] == "pulling"
     assert action_session.exec(select(Operation)).all() == [operation]
 
 
@@ -277,10 +283,12 @@ def test_update_and_restart_fails_when_digest_verification_fails(
             request=None,
             docker_id="docker-1",
             session=action_session,
-        )
+    )
 
     assert exc.value.status_code == 500
-    assert "Digest verification failed" in exc.value.detail
+    assert "Digest verification failed" in exc.value.detail["message"]
+    assert exc.value.detail["operation_id"]
+    assert exc.value.detail["phase"] == "verification-failed"
     assert client.images.pulled == ["ghcr.io/example/app:latest"]
     assert client.container.restarts == 0
 
@@ -288,6 +296,34 @@ def test_update_and_restart_fails_when_digest_verification_fails(
     assert operation.status == "failed"
     assert operation.phase == "verification-failed"
     assert operation.error == "registry unavailable"
+
+
+def test_update_and_restart_records_pull_failure(
+    monkeypatch,
+    action_session,
+):
+    _add_container(action_session, digest="sha256:old")
+    client = FakeDockerClient()
+    client.images.error = docker.errors.APIError("pull failed")
+
+    monkeypatch.setattr(actions.docker, "from_env", lambda: client)
+
+    with pytest.raises(HTTPException) as exc:
+        _update_and_restart(
+            request=None,
+            docker_id="docker-1",
+            session=action_session,
+        )
+
+    assert exc.value.status_code == 500
+    assert "Image fetch failed" in exc.value.detail["message"]
+    assert exc.value.detail["operation_id"]
+    assert exc.value.detail["phase"] == "pull-failed"
+
+    operation = action_session.exec(select(Operation)).one()
+    assert operation.status == "failed"
+    assert operation.phase == "pull-failed"
+    assert "pull failed" in operation.error
 
 
 def test_update_and_restart_records_recreate_failure(
@@ -320,7 +356,9 @@ def test_update_and_restart_records_recreate_failure(
         )
 
     assert exc.value.status_code == 500
-    assert "Container recreate failed" in exc.value.detail
+    assert "Container recreate failed" in exc.value.detail["message"]
+    assert exc.value.detail["operation_id"]
+    assert exc.value.detail["phase"] == "recreate-failed"
 
     operation = action_session.exec(select(Operation)).one()
     assert operation.status == "failed"

@@ -11,7 +11,7 @@ from sqlmodel import Session, select
 from constants import _VALID_STATES
 from database import get_session
 from limiter import limiter
-from models import Container, ContainerEvent, ContainerLog, ContainerMetricsHistory, ContainerNetworkHistory
+from models import Container, ContainerEvent, ContainerLog, ContainerMetricsHistory, ContainerNetworkHistory, Operation
 from services.docker_recreate import recreate_container_with_current_config
 from services.image_checker import check_single_container
 from services.operations import create_operation, find_running_operation, update_operation
@@ -23,6 +23,14 @@ router = APIRouter(prefix="/api/containers", tags=["actions"])
 Action = Literal["start", "stop", "restart"]
 
 _UPDATE_RESTART_VALID_STATES = {"running", "restarting", "paused"}
+
+
+def _operation_error_detail(message: str, operation: Operation | None = None) -> dict:
+    detail = {"message": message}
+    if operation is not None:
+        detail["operation_id"] = operation.operation_id
+        detail["phase"] = operation.phase
+    return detail
 
 
 def _get_db_container(docker_id: str, session: Session) -> Container:
@@ -124,9 +132,9 @@ def update_and_restart(request: Request, docker_id: str, session: Session = Depe
     if active_operation is not None:
         raise HTTPException(
             status_code=409,
-            detail=(
-                f"Update-and-restart already running for container '{db_container.name}' "
-                f"(operation_id={active_operation.operation_id})"
+            detail=_operation_error_detail(
+                f"Update-and-restart already running for container '{db_container.name}'",
+                active_operation,
             ),
         )
 
@@ -148,7 +156,7 @@ def update_and_restart(request: Request, docker_id: str, session: Session = Depe
         update_operation(session, operation, status="failed", phase="validation-failed", error=detail)
         raise HTTPException(
             status_code=409,
-            detail=detail,
+            detail=_operation_error_detail(detail, operation),
         )
 
     if (
@@ -175,8 +183,9 @@ def update_and_restart(request: Request, docker_id: str, session: Session = Depe
         client = docker.from_env()
         client.images.pull(db_container.image)
     except docker.errors.APIError as exc:
+        detail = f"Image fetch failed: {exc}"
         update_operation(session, operation, status="failed", phase="pull-failed", error=str(exc))
-        raise HTTPException(status_code=500, detail=f"Image fetch failed: {exc}")
+        raise HTTPException(status_code=500, detail=_operation_error_detail(detail, operation))
 
     # Re-check digest to determine whether the fetch actually changed the local image
     try:
@@ -184,8 +193,9 @@ def update_and_restart(request: Request, docker_id: str, session: Session = Depe
         check_single_container(db_container)
     except Exception as exc:
         logger.warning("update-and-restart: digest re-check failed for %r: %s", db_container.name, exc)
+        detail = f"Digest verification failed after image fetch: {exc}"
         update_operation(session, operation, status="failed", phase="verification-failed", error=str(exc))
-        raise HTTPException(status_code=500, detail=f"Digest verification failed after image fetch: {exc}")
+        raise HTTPException(status_code=500, detail=_operation_error_detail(detail, operation))
 
     session.expire(db_container)
     session.refresh(db_container)
@@ -214,14 +224,16 @@ def update_and_restart(request: Request, docker_id: str, session: Session = Depe
         update_operation(session, operation, status="failed", phase="recreate-failed", error=detail)
         raise HTTPException(
             status_code=404,
-            detail=detail,
+            detail=_operation_error_detail(detail, operation),
         )
     except docker.errors.APIError as exc:
-        update_operation(session, operation, status="failed", phase="recreate-failed", error=str(exc))
-        raise HTTPException(status_code=500, detail=str(exc))
+        detail = str(exc)
+        update_operation(session, operation, status="failed", phase="recreate-failed", error=detail)
+        raise HTTPException(status_code=500, detail=_operation_error_detail(detail, operation))
     except Exception as exc:
+        detail = f"Container recreate failed: {exc}"
         update_operation(session, operation, status="failed", phase="recreate-failed", error=str(exc))
-        raise HTTPException(status_code=500, detail=f"Container recreate failed: {exc}")
+        raise HTTPException(status_code=500, detail=_operation_error_detail(detail, operation))
 
     update_operation(session, operation, phase="confirming")
     _reassociate_container_after_recreate(session, db_container, new_docker_id)

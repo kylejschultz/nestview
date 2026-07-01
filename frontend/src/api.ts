@@ -15,6 +15,25 @@ function handle401(path: string) {
   _on401?.();
 }
 
+function errorMessageFromBody(body: unknown, fallback: string): string {
+  const detail = typeof body === "object" && body !== null && "detail" in body
+    ? (body as { detail?: unknown }).detail
+    : undefined;
+
+  if (typeof detail === "string") return detail;
+  if (typeof detail === "object" && detail !== null) {
+    const fields = detail as { message?: unknown; operation_id?: unknown; phase?: unknown };
+    const message = typeof fields.message === "string" ? fields.message : fallback;
+    const extras = [
+      typeof fields.phase === "string" ? `phase=${fields.phase}` : "",
+      typeof fields.operation_id === "string" ? `operation=${fields.operation_id}` : "",
+    ].filter(Boolean);
+    return extras.length > 0 ? `${message} (${extras.join(", ")})` : message;
+  }
+
+  return fallback;
+}
+
 async function get<T>(path: string): Promise<T> {
   const res = await fetch(`${BASE}${path}`);
   if (res.status === 401) {
@@ -52,11 +71,11 @@ async function post<T>(path: string, body?: unknown): Promise<T> {
   if (res.status === 401) {
     handle401(path);
     const resBody = await res.json().catch(() => ({}));
-    throw new Error((resBody as { detail?: string }).detail ?? "401 Unauthorized");
+    throw new Error(errorMessageFromBody(resBody, "401 Unauthorized"));
   }
   if (!res.ok) {
     const resBody = await res.json().catch(() => ({}));
-    throw new Error((resBody as { detail?: string }).detail ?? `${res.status} ${res.statusText}`);
+    throw new Error(errorMessageFromBody(resBody, `${res.status} ${res.statusText}`));
   }
   return res.json();
 }
