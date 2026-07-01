@@ -3,7 +3,7 @@ from datetime import datetime
 from typing import Any
 from uuid import uuid4
 
-from sqlmodel import Session
+from sqlmodel import Session, select
 
 from models import Operation
 
@@ -36,6 +36,23 @@ def create_operation(
     session.commit()
     session.refresh(operation)
     return operation
+
+
+def find_running_operation(
+    session: Session,
+    *,
+    target_type: str,
+    target_id: str,
+    operation_type: str | None = None,
+) -> Operation | None:
+    query = select(Operation).where(
+        Operation.target_type == target_type,
+        Operation.target_id == target_id,
+        Operation.status == "running",
+    )
+    if operation_type is not None:
+        query = query.where(Operation.operation_type == operation_type)
+    return session.exec(query.order_by(Operation.created_at.desc())).first()
 
 
 def update_operation(

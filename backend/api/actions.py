@@ -14,7 +14,7 @@ from limiter import limiter
 from models import Container, ContainerEvent, ContainerLog, ContainerMetricsHistory, ContainerNetworkHistory
 from services.docker_recreate import recreate_container_with_current_config
 from services.image_checker import check_single_container
-from services.operations import create_operation, update_operation
+from services.operations import create_operation, find_running_operation, update_operation
 
 logger = logging.getLogger(__name__)
 
@@ -115,6 +115,21 @@ def check_for_updates(request: Request, docker_id: str, session: Session = Depen
 @limiter.limit("5/minute")
 def update_and_restart(request: Request, docker_id: str, session: Session = Depends(get_session)):
     db_container = _get_db_container(docker_id, session)
+    active_operation = find_running_operation(
+        session,
+        operation_type="update-and-restart",
+        target_type="container",
+        target_id=docker_id,
+    )
+    if active_operation is not None:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"Update-and-restart already running for container '{db_container.name}' "
+                f"(operation_id={active_operation.operation_id})"
+            ),
+        )
+
     operation = create_operation(
         session,
         operation_type="update-and-restart",

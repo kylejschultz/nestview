@@ -104,6 +104,34 @@ def test_update_and_restart_rejects_invalid_state_before_pull(monkeypatch, actio
     assert operation.phase == "validation-failed"
 
 
+def test_update_and_restart_rejects_when_operation_already_running(monkeypatch, action_session):
+    _add_container(action_session)
+    operation = Operation(
+        operation_id="op-running",
+        operation_type="update-and-restart",
+        target_type="container",
+        target_id="docker-1",
+        target_name="app",
+        status="running",
+        phase="pulling",
+    )
+    action_session.add(operation)
+    action_session.commit()
+
+    def fail_if_called():
+        raise AssertionError("docker client should not be created for duplicate operations")
+
+    monkeypatch.setattr(actions.docker, "from_env", fail_if_called)
+
+    with pytest.raises(HTTPException) as exc:
+        _update_and_restart(request=None, docker_id="docker-1", session=action_session)
+
+    assert exc.value.status_code == 409
+    assert "already running" in exc.value.detail
+    assert "op-running" in exc.value.detail
+    assert action_session.exec(select(Operation)).all() == [operation]
+
+
 def test_update_and_restart_skips_restart_when_pull_keeps_same_digest(
     monkeypatch,
     action_session,
