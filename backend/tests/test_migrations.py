@@ -23,7 +23,7 @@ def test_run_migrations_advances_schema_version_and_is_idempotent():
         ).all()
 
     assert schema_version is not None
-    assert schema_version.value == "013"
+    assert schema_version.value == "014"
     assert analytics_last_ping is not None
     assert analytics_last_ping.value == ""
     assert retention is not None
@@ -35,3 +35,6 @@ def test_run_migrations_advances_schema_version_and_is_idempotent():
         "update_available",
     }
     assert "operation" in inspect(engine).get_table_names()
+    assert "ix_operation_running_target" in {
+        index["name"] for index in inspect(engine).get_indexes("operation")
+    }

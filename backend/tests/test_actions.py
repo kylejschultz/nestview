@@ -10,6 +10,7 @@ os.environ.setdefault(
 import docker.errors
 import pytest
 from fastapi import HTTPException
+from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, SQLModel, create_engine, select
 
 from api import actions
@@ -138,6 +139,49 @@ def test_update_and_restart_rejects_when_operation_already_running(monkeypatch, 
     assert exc.value.detail["operation_id"] == "op-running"
     assert exc.value.detail["phase"] == "pulling"
     assert action_session.exec(select(Operation)).all() == [operation]
+
+
+def test_update_and_restart_handles_racing_running_operation(monkeypatch, action_session):
+    _add_container(action_session)
+    operation = Operation(
+        operation_id="op-running",
+        operation_type="update-and-restart",
+        target_type="container",
+        target_id="docker-1",
+        target_name="app",
+        status="running",
+        phase="validating",
+    )
+    action_session.add(operation)
+    action_session.commit()
+
+    find_calls = 0
+
+    def racing_find_running_operation(*_args, **_kwargs):
+        nonlocal find_calls
+        find_calls += 1
+        if find_calls == 1:
+            return None
+        return operation
+
+    def raise_integrity_error(*_args, **_kwargs):
+        raise IntegrityError("insert operation", {}, Exception("unique constraint failed"))
+
+    def fail_if_called():
+        raise AssertionError("docker client should not be created for duplicate operations")
+
+    monkeypatch.setattr(actions, "find_running_operation", racing_find_running_operation)
+    monkeypatch.setattr(actions, "create_operation", raise_integrity_error)
+    monkeypatch.setattr(actions.docker, "from_env", fail_if_called)
+
+    with pytest.raises(HTTPException) as exc:
+        _update_and_restart(request=None, docker_id="docker-1", session=action_session)
+
+    assert exc.value.status_code == 409
+    assert "already running" in exc.value.detail["message"]
+    assert exc.value.detail["operation_id"] == "op-running"
+    assert exc.value.detail["phase"] == "validating"
+    assert find_calls == 2
 
 
 def test_update_and_restart_skips_before_pull_when_already_current(

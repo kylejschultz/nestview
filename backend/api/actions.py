@@ -6,6 +6,7 @@ import docker
 import docker.errors
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import update as sa_update
+from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
 
 from constants import _VALID_STATES
@@ -138,14 +139,30 @@ def update_and_restart(request: Request, docker_id: str, session: Session = Depe
             ),
         )
 
-    operation = create_operation(
-        session,
-        operation_type="update-and-restart",
-        target_type="container",
-        target_id=docker_id,
-        target_name=db_container.name,
-        phase="validating",
-    )
+    try:
+        operation = create_operation(
+            session,
+            operation_type="update-and-restart",
+            target_type="container",
+            target_id=docker_id,
+            target_name=db_container.name,
+            phase="validating",
+        )
+    except IntegrityError:
+        session.rollback()
+        active_operation = find_running_operation(
+            session,
+            operation_type="update-and-restart",
+            target_type="container",
+            target_id=docker_id,
+        )
+        raise HTTPException(
+            status_code=409,
+            detail=_operation_error_detail(
+                f"Update-and-restart already running for container '{db_container.name}'",
+                active_operation,
+            ),
+        )
 
     if db_container.state not in _UPDATE_RESTART_VALID_STATES:
         detail = (

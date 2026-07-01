@@ -301,6 +301,23 @@ def _migrate_013(engine: Engine) -> None:
     logger.info("migration 013: created table operation")
 
 
+def _migrate_014(engine: Engine) -> None:
+    """Enforce one running operation per target/action."""
+    inspector = inspect(engine)
+    if "operation" not in inspector.get_table_names():
+        logger.info("migration 014: operation table missing, skipping")
+        return
+
+    with engine.connect() as conn:
+        conn.execute(text("""
+            CREATE UNIQUE INDEX IF NOT EXISTS ix_operation_running_target
+            ON operation (operation_type, target_type, target_id)
+            WHERE status = 'running'
+        """))
+        conn.commit()
+    logger.info("migration 014: added running operation uniqueness index")
+
+
 MIGRATIONS: list[tuple[str, Callable]] = [
     ("001", _migrate_001),
     ("002", _migrate_002),
@@ -315,6 +332,7 @@ MIGRATIONS: list[tuple[str, Callable]] = [
     ("011", _migrate_011),
     ("012", _migrate_012),
     ("013", _migrate_013),
+    ("014", _migrate_014),
 ]
 
 

@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import UniqueConstraint
+from sqlalchemy import Index, UniqueConstraint, text
 from sqlmodel import SQLModel, Field
 
 
@@ -98,6 +98,16 @@ class ContainerAlertSetting(SQLModel, table=True):
 
 class Operation(SQLModel, table=True):
     __tablename__ = "operation"
+    __table_args__ = (
+        Index(
+            "ix_operation_running_target",
+            "operation_type",
+            "target_type",
+            "target_id",
+            unique=True,
+            sqlite_where=text("status = 'running'"),
+        ),
+    )
 
     id: Optional[int] = Field(default=None, primary_key=True)
     operation_id: str = Field(index=True, unique=True, max_length=64)
