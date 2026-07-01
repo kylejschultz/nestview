@@ -151,6 +151,23 @@ def update_and_restart(request: Request, docker_id: str, session: Session = Depe
             detail=detail,
         )
 
+    if (
+        db_container.update_available is False
+        and db_container.image_digest
+        and db_container.registry_digest
+        and db_container.image_digest == db_container.registry_digest
+    ):
+        result = {
+            "ok": True,
+            "action": "update-and-restart",
+            "container": db_container.name,
+            "update_available": False,
+            "restarted": False,
+            "skipped_reason": "already-current",
+        }
+        update_operation(session, operation, status="skipped", phase="already-current", result=result)
+        return {**result, "operation_id": operation.operation_id}
+
     old_image_digest = db_container.image_digest
 
     try:
@@ -181,6 +198,7 @@ def update_and_restart(request: Request, docker_id: str, session: Session = Depe
             "container": db_container.name,
             "update_available": db_container.update_available,
             "restarted": False,
+            "skipped_reason": "digest-unchanged-after-pull",
         }
         update_operation(session, operation, status="skipped", phase="already-current", result=result)
         return {**result, "operation_id": operation.operation_id}

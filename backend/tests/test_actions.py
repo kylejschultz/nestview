@@ -67,6 +67,8 @@ def _add_container(
     docker_id: str = "docker-1",
     state: str = "running",
     digest: str | None = "sha256:old",
+    registry_digest: str | None = None,
+    update_available: bool = True,
 ) -> Container:
     container = Container(
         docker_id=docker_id,
@@ -76,8 +78,8 @@ def _add_container(
         status=state,
         state=state,
         image_digest=digest,
-        registry_digest=digest,
-        update_available=False,
+        registry_digest=registry_digest if registry_digest is not None else digest,
+        update_available=update_available,
     )
     session.add(container)
     session.commit()
@@ -132,11 +134,44 @@ def test_update_and_restart_rejects_when_operation_already_running(monkeypatch, 
     assert action_session.exec(select(Operation)).all() == [operation]
 
 
+def test_update_and_restart_skips_before_pull_when_already_current(
+    monkeypatch,
+    action_session,
+):
+    _add_container(
+        action_session,
+        digest="sha256:current",
+        registry_digest="sha256:current",
+        update_available=False,
+    )
+
+    def fail_if_called():
+        raise AssertionError("docker client should not be created when already current")
+
+    monkeypatch.setattr(actions.docker, "from_env", fail_if_called)
+
+    result = _update_and_restart(
+        request=None,
+        docker_id="docker-1",
+        session=action_session,
+    )
+
+    assert result["restarted"] is False
+    assert result["update_available"] is False
+    assert result["skipped_reason"] == "already-current"
+
+    operation = action_session.exec(
+        select(Operation).where(Operation.operation_id == result["operation_id"])
+    ).one()
+    assert operation.status == "skipped"
+    assert operation.phase == "already-current"
+
+
 def test_update_and_restart_skips_restart_when_pull_keeps_same_digest(
     monkeypatch,
     action_session,
 ):
-    _add_container(action_session, digest="sha256:old")
+    _add_container(action_session, digest="sha256:old", update_available=True)
     client = FakeDockerClient()
 
     def keep_digest_current(db_container: Container):
@@ -158,6 +193,7 @@ def test_update_and_restart_skips_restart_when_pull_keeps_same_digest(
     assert client.images.pulled == ["ghcr.io/example/app:latest"]
     assert client.container.restarts == 0
     assert result["restarted"] is False
+    assert result["skipped_reason"] == "digest-unchanged-after-pull"
     assert result["operation_id"]
 
     operation = action_session.exec(
