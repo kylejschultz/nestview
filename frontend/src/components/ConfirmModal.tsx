@@ -18,6 +18,7 @@ interface ConfirmModalProps {
   title?: string;
   details?: Array<{ label: string; value: string; tone?: "default" | "success" | "warning" | "error" }>;
   compactProgress?: boolean;
+  completeLabel?: string;
 }
 
 function StepIcon({ status }: { status: ProgressStep["status"] }) {
@@ -78,6 +79,7 @@ export default function ConfirmModal({
   title,
   details,
   compactProgress,
+  completeLabel = "Complete",
 }: ConfirmModalProps) {
   // Escape key — blocked while in progress
   useEffect(() => {
@@ -105,7 +107,7 @@ export default function ConfirmModal({
             <p className="text-sm font-semibold text-slate-100">{title}</p>
             {(isComplete || hasError) && (
               <p className={`text-xs ${hasError ? "text-red-400" : "text-green-400"}`}>
-                {hasError ? "Action failed" : "Action complete"}
+                {hasError ? "Action failed" : completeLabel}
               </p>
             )}
           </div>
@@ -142,7 +144,7 @@ export default function ConfirmModal({
                 </span>
                 <div className="min-w-0">
                   <p className="text-sm font-medium text-slate-100">
-                    {hasError ? "Action failed" : isComplete ? "Complete" : "Working..."}
+                    {hasError ? "Action failed" : isComplete ? completeLabel : "Working..."}
                   </p>
                   {!hasError && !isComplete && (
                     <p className="text-xs text-slate-500 truncate">{progressTitle(progressSteps!)}</p>

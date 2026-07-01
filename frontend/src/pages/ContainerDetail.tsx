@@ -454,6 +454,18 @@ function ActionButtons({ container, onModalOpenChange }: ActionButtonsProps) {
     return typeof value === "boolean" ? (value ? "Yes" : "No") : null;
   }
 
+  function isAlreadyCurrentResult(): boolean {
+    return (
+      pendingAction === "update-and-restart" &&
+      isComplete &&
+      (
+        operationStatus?.status === "skipped" ||
+        operationStatus?.phase === "already-current" ||
+        actionResult?.restarted === false
+      )
+    );
+  }
+
   function buildModalDetails(): Array<{ label: string; value: string; tone?: "default" | "success" | "warning" | "error" }> {
     const details: Array<{ label: string; value: string; tone?: "default" | "success" | "warning" | "error" }> = [
       { label: "Container", value: container.name },
@@ -530,6 +542,7 @@ function ActionButtons({ container, onModalOpenChange }: ActionButtonsProps) {
           title={pendingAction === "check-for-updates" ? "Check for Updates" : pendingAction === "update-and-restart" ? "Update & Restart" : `${pendingAction[0].toUpperCase()}${pendingAction.slice(1)} Container`}
           details={buildModalDetails()}
           compactProgress
+          completeLabel={isAlreadyCurrentResult() ? "Already current" : "Complete"}
         />
       )}
 
