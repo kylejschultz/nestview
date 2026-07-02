@@ -1,6 +1,20 @@
 # Changelog
 
 ---
+## [1.4.0] - 2026-07-02
+### Added
+- Update-and-restart now performs real image pulls and container recreation with durable operation status tracking.
+- A repeatable stale container fixture reset helper supports dev validation of the update path.
+
+### Changed
+- Container update detection now compares registry tags against the image each container is actually running, not just the mutable local tag.
+
+### Fixed
+- Recreated containers keep the user on the new detail page without a transient "container not found" state.
+- Duplicate recreate events caused by stale collector snapshots are ignored.
+- Concurrent update-and-restart requests now return a clean conflict instead of racing into overlapping operations.
+
+---
 ## [1.3.5] - 2026-06-29
 ### Added
 - Release confidence checks now run in GitHub Actions for backend pytest, frontend production builds, and Docker image smoke verification.

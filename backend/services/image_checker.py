@@ -1,5 +1,5 @@
 """
-image_checker.py — Fetch registry digests and compare against local image digests.
+image_checker.py — Fetch registry digests and compare against running image digests.
 
 Supports Docker Hub (docker.io) and GHCR (ghcr.io).
 Called by APScheduler on a daily cron (default 03:00) and by the admin trigger endpoint.
@@ -219,6 +219,27 @@ def _get_local_image_attrs(image_ref: str) -> Tuple[Optional[str], Optional[int]
         return None, None, None, []
 
 
+def _get_running_image_attrs(docker_id: str) -> Tuple[Optional[str], list]:
+    """
+    Return (running_image_id, repo_digests) for the actual container image.
+
+    The local tag can move independently from an already-running container. For
+    update availability, compare the registry tag against the image the
+    container is actually running, not whatever the mutable tag points at now.
+    """
+    try:
+        client = docker.from_env()
+        container = client.containers.get(docker_id)
+        image = container.image
+        return image.id, image.attrs.get("RepoDigests", [])
+    except docker.errors.NotFound:
+        logger.warning("image_checker: container %r not found locally", docker_id)
+        return None, []
+    except Exception as exc:
+        logger.warning("image_checker: could not inspect running image for %r: %s", docker_id, exc)
+        return None, []
+
+
 # ---------------------------------------------------------------------------
 # Main job
 # ---------------------------------------------------------------------------
@@ -312,8 +333,10 @@ def _check_container(session: Session, container: Container) -> None:
         logger.debug("image_checker: skipping self-image %r", image_ref)
         return
 
-    # Local image attrs (includes RepoDigests for accurate comparison)
-    local_digest, image_size, last_pulled, repo_digests = _get_local_image_attrs(image_ref)
+    # Local tag attrs are useful for size/last-pulled metadata, but update
+    # availability is based on the actual image currently running.
+    local_digest, image_size, last_pulled, local_repo_digests = _get_local_image_attrs(image_ref)
+    running_digest, running_repo_digests = _get_running_image_attrs(container.docker_id)
 
     # Registry digest
     try:
@@ -328,7 +351,10 @@ def _check_container(session: Session, container: Container) -> None:
         )
         registry_digest = None
 
-    container.image_digest = local_digest
+    comparable_digest = running_digest or local_digest
+    comparable_repo_digests = running_repo_digests or local_repo_digests
+
+    container.image_digest = comparable_digest
     container.registry_digest = registry_digest
     container.last_digest_check = datetime.utcnow()
 
@@ -336,15 +362,15 @@ def _check_container(session: Session, container: Container) -> None:
     # are different hash spaces — they cannot be compared directly with ==.
     # RepoDigests contains strings like "nginx@sha256:abc123..." which embed the registry
     # manifest digest, making this the correct comparison for up-to-date detection.
-    if registry_digest is not None and repo_digests:
-        up_to_date = any(registry_digest in rd for rd in repo_digests)
+    if registry_digest is not None and comparable_repo_digests:
+        up_to_date = any(registry_digest in rd for rd in comparable_repo_digests)
         container.update_available = not up_to_date
     else:
         # Fallback when RepoDigests is unavailable (e.g. locally-built images)
         container.update_available = bool(
             registry_digest is not None
-            and local_digest is not None
-            and local_digest != registry_digest
+            and comparable_digest is not None
+            and comparable_digest != registry_digest
         )
 
     if image_size is not None:
@@ -357,10 +383,10 @@ def _check_container(session: Session, container: Container) -> None:
 
     session.add(container)
     logger.debug(
-        "image_checker: %r — local=%s registry=%s repo_digests=%d update_available=%s",
+        "image_checker: %r — running=%s registry=%s repo_digests=%d update_available=%s",
         container.name,
-        (local_digest or "")[:16],
+        (comparable_digest or "")[:16],
         (registry_digest or "")[:16],
-        len(repo_digests),
+        len(comparable_repo_digests),
         container.update_available,
     )

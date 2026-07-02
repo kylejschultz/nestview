@@ -43,6 +43,28 @@ def _get_db_container(docker_id: str, session: Session) -> Container:
     return container
 
 
+def _image_id_from_pull_result(pulled_image) -> str | None:
+    image_id = getattr(pulled_image, "id", None)
+    if image_id:
+        return image_id
+
+    attrs = getattr(pulled_image, "attrs", None)
+    if isinstance(attrs, dict):
+        value = attrs.get("Id")
+        if isinstance(value, str) and value:
+            return value
+
+    return None
+
+
+def _local_image_id(client, image_ref: str) -> str | None:
+    try:
+        image = client.images.get(image_ref)
+    except Exception:
+        return None
+    return _image_id_from_pull_result(image)
+
+
 def _reassociate_container_after_recreate(
     session: Session,
     db_container: Container,
@@ -176,12 +198,7 @@ def update_and_restart(request: Request, docker_id: str, session: Session = Depe
             detail=_operation_error_detail(detail, operation),
         )
 
-    if (
-        db_container.update_available is False
-        and db_container.image_digest
-        and db_container.registry_digest
-        and db_container.image_digest == db_container.registry_digest
-    ):
+    if db_container.update_available is False:
         result = {
             "ok": True,
             "action": "update-and-restart",
@@ -193,12 +210,13 @@ def update_and_restart(request: Request, docker_id: str, session: Session = Depe
         update_operation(session, operation, status="skipped", phase="already-current", result=result)
         return {**result, "operation_id": operation.operation_id}
 
-    old_image_digest = db_container.image_digest
+    old_running_image_digest = db_container.image_digest
 
     try:
         update_operation(session, operation, phase="pulling")
         client = docker.from_env()
-        client.images.pull(db_container.image)
+        pulled_image = client.images.pull(db_container.image)
+        pulled_image_digest = _image_id_from_pull_result(pulled_image) or _local_image_id(client, db_container.image)
     except docker.errors.APIError as exc:
         detail = f"Image fetch failed: {exc}"
         update_operation(session, operation, status="failed", phase="pull-failed", error=str(exc))
@@ -217,7 +235,7 @@ def update_and_restart(request: Request, docker_id: str, session: Session = Depe
     session.expire(db_container)
     session.refresh(db_container)
 
-    if db_container.image_digest == old_image_digest:
+    if pulled_image_digest and old_running_image_digest and pulled_image_digest == old_running_image_digest:
         # Image did not change — already up to date, skip restart
         result = {
             "ok": True,

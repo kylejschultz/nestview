@@ -19,15 +19,26 @@ from models import Container, ContainerEvent, Operation
 _update_and_restart = actions.update_and_restart.__wrapped__
 
 
+class FakeImage:
+    def __init__(self, image_id: str):
+        self.id = image_id
+        self.attrs = {"Id": image_id}
+
+
 class FakeImages:
     def __init__(self):
         self.pulled: list[str] = []
         self.error: Exception | None = None
+        self.image_id = "sha256:new"
 
     def pull(self, image: str):
         if self.error is not None:
             raise self.error
         self.pulled.append(image)
+        return FakeImage(self.image_id)
+
+    def get(self, image: str):
+        return FakeImage(self.image_id)
 
 
 class FakeDockerContainer:
@@ -223,6 +234,7 @@ def test_update_and_restart_skips_restart_when_pull_keeps_same_digest(
 ):
     _add_container(action_session, digest="sha256:old", update_available=True)
     client = FakeDockerClient()
+    client.images.image_id = "sha256:old"
 
     def keep_digest_current(db_container: Container):
         db_container.image_digest = "sha256:old"
@@ -260,6 +272,7 @@ def test_update_and_restart_restarts_when_pull_changes_digest(
 ):
     _add_container(action_session, digest="sha256:old")
     client = FakeDockerClient()
+    client.images.image_id = "sha256:new"
     recreated: list[tuple[str, str]] = []
 
     def update_digest(db_container: Container):
@@ -314,6 +327,7 @@ def test_update_and_restart_fails_when_digest_verification_fails(
 ):
     _add_container(action_session, digest="sha256:old")
     client = FakeDockerClient()
+    client.images.image_id = "sha256:new"
 
     monkeypatch.setattr(actions.docker, "from_env", lambda: client)
     monkeypatch.setattr(
