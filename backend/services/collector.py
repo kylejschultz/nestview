@@ -259,6 +259,14 @@ def _apply_batch(containers_data: list[dict]) -> None:
                     if len(candidates) == 1:
                         old = candidates[0]
                         old_docker_id = old.docker_id
+                        if old.previous_docker_id == docker_id:
+                            logger.info(
+                                "Ignoring stale snapshot for %s (%s was superseded by %s)",
+                                c["name"], docker_id[:12], old_docker_id[:12],
+                            )
+                            reassociated = True
+                            protected_ids.add(old_docker_id)
+                            continue
                         try:
                             sp = session.begin_nested()
 

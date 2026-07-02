@@ -11,7 +11,7 @@ os.environ.setdefault(
 import pytest
 from sqlmodel import Session, SQLModel, create_engine, select
 
-from models import AppSetting, Container, ContainerNetworkHistory
+from models import AppSetting, Container, ContainerEvent, ContainerNetworkHistory
 from services import collector
 
 
@@ -47,8 +47,21 @@ def _container_row(started_at: datetime) -> Container:
 def _container_data(started_at: str, rx: int, tx: int) -> dict:
     return {
         "docker_id": "docker-1",
+        "short_id": "docker-1",
         "name": "app",
+        "image": "app:latest",
+        "status": "running",
         "state": "running",
+        "restart_count": 0,
+        "cpu_percent": 0.0,
+        "mem_usage": 0,
+        "mem_limit": 0,
+        "ports": "[]",
+        "volumes": "[]",
+        "networks": "[]",
+        "compose_project": "test-project",
+        "compose_service": "app",
+        "created_at": started_at,
         "started_at": started_at,
         "net_rx_bytes": rx,
         "net_tx_bytes": tx,
@@ -125,3 +138,45 @@ def test_network_history_uses_current_counters_as_baseline_after_counter_reset(c
     assert rows[0].tx_bytes == 0
     assert rows[1].rx_bytes == 75
     assert rows[1].tx_bytes == 60
+
+
+def test_apply_batch_ignores_stale_snapshot_for_previous_docker_id(collector_engine):
+    with Session(collector_engine) as session:
+        session.add(Container(
+            docker_id="docker-new",
+            short_id="docker-new",
+            previous_docker_id="docker-old",
+            name="app",
+            image="app:latest",
+            status="running",
+            state="running",
+            compose_project="test-project",
+            compose_service="app",
+        ))
+        session.add(ContainerEvent(
+            container_id="docker-new",
+            container_name="app",
+            event_type="recreated",
+            details="Container recreated: docker-old -> docker-new",
+        ))
+        session.commit()
+
+    stale = _container_data(
+        started_at="2026-06-28T10:00:00Z",
+        rx=1_500,
+        tx=2_750,
+    )
+    stale["docker_id"] = "docker-old"
+    stale["short_id"] = "docker-old"
+
+    collector._apply_batch([stale])
+
+    with Session(collector_engine) as session:
+        containers = session.exec(select(Container)).all()
+        events = session.exec(select(ContainerEvent)).all()
+
+    assert len(containers) == 1
+    assert containers[0].docker_id == "docker-new"
+    assert containers[0].previous_docker_id == "docker-old"
+    assert len(events) == 1
+    assert events[0].details == "Container recreated: docker-old -> docker-new"
