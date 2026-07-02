@@ -132,6 +132,35 @@ jobs:
 
           short_sha = os.environ["GITHUB_SHA"][:7]
           repo_url = f"{os.environ['GITHUB_SERVER_URL']}/{os.environ['GITHUB_REPOSITORY']}"
+          announcement_role_id = "1489062618072354888"
+
+          def post_webhook(payload, *, with_components=False):
+              suffix = "?with_components=true" if with_components else ""
+              req = urllib.request.Request(
+                  f"{webhook_url}{suffix}",
+                  data=json.dumps(payload).encode("utf-8"),
+                  headers={
+                      "Content-Type": "application/json",
+                      "User-Agent": "nestview-release-bot/1.0",
+                  },
+                  method="POST",
+              )
+              try:
+                  with urllib.request.urlopen(req) as response:
+                      if response.status not in (200, 204):
+                          raise RuntimeError(f"Discord webhook returned HTTP {response.status}")
+              except urllib.error.HTTPError as exc:
+                  print(exc.read().decode("utf-8", "replace"))
+                  raise
+
+          post_webhook({
+              "username": "Nestview Releases",
+              "content": f"<@&{announcement_role_id}>",
+              "allowed_mentions": {
+                  "parse": [],
+                  "roles": [announcement_role_id],
+              },
+          })
 
           payload = {
               "username": "Nestview Releases",
@@ -168,20 +197,5 @@ jobs:
               ],
           }
 
-          req = urllib.request.Request(
-              f"{webhook_url}?with_components=true",
-              data=json.dumps(payload).encode("utf-8"),
-              headers={
-                  "Content-Type": "application/json",
-                  "User-Agent": "nestview-release-bot/1.0",
-              },
-              method="POST",
-          )
-          try:
-              with urllib.request.urlopen(req) as response:
-                  if response.status not in (200, 204):
-                      raise RuntimeError(f"Discord webhook returned HTTP {response.status}")
-          except urllib.error.HTTPError as exc:
-              print(exc.read().decode("utf-8", "replace"))
-              raise
+          post_webhook(payload, with_components=True)
           EOF
