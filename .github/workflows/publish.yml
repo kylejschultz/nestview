@@ -98,6 +98,7 @@ jobs:
       - name: Send Discord release card
         env:
           DISCORD_RELEASE_WEBHOOK_URL: ${{ secrets.DISCORD_RELEASE_WEBHOOK_URL }}
+          DISCORD_ANNOUNCEMENT_ROLE_ID: ${{ vars.DISCORD_ANNOUNCEMENT_ROLE_ID }}
           GITHUB_SHA: ${{ github.sha }}
           GITHUB_SERVER_URL: ${{ github.server_url }}
           GITHUB_REPOSITORY: ${{ github.repository }}
@@ -132,7 +133,7 @@ jobs:
 
           short_sha = os.environ["GITHUB_SHA"][:7]
           repo_url = f"{os.environ['GITHUB_SERVER_URL']}/{os.environ['GITHUB_REPOSITORY']}"
-          announcement_role_id = "1489062618072354888"
+          announcement_role_id = os.environ.get("DISCORD_ANNOUNCEMENT_ROLE_ID", "").strip()
 
           def post_webhook(payload, *, with_components=False):
               suffix = "?with_components=true" if with_components else ""
@@ -153,14 +154,15 @@ jobs:
                   print(exc.read().decode("utf-8", "replace"))
                   raise
 
-          post_webhook({
-              "username": "Nestview Releases",
-              "content": f"<@&{announcement_role_id}>",
-              "allowed_mentions": {
-                  "parse": [],
-                  "roles": [announcement_role_id],
-              },
-          })
+          if announcement_role_id:
+              post_webhook({
+                  "username": "Nestview Releases",
+                  "content": f"<@&{announcement_role_id}>",
+                  "allowed_mentions": {
+                      "parse": [],
+                      "roles": [announcement_role_id],
+                  },
+              })
 
           payload = {
               "username": "Nestview Releases",
