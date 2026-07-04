@@ -1,13 +1,16 @@
 # Changelog
 
 ---
-## [1.4.0] - 2026-07-02
+## [1.4.0] - 2026-07-04
 ### Added
 - Update-and-restart now performs real image pulls and container recreation with durable operation status tracking.
 - A repeatable stale container fixture reset helper supports dev validation of the update path.
 
 ### Changed
 - Container update detection now compares registry tags against the image each container is actually running, not just the mutable local tag.
+- Dependency updates are included for the backend and frontend release build.
+- Main-line release announcements can ping the configured Discord announcement role before posting the release card.
+- Landing page publishing now runs from main-line landing workflow changes.
 
 ### Fixed
 - Recreated containers keep the user on the new detail page without a transient "container not found" state.
