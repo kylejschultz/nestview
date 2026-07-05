@@ -1,6 +1,11 @@
 # Changelog
 
 ---
+## [1.4.1] - 2026-07-04
+### Fixed
+- Pin React and React DOM to the same patch version to prevent a startup crash that rendered a blank screen.
+
+---
 ## [1.4.0] - 2026-07-04
 ### Added
 - Update-and-restart now performs real image pulls and container recreation with durable operation status tracking.
