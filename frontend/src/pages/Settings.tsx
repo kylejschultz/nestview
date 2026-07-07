@@ -5,6 +5,7 @@ import { useAuth } from "../AuthContext";
 import type { AlertEventType, AlertSetting, AnalyticsStatus, Container, GeneralSettings, NotificationDestination, NotificationDestinationPayload, NotificationDestinationType, SystemInfo } from "../types";
 import WebhookField from "../components/WebhookField";
 import DiscordWebhookHelpModal from "../components/DiscordWebhookHelpModal";
+import SlackWebhookHelpModal from "../components/SlackWebhookHelpModal";
 import TimezoneSelect from "../components/TimezoneSelect";
 import Toast from "../components/Toast";
 import InfoPopover from "../components/InfoPopover";
@@ -853,6 +854,7 @@ function DestinationEditor({
   const [draft, setDraft] = useState<NotificationDestinationPayload>(() =>
     destination ? mergeDestinationDraft(destination) : defaultDestinationDraft("slack")
   );
+  const [showSlackHelp, setShowSlackHelp] = useState(false);
 
   function setType(type: NotificationDestinationType) {
     setDraft(defaultDestinationDraft(type));
@@ -867,6 +869,7 @@ function DestinationEditor({
 
   return (
     <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
+      {showSlackHelp && <SlackWebhookHelpModal onClose={() => setShowSlackHelp(false)} />}
       <div className="bg-surface-2 border border-border rounded-xl shadow-xl w-full max-w-lg p-5 space-y-4">
         <div>
           <h3 className="text-sm font-semibold text-slate-100">{destination ? "Edit destination" : "Add destination"}</h3>
@@ -900,8 +903,17 @@ function DestinationEditor({
 
         {!isEmail && (
           <label className="space-y-1 block">
-            <span className="text-xs text-slate-500">
-              {draft.destination_type === "webhook" ? "Webhook URL" : `${DESTINATION_LABELS[draft.destination_type]} webhook URL`}
+            <span className="flex items-center justify-between gap-3 text-xs text-slate-500">
+              <span>{draft.destination_type === "webhook" ? "Webhook URL" : `${DESTINATION_LABELS[draft.destination_type]} webhook URL`}</span>
+              {draft.destination_type === "slack" && (
+                <button
+                  type="button"
+                  onClick={() => setShowSlackHelp(true)}
+                  className="text-slate-500 hover:text-accent transition-colors"
+                >
+                  How do I get this?
+                </button>
+              )}
             </span>
             <input
               type="password"
