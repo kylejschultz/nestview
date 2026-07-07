@@ -1,4 +1,4 @@
-import type { AlertEventType, AlertSetting, AnalyticsStatus, AuthStatus, Container, ContainerLog, ContainerEvent, GeneralSettings, MeResponse, MetricsHistoryPoint, NetworkHistoryPoint, OperationStatus, SystemInfo, WizardStatus } from "./types";
+import type { AlertEventType, AlertSetting, AnalyticsStatus, AuthStatus, Container, ContainerLog, ContainerEvent, GeneralSettings, MeResponse, MetricsHistoryPoint, NetworkHistoryPoint, NotificationDestination, NotificationDestinationPayload, OperationStatus, SystemInfo, WizardStatus } from "./types";
 
 const BASE = "/api";
 
@@ -80,6 +80,19 @@ async function post<T>(path: string, body?: unknown): Promise<T> {
   return res.json();
 }
 
+async function del<T>(path: string): Promise<T> {
+  const res = await fetch(`${BASE}${path}`, { method: "DELETE" });
+  if (res.status === 401) {
+    handle401(path);
+    throw new Error("401 Unauthorized");
+  }
+  if (!res.ok) {
+    const resBody = await res.json().catch(() => ({}));
+    throw new Error(errorMessageFromBody(resBody, `${res.status} ${res.statusText}`));
+  }
+  return res.json();
+}
+
 export const api = {
   version: () => fetch(`${BASE}/version`).then((r) => r.json()) as Promise<{ version: string; build_sha: string | null }>,
   containers: {
@@ -145,6 +158,14 @@ export const api = {
     alertDefaults: () => get<{ event_type: string; enabled: boolean }[]>("/settings/alerts/defaults"),
     setAlertDefaults: (payload: { event_type: AlertEventType; enabled: boolean }[]) =>
       patch<{ event_type: string; enabled: boolean }[]>("/settings/alerts/defaults", payload),
+    notificationDestinations: () => get<NotificationDestination[]>("/settings/notification-destinations"),
+    createNotificationDestination: (body: NotificationDestinationPayload) =>
+      post<NotificationDestination>("/settings/notification-destinations", body),
+    updateNotificationDestination: (id: number, body: Partial<Omit<NotificationDestinationPayload, "destination_type">>) =>
+      patch<NotificationDestination>(`/settings/notification-destinations/${id}`, body),
+    deleteNotificationDestination: (id: number) => del<{ ok: boolean }>(`/settings/notification-destinations/${id}`),
+    testNotificationDestination: (id: number) =>
+      post<{ ok: boolean; error?: string }>(`/settings/notification-destinations/${id}/test`),
     general: () => get<GeneralSettings>("/settings/general"),
     saveGeneral: (body: Partial<GeneralSettings>) =>
       patch<GeneralSettings>("/settings/general", body),

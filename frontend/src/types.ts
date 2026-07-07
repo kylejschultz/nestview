@@ -76,6 +76,26 @@ export interface GeneralSettings {
   network_history_retention_hours: number;
 }
 
+export type NotificationDestinationType = "discord" | "slack" | "email" | "webhook";
+
+export interface NotificationDestination {
+  id: number;
+  name: string;
+  destination_type: NotificationDestinationType;
+  enabled: boolean;
+  configured: boolean;
+  config: Record<string, string | number | boolean>;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface NotificationDestinationPayload {
+  name: string;
+  destination_type: NotificationDestinationType;
+  enabled: boolean;
+  config: Record<string, string | number | boolean>;
+}
+
 export interface WizardStatus {
   completed: boolean;
 }

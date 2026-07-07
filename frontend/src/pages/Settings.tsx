@@ -2,7 +2,7 @@ import React, { useState, useRef, useMemo, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
 import { useAuth } from "../AuthContext";
-import type { AlertEventType, AlertSetting, AnalyticsStatus, Container, GeneralSettings, SystemInfo } from "../types";
+import type { AlertEventType, AlertSetting, AnalyticsStatus, Container, GeneralSettings, NotificationDestination, NotificationDestinationPayload, NotificationDestinationType, SystemInfo } from "../types";
 import WebhookField from "../components/WebhookField";
 import DiscordWebhookHelpModal from "../components/DiscordWebhookHelpModal";
 import TimezoneSelect from "../components/TimezoneSelect";
@@ -810,11 +810,188 @@ function AddExceptionModal({
 
 // ── Notifications tab ─────────────────────────────────────────────────────────
 
+const DESTINATION_LABELS: Record<NotificationDestinationType, string> = {
+  discord: "Discord",
+  slack: "Slack",
+  email: "Email",
+  webhook: "Webhook",
+};
+
+function defaultDestinationDraft(type: NotificationDestinationType): NotificationDestinationPayload {
+  const name = DESTINATION_LABELS[type];
+  if (type === "email") {
+    return {
+      name,
+      destination_type: type,
+      enabled: true,
+      config: { host: "", port: 587, username: "", password: "", from_email: "", to_emails: "", use_tls: true },
+    };
+  }
+  return { name, destination_type: type, enabled: true, config: { webhook_url: "" } };
+}
+
+function mergeDestinationDraft(destination: NotificationDestination): NotificationDestinationPayload {
+  return {
+    name: destination.name,
+    destination_type: destination.destination_type,
+    enabled: destination.enabled,
+    config: { ...defaultDestinationDraft(destination.destination_type).config, ...destination.config },
+  };
+}
+
+function DestinationEditor({
+  destination,
+  onCancel,
+  onSave,
+  isSaving,
+}: {
+  destination: NotificationDestination | null;
+  onCancel: () => void;
+  onSave: (draft: NotificationDestinationPayload) => void;
+  isSaving: boolean;
+}) {
+  const [draft, setDraft] = useState<NotificationDestinationPayload>(() =>
+    destination ? mergeDestinationDraft(destination) : defaultDestinationDraft("slack")
+  );
+
+  function setType(type: NotificationDestinationType) {
+    setDraft(defaultDestinationDraft(type));
+  }
+
+  function setConfig(key: string, value: string | number | boolean) {
+    setDraft(prev => ({ ...prev, config: { ...prev.config, [key]: value } }));
+  }
+
+  const isEmail = draft.destination_type === "email";
+  const saveLabel = destination ? "Save destination" : "Add destination";
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
+      <div className="bg-surface-2 border border-border rounded-xl shadow-xl w-full max-w-lg p-5 space-y-4">
+        <div>
+          <h3 className="text-sm font-semibold text-slate-100">{destination ? "Edit destination" : "Add destination"}</h3>
+          <p className="text-xs text-slate-500 mt-1">Secrets are stored server-side and are not shown after saving.</p>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <label className="space-y-1">
+            <span className="text-xs text-slate-500">Type</span>
+            <select
+              value={draft.destination_type}
+              onChange={(e) => setType(e.target.value as NotificationDestinationType)}
+              disabled={isSaving || destination !== null}
+              className={`${inputBase} w-full`}
+            >
+              {Object.entries(DESTINATION_LABELS).map(([value, label]) => (
+                <option key={value} value={value}>{label}</option>
+              ))}
+            </select>
+          </label>
+          <label className="space-y-1">
+            <span className="text-xs text-slate-500">Name</span>
+            <input
+              value={draft.name}
+              onChange={(e) => setDraft(prev => ({ ...prev, name: e.target.value }))}
+              disabled={isSaving}
+              className={`${inputBase} w-full`}
+            />
+          </label>
+        </div>
+
+        {!isEmail && (
+          <label className="space-y-1 block">
+            <span className="text-xs text-slate-500">
+              {draft.destination_type === "webhook" ? "Webhook URL" : `${DESTINATION_LABELS[draft.destination_type]} webhook URL`}
+            </span>
+            <input
+              type="password"
+              value={String(draft.config.webhook_url ?? "")}
+              onChange={(e) => setConfig("webhook_url", e.target.value)}
+              placeholder={destination?.configured ? "Configured - enter a new URL to replace" : "https://..."}
+              disabled={isSaving}
+              className={`${inputBase} w-full`}
+            />
+          </label>
+        )}
+
+        {isEmail && (
+          <div className="space-y-3">
+            <div className="grid grid-cols-[1fr_6rem] gap-3">
+              <label className="space-y-1">
+                <span className="text-xs text-slate-500">SMTP host</span>
+                <input value={String(draft.config.host ?? "")} onChange={(e) => setConfig("host", e.target.value)} disabled={isSaving} className={`${inputBase} w-full`} />
+              </label>
+              <label className="space-y-1">
+                <span className="text-xs text-slate-500">Port</span>
+                <input type="number" value={Number(draft.config.port ?? 587)} onChange={(e) => setConfig("port", Number(e.target.value))} disabled={isSaving} className={`${inputBase} w-full`} />
+              </label>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <label className="space-y-1">
+                <span className="text-xs text-slate-500">Username</span>
+                <input value={String(draft.config.username ?? "")} onChange={(e) => setConfig("username", e.target.value)} disabled={isSaving} className={`${inputBase} w-full`} />
+              </label>
+              <label className="space-y-1">
+                <span className="text-xs text-slate-500">Password</span>
+                <input type="password" value={String(draft.config.password ?? "")} onChange={(e) => setConfig("password", e.target.value)} placeholder={destination?.configured ? "Configured" : ""} disabled={isSaving} className={`${inputBase} w-full`} />
+              </label>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <label className="space-y-1">
+                <span className="text-xs text-slate-500">From</span>
+                <input value={String(draft.config.from_email ?? "")} onChange={(e) => setConfig("from_email", e.target.value)} disabled={isSaving} className={`${inputBase} w-full`} />
+              </label>
+              <label className="space-y-1">
+                <span className="text-xs text-slate-500">To</span>
+                <input value={String(draft.config.to_emails ?? "")} onChange={(e) => setConfig("to_emails", e.target.value)} disabled={isSaving} className={`${inputBase} w-full`} />
+              </label>
+            </div>
+            <label className="flex items-center gap-2 text-xs text-slate-400">
+              <input type="checkbox" checked={Boolean(draft.config.use_tls ?? true)} onChange={(e) => setConfig("use_tls", e.target.checked)} className="accent-accent" />
+              Use TLS
+            </label>
+          </div>
+        )}
+
+        {draft.destination_type === "webhook" && (
+          <label className="space-y-1 block">
+            <span className="text-xs text-slate-500">Optional secret header</span>
+            <input
+              type="password"
+              value={String(draft.config.secret ?? "")}
+              onChange={(e) => setConfig("secret", e.target.value)}
+              placeholder={destination?.configured ? "Configured - enter a new secret to replace" : "Sent as X-Nestview-Secret"}
+              disabled={isSaving}
+              className={`${inputBase} w-full`}
+            />
+          </label>
+        )}
+
+        <label className="flex items-center gap-2 text-xs text-slate-400">
+          <input type="checkbox" checked={draft.enabled} onChange={(e) => setDraft(prev => ({ ...prev, enabled: e.target.checked }))} className="accent-accent" />
+          Enabled
+        </label>
+
+        <div className="flex justify-end gap-2 pt-2">
+          <button onClick={onCancel} disabled={isSaving} className="px-3 py-1.5 text-xs rounded-lg border border-border text-slate-400 hover:text-slate-200 transition-colors">
+            Cancel
+          </button>
+          <button onClick={() => onSave(draft)} disabled={isSaving} className="px-3 py-1.5 text-xs rounded-lg bg-accent hover:bg-accent-hover text-white font-medium transition-colors disabled:opacity-40">
+            {isSaving ? "Saving..." : saveLabel}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function NotificationsTab({ onDirtyChange }: { onDirtyChange: (dirty: boolean) => void }) {
   const queryClient = useQueryClient();
   const { isAuthenticated } = useAuth();
   const { toastState, showToast, dismissToast } = useToast();
   const [showAddModal, setShowAddModal] = useState(false);
+  const [editingDestination, setEditingDestination] = useState<NotificationDestination | null>(null);
+  const [showDestinationEditor, setShowDestinationEditor] = useState(false);
 
   const { data: defaultsRaw = [], isLoading: loadingDefaults } = useQuery<{ event_type: string; enabled: boolean }[]>({
     queryKey: ["alert-defaults"],
@@ -825,6 +1002,12 @@ function NotificationsTab({ onDirtyChange }: { onDirtyChange: (dirty: boolean) =
   const { data: alertSettings = [], isLoading: loadingAlerts } = useQuery<AlertSetting[]>({
     queryKey: ["alert-settings"],
     queryFn: api.settings.alerts,
+    enabled: isAuthenticated,
+  });
+
+  const { data: destinations = [], isLoading: loadingDestinations } = useQuery<NotificationDestination[]>({
+    queryKey: ["notification-destinations"],
+    queryFn: api.settings.notificationDestinations,
     enabled: isAuthenticated,
   });
 
@@ -912,7 +1095,45 @@ function NotificationsTab({ onDirtyChange }: { onDirtyChange: (dirty: boolean) =
     onError: (err: Error) => showToast(err.message, "error"),
   });
 
-  const isLoading = loadingDefaults || loadingAlerts;
+  const { mutate: saveDestination, isPending: isSavingDestination } = useMutation({
+    mutationFn: (draft: NotificationDestinationPayload) => {
+      if (editingDestination) {
+        return api.settings.updateNotificationDestination(editingDestination.id, {
+          name: draft.name,
+          enabled: draft.enabled,
+          config: draft.config,
+        });
+      }
+      return api.settings.createNotificationDestination(draft);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["notification-destinations"] });
+      setShowDestinationEditor(false);
+      setEditingDestination(null);
+      showToast("Destination saved", "success");
+    },
+    onError: (err: Error) => showToast(err.message, "error"),
+  });
+
+  const { mutate: testDestination, isPending: isTestingDestination } = useMutation({
+    mutationFn: (id: number) => api.settings.testNotificationDestination(id),
+    onSuccess: (result) => {
+      if (result.ok) showToast("Destination test sent", "success");
+      else showToast(result.error ?? "Destination test failed", "error");
+    },
+    onError: (err: Error) => showToast(err.message, "error"),
+  });
+
+  const { mutate: deleteDestination, isPending: isDeletingDestination } = useMutation({
+    mutationFn: (id: number) => api.settings.deleteNotificationDestination(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["notification-destinations"] });
+      showToast("Destination deleted", "success");
+    },
+    onError: (err: Error) => showToast(err.message, "error"),
+  });
+
+  const isLoading = loadingDefaults || loadingAlerts || loadingDestinations;
 
   if (isLoading || draftDefaults === null || draftExceptions === null) {
     return <div className="py-12 text-center text-slate-500">Loading...</div>;
@@ -926,8 +1147,76 @@ function NotificationsTab({ onDirtyChange }: { onDirtyChange: (dirty: boolean) =
       {toastState && (
         <Toast key={toastState.id} message={toastState.message} type={toastState.type} duration={toastState.duration} onDismiss={dismissToast} />
       )}
+      {showDestinationEditor && (
+        <DestinationEditor
+          destination={editingDestination}
+          isSaving={isSavingDestination}
+          onCancel={() => { setShowDestinationEditor(false); setEditingDestination(null); }}
+          onSave={(draft) => saveDestination(draft)}
+        />
+      )}
 
       <div className="space-y-4">
+        {/* Destinations card */}
+        <div className="card overflow-hidden">
+          <div className="flex items-center justify-between px-5 py-3 border-b border-border">
+            <div>
+              <h2 className="text-sm font-semibold text-slate-200">Destinations</h2>
+              <p className="text-xs text-slate-500 mt-0.5">Where Nestview sends enabled alerts.</p>
+            </div>
+            <button
+              onClick={() => { setEditingDestination(null); setShowDestinationEditor(true); }}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg bg-surface-3 border border-border text-slate-300 hover:text-slate-100 hover:border-slate-500 transition-colors shrink-0"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+              </svg>
+              Add destination
+            </button>
+          </div>
+
+          {destinations.length === 0 ? (
+            <div className="px-5 py-8 text-center">
+              <p className="text-sm text-slate-500">No alert destinations configured.</p>
+            </div>
+          ) : (
+            <div>
+              {destinations.map((destination) => (
+                <div key={destination.id} className="flex items-center gap-3 px-5 py-3 border-b border-border last:border-0">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium text-slate-200 truncate">{destination.name}</span>
+                      <span className="text-[11px] uppercase tracking-wide text-slate-500">{DESTINATION_LABELS[destination.destination_type]}</span>
+                      {!destination.enabled && <span className="text-[11px] text-slate-600">Disabled</span>}
+                    </div>
+                    <p className="text-xs text-slate-500 mt-0.5">{destination.configured ? "Configured" : "Needs configuration"}</p>
+                  </div>
+                  <button
+                    disabled={isTestingDestination || !destination.configured}
+                    onClick={() => testDestination(destination.id)}
+                    className="px-3 py-1.5 text-xs rounded-lg border border-border text-slate-400 hover:text-slate-200 transition-colors disabled:opacity-40"
+                  >
+                    Test
+                  </button>
+                  <button
+                    onClick={() => { setEditingDestination(destination); setShowDestinationEditor(true); }}
+                    className="px-3 py-1.5 text-xs rounded-lg border border-border text-slate-400 hover:text-slate-200 transition-colors"
+                  >
+                    Edit
+                  </button>
+                  <button
+                    disabled={isDeletingDestination}
+                    onClick={() => deleteDestination(destination.id)}
+                    className="px-3 py-1.5 text-xs rounded-lg border border-border text-slate-500 hover:text-red-400 transition-colors disabled:opacity-40"
+                  >
+                    Delete
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
         {/* Global defaults card */}
         <div className="card overflow-hidden">
           <div className="px-5 py-3 border-b border-border">
@@ -1023,7 +1312,7 @@ function NotificationsTab({ onDirtyChange }: { onDirtyChange: (dirty: boolean) =
           )}
         </div>
 
-        <p className="text-xs text-slate-600">Alert toggles only take effect when a Discord webhook URL is configured. Events are always recorded regardless.</p>
+        <p className="text-xs text-slate-600">Alert toggles only take effect when at least one destination is enabled. Events are always recorded regardless.</p>
 
         {/* Save bar */}
         <div className="sticky bottom-0 border-t border-border bg-surface-2/95 backdrop-blur-sm px-5 py-3 flex items-center justify-between">

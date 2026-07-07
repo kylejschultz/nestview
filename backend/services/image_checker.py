@@ -17,8 +17,7 @@ from sqlmodel import Session, select
 
 from database import engine
 from models import Container, ContainerAlertSetting
-from services import discord
-from services.app_settings import get_setting
+from services import notifications
 
 logger = logging.getLogger(__name__)
 
@@ -306,19 +305,15 @@ def _maybe_send_update_alert(session: Session, container: Container) -> None:
     if _update_alert_suppressed(container.name, session):
         return
 
-    webhook_url = get_setting(session, "discord_webhook_url") or ""
-    if not webhook_url:
-        return
-
     try:
-        sent = asyncio.run(discord.send_alert(
-            webhook_url=webhook_url,
+        sent = asyncio.run(notifications.send_alert(
+            session=session,
             container_name=container.name,
             event_type="update_available",
             details=f"Image: {container.image}",
         ))
     except Exception as exc:
-        logger.warning("image_checker: discord alert failed for %r: %s", container.name, type(exc).__name__)
+        logger.warning("image_checker: alert failed for %r: %s", container.name, type(exc).__name__)
         sent = False
 
     if sent:

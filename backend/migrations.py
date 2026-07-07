@@ -1,3 +1,4 @@
+import json
 import logging
 from typing import Callable
 
@@ -318,6 +319,46 @@ def _migrate_014(engine: Engine) -> None:
     logger.info("migration 014: added running operation uniqueness index")
 
 
+def _migrate_015(engine: Engine) -> None:
+    """Create notification destinations and migrate an existing Discord webhook."""
+    inspector = inspect(engine)
+    if "notification_destination" in inspector.get_table_names():
+        logger.info("migration 015: table notification_destination already present, skipping")
+        return
+
+    with engine.connect() as conn:
+        conn.execute(text("""
+            CREATE TABLE notification_destination (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                destination_type TEXT NOT NULL,
+                enabled INTEGER NOT NULL DEFAULT 1,
+                config_json TEXT NOT NULL DEFAULT '{}',
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+        """))
+        conn.execute(text(
+            "CREATE INDEX ix_notification_destination_destination_type "
+            "ON notification_destination (destination_type)"
+        ))
+
+        row = conn.execute(
+            text("SELECT value FROM app_setting WHERE key = 'discord_webhook_url'")
+        ).fetchone()
+        webhook_url = row[0] if row and row[0] else ""
+        if webhook_url:
+            conn.execute(text("""
+                INSERT INTO notification_destination
+                    (name, destination_type, enabled, config_json, created_at, updated_at)
+                VALUES
+                    ('Discord', 'discord', 1, :config_json, datetime('now'), datetime('now'))
+            """), {"config_json": json.dumps({"webhook_url": webhook_url})})
+
+        conn.commit()
+    logger.info("migration 015: created notification_destination table")
+
+
 MIGRATIONS: list[tuple[str, Callable]] = [
     ("001", _migrate_001),
     ("002", _migrate_002),
@@ -333,6 +374,7 @@ MIGRATIONS: list[tuple[str, Callable]] = [
     ("012", _migrate_012),
     ("013", _migrate_013),
     ("014", _migrate_014),
+    ("015", _migrate_015),
 ]
 
 

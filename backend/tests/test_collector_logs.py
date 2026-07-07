@@ -28,7 +28,7 @@ def collector_engine(monkeypatch):
     collector._log_buffer.clear()
 
     with Session(engine) as session:
-        session.add(AppSetting(key="log_retention_days", value="7"))
+        session.add(AppSetting(key="log_retention_days", value="3650"))
         session.commit()
 
     return engine
