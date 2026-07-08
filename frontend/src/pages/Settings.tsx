@@ -3,8 +3,6 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
 import { useAuth } from "../AuthContext";
 import type { AlertEventType, AlertSetting, AnalyticsStatus, Container, GeneralSettings, NotificationDestination, NotificationDestinationPayload, NotificationDestinationType, SystemInfo } from "../types";
-import WebhookField from "../components/WebhookField";
-import DiscordWebhookHelpModal from "../components/DiscordWebhookHelpModal";
 import SlackWebhookHelpModal from "../components/SlackWebhookHelpModal";
 import TimezoneSelect from "../components/TimezoneSelect";
 import Toast from "../components/Toast";
@@ -278,7 +276,6 @@ function GeneralTab({ authMode, version, onDirtyChange }: { authMode?: string; v
     enabled: isAuthenticated,
   });
 
-  const [webhookDraft, setWebhookDraft] = useState<string | null>(null);
   const [retentionDraft, setRetentionDraft] = useState<string | null>(null);
   const [netRetentionDraft, setNetRetentionDraft] = useState<number | null>(null);
   const [timezoneDraft, setTimezoneDraft] = useState<string | null>(null);
@@ -291,7 +288,6 @@ function GeneralTab({ authMode, version, onDirtyChange }: { authMode?: string; v
   const [pwError, setPwError] = useState<string | null>(null);
   const [authModeDraft, setAuthModeDraft] = useState<"password" | "none" | null>(null);
   const [noAuthConfirmed, setNoAuthConfirmed] = useState(false);
-  const [showWebhookHelp, setShowWebhookHelp] = useState(false);
 
   const { data: analyticsStatus } = useQuery<AnalyticsStatus>({
     queryKey: ["analytics-status"],
@@ -306,7 +302,6 @@ function GeneralTab({ authMode, version, onDirtyChange }: { authMode?: string; v
   const serverEnabled = (allSettings?.image_check_enabled ?? "true") !== "false";
   const serverTime = allSettings?.image_check_time ?? "03:00";
 
-  const webhook = webhookDraft ?? general?.discord_webhook_url ?? "";
   const retention = retentionDraft ?? String(general?.log_retention_days ?? 7);
   const netRetention = netRetentionDraft ?? general?.network_history_retention_hours ?? 6;
   const timezone = timezoneDraft ?? general?.timezone ?? "UTC";
@@ -324,7 +319,6 @@ function GeneralTab({ authMode, version, onDirtyChange }: { authMode?: string; v
   const sessionExpiryApplies = selectedMode === "password" && authMode === "password";
 
   const isDirty =
-    webhookDraft !== null ||
     retentionDraft !== null ||
     netRetentionDraft !== null ||
     timezoneDraft !== null ||
@@ -343,7 +337,6 @@ function GeneralTab({ authMode, version, onDirtyChange }: { authMode?: string; v
   const { mutate: saveAll, isPending: isSavingAll } = useMutation({
     mutationFn: async () => {
       const generalBody: Partial<GeneralSettings> = {};
-      if (webhookDraft !== null) generalBody.discord_webhook_url = webhook;
       if (retentionDraft !== null && retentionValid) generalBody.log_retention_days = retentionNum;
       if (netRetentionDraft !== null && netRetentionValid) generalBody.network_history_retention_hours = netRetention;
       if (timezoneDraft !== null) generalBody.timezone = timezone;
@@ -360,7 +353,6 @@ function GeneralTab({ authMode, version, onDirtyChange }: { authMode?: string; v
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["settings-general"] });
       queryClient.invalidateQueries({ queryKey: ["settings-all"] });
-      setWebhookDraft(null);
       setRetentionDraft(null);
       setNetRetentionDraft(null);
       setTimezoneDraft(null);
@@ -452,38 +444,7 @@ function GeneralTab({ authMode, version, onDirtyChange }: { authMode?: string; v
           onDismiss={dismissToast}
         />
       )}
-      {showWebhookHelp && <DiscordWebhookHelpModal onClose={() => setShowWebhookHelp(false)} />}
-
-      {/* Row 1: Discord Webhook URL - full width */}
-      <div className="bg-surface-2 border border-border rounded-xl overflow-hidden">
-        <div className="flex items-start gap-4 px-4 py-2.5">
-          <div className="flex flex-col shrink-0 pt-1">
-            <div className="flex items-center gap-1.5">
-              <span className="text-sm text-slate-300">Discord Webhook URL</span>
-              <InfoPopover content="The Discord webhook URL used to send container event alerts. Leave blank to disable Discord notifications." />
-            </div>
-            <button
-              type="button"
-              onClick={() => setShowWebhookHelp(true)}
-              className="text-xs text-slate-500 hover:text-accent transition-colors text-left mt-0.5"
-            >
-              How do I get this?
-            </button>
-          </div>
-          <div className="flex-1 min-w-0">
-            <WebhookField
-              value={webhook}
-              onChange={setWebhookDraft}
-              disabled={isSavingAll}
-              onTestSuccess={() => showToast("Webhook test successful", "success")}
-              onTestError={(msg) => showToast(msg, "error")}
-              hideHelpLink
-            />
-          </div>
-        </div>
-      </div>
-
-      {/* Row 2: Auth (left, tall) + Retention/Timezone/Analytics/Image Updates (right) */}
+      {/* Row 1: Auth (left, tall) + Retention/Timezone/Analytics/Image Updates (right) */}
       <div className="grid grid-cols-2 gap-2">
 
         {/* Left: Auth card */}
@@ -844,12 +805,16 @@ function DestinationEditor({
   destination,
   onCancel,
   onSave,
+  onTest,
   isSaving,
+  isTesting,
 }: {
   destination: NotificationDestination | null;
   onCancel: () => void;
   onSave: (draft: NotificationDestinationPayload) => void;
+  onTest: (draft: NotificationDestinationPayload) => void;
   isSaving: boolean;
+  isTesting: boolean;
 }) {
   const [draft, setDraft] = useState<NotificationDestinationPayload>(() =>
     destination ? mergeDestinationDraft(destination) : defaultDestinationDraft("slack")
@@ -987,6 +952,9 @@ function DestinationEditor({
         <div className="flex justify-end gap-2 pt-2">
           <button onClick={onCancel} disabled={isSaving} className="px-3 py-1.5 text-xs rounded-lg border border-border text-slate-400 hover:text-slate-200 transition-colors">
             Cancel
+          </button>
+          <button onClick={() => onTest(draft)} disabled={isSaving || isTesting} className="px-3 py-1.5 text-xs rounded-lg border border-border text-slate-300 hover:text-slate-100 transition-colors disabled:opacity-40">
+            {isTesting ? "Testing..." : "Test"}
           </button>
           <button onClick={() => onSave(draft)} disabled={isSaving} className="px-3 py-1.5 text-xs rounded-lg bg-accent hover:bg-accent-hover text-white font-medium transition-colors disabled:opacity-40">
             {isSaving ? "Saving..." : saveLabel}
@@ -1136,6 +1104,15 @@ function NotificationsTab({ onDirtyChange }: { onDirtyChange: (dirty: boolean) =
     onError: (err: Error) => showToast(err.message, "error"),
   });
 
+  const { mutate: testDestinationDraft, isPending: isTestingDestinationDraft } = useMutation({
+    mutationFn: (draft: NotificationDestinationPayload) => api.settings.testNotificationDestinationDraft(draft),
+    onSuccess: (result) => {
+      if (result.ok) showToast("Destination test sent", "success");
+      else showToast(result.error ?? "Destination test failed", "error");
+    },
+    onError: (err: Error) => showToast(err.message, "error"),
+  });
+
   const { mutate: deleteDestination, isPending: isDeletingDestination } = useMutation({
     mutationFn: (id: number) => api.settings.deleteNotificationDestination(id),
     onSuccess: () => {
@@ -1163,8 +1140,10 @@ function NotificationsTab({ onDirtyChange }: { onDirtyChange: (dirty: boolean) =
         <DestinationEditor
           destination={editingDestination}
           isSaving={isSavingDestination}
+          isTesting={isTestingDestinationDraft}
           onCancel={() => { setShowDestinationEditor(false); setEditingDestination(null); }}
           onSave={(draft) => saveDestination(draft)}
+          onTest={(draft) => testDestinationDraft(draft)}
         />
       )}
 

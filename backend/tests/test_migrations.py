@@ -2,7 +2,7 @@ from sqlalchemy import inspect
 from sqlmodel import Session, SQLModel, create_engine, select
 
 from migrations import run_migrations
-from models import AppSetting, ContainerAlertSetting
+from models import AppSetting, ContainerAlertSetting, NotificationDestination
 
 
 def test_run_migrations_advances_schema_version_and_is_idempotent():
@@ -10,6 +10,8 @@ def test_run_migrations_advances_schema_version_and_is_idempotent():
     SQLModel.metadata.create_all(engine)
 
     with Session(engine) as session:
+        session.add(AppSetting(key="discord_webhook_url", value="https://discord.com/webhooks/test/token"))
+        session.commit()
         run_migrations(engine, session)
         run_migrations(engine, session)
 
@@ -21,9 +23,14 @@ def test_run_migrations_advances_schema_version_and_is_idempotent():
                 ContainerAlertSetting.container_name == "__global__"
             )
         ).all()
+        discord_destination = session.exec(
+            select(NotificationDestination).where(
+                NotificationDestination.destination_type == "discord"
+            )
+        ).first()
 
     assert schema_version is not None
-    assert schema_version.value == "015"
+    assert schema_version.value == "016"
     assert analytics_last_ping is not None
     assert analytics_last_ping.value == ""
     assert retention is not None
@@ -36,6 +43,8 @@ def test_run_migrations_advances_schema_version_and_is_idempotent():
     }
     assert "operation" in inspect(engine).get_table_names()
     assert "notification_destination" in inspect(engine).get_table_names()
+    assert discord_destination is not None
+    assert discord_destination.name == "Discord"
     assert "ix_operation_running_target" in {
         index["name"] for index in inspect(engine).get_indexes("operation")
     }

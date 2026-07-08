@@ -166,6 +166,8 @@ export const api = {
     deleteNotificationDestination: (id: number) => del<{ ok: boolean }>(`/settings/notification-destinations/${id}`),
     testNotificationDestination: (id: number) =>
       post<{ ok: boolean; error?: string }>(`/settings/notification-destinations/${id}/test`),
+    testNotificationDestinationDraft: (body: NotificationDestinationPayload) =>
+      post<{ ok: boolean; error?: string }>("/settings/notification-destinations/test-draft", body),
     general: () => get<GeneralSettings>("/settings/general"),
     saveGeneral: (body: Partial<GeneralSettings>) =>
       patch<GeneralSettings>("/settings/general", body),

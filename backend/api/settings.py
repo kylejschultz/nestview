@@ -341,6 +341,20 @@ async def test_notification_destination(
     return {"ok": False, "error": "Destination test failed. Check the configuration and try again."}
 
 
+@router.post("/notification-destinations/test-draft")
+async def test_notification_destination_draft(payload: NotificationDestinationPayload) -> dict:
+    destination = NotificationDestination(
+        name=payload.name,
+        destination_type=payload.destination_type,
+        enabled=True,
+        config_json=json.dumps(_clean_destination_config(payload.destination_type, payload.config)),
+    )
+    ok = await notifications.send_test(destination)
+    if ok:
+        return {"ok": True}
+    return {"ok": False, "error": "Destination test failed. Check the configuration and try again."}
+
+
 # ── Generic key-value settings ────────────────────────────────────────────────
 
 @router.get("")

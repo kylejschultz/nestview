@@ -359,6 +359,41 @@ def _migrate_015(engine: Engine) -> None:
     logger.info("migration 015: created notification_destination table")
 
 
+def _migrate_016(engine: Engine) -> None:
+    """Backfill a Discord destination from the legacy discord_webhook_url setting."""
+    inspector = inspect(engine)
+    if "notification_destination" not in inspector.get_table_names():
+        logger.info("migration 016: notification_destination table missing, skipping")
+        return
+
+    with engine.connect() as conn:
+        row = conn.execute(
+            text("SELECT value FROM app_setting WHERE key = 'discord_webhook_url'")
+        ).fetchone()
+        webhook_url = row[0] if row and row[0] else ""
+        if not webhook_url:
+            conn.commit()
+            logger.info("migration 016: no legacy Discord webhook configured")
+            return
+
+        existing = conn.execute(text(
+            "SELECT id FROM notification_destination WHERE destination_type = 'discord' LIMIT 1"
+        )).fetchone()
+        if existing:
+            conn.commit()
+            logger.info("migration 016: Discord destination already exists")
+            return
+
+        conn.execute(text("""
+            INSERT INTO notification_destination
+                (name, destination_type, enabled, config_json, created_at, updated_at)
+            VALUES
+                ('Discord', 'discord', 1, :config_json, datetime('now'), datetime('now'))
+        """), {"config_json": json.dumps({"webhook_url": webhook_url})})
+        conn.commit()
+    logger.info("migration 016: backfilled legacy Discord notification destination")
+
+
 MIGRATIONS: list[tuple[str, Callable]] = [
     ("001", _migrate_001),
     ("002", _migrate_002),
@@ -375,6 +410,7 @@ MIGRATIONS: list[tuple[str, Callable]] = [
     ("013", _migrate_013),
     ("014", _migrate_014),
     ("015", _migrate_015),
+    ("016", _migrate_016),
 ]
 
 
