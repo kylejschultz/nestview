@@ -166,6 +166,8 @@ export const api = {
     deleteNotificationDestination: (id: number) => del<{ ok: boolean }>(`/settings/notification-destinations/${id}`),
     testNotificationDestination: (id: number) =>
       post<{ ok: boolean; error?: string }>(`/settings/notification-destinations/${id}/test`),
+    testExistingNotificationDestinationDraft: (id: number, body: Partial<Omit<NotificationDestinationPayload, "destination_type">>) =>
+      post<{ ok: boolean; error?: string }>(`/settings/notification-destinations/${id}/test-draft`, body),
     testNotificationDestinationDraft: (body: NotificationDestinationPayload) =>
       post<{ ok: boolean; error?: string }>("/settings/notification-destinations/test-draft", body),
     general: () => get<GeneralSettings>("/settings/general"),

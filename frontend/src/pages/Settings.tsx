@@ -812,7 +812,7 @@ function DestinationEditor({
   destination: NotificationDestination | null;
   onCancel: () => void;
   onSave: (draft: NotificationDestinationPayload) => void;
-  onTest: (draft: NotificationDestinationPayload) => void;
+  onTest: (draft: NotificationDestinationPayload) => Promise<{ ok: boolean; error?: string }>;
   isSaving: boolean;
   isTesting: boolean;
 }) {
@@ -820,6 +820,7 @@ function DestinationEditor({
     destination ? mergeDestinationDraft(destination) : defaultDestinationDraft("slack")
   );
   const [showSlackHelp, setShowSlackHelp] = useState(false);
+  const [testResult, setTestResult] = useState<{ type: "success" | "error"; message: string } | null>(null);
 
   function setType(type: NotificationDestinationType) {
     setDraft(defaultDestinationDraft(type));
@@ -831,6 +832,21 @@ function DestinationEditor({
 
   const isEmail = draft.destination_type === "email";
   const saveLabel = destination ? "Save destination" : "Add destination";
+
+  async function runTest() {
+    setTestResult(null);
+    try {
+      const result = await onTest(draft);
+      if (result.ok) {
+        setTestResult({ type: "success", message: "Test notification sent." });
+      } else {
+        setTestResult({ type: "error", message: result.error ?? "Destination test failed." });
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Destination test failed.";
+      setTestResult({ type: "error", message });
+    }
+  }
 
   return (
     <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
@@ -949,11 +965,21 @@ function DestinationEditor({
           Enabled
         </label>
 
+        {testResult && (
+          <div className={`rounded-lg border px-3 py-2 text-xs ${
+            testResult.type === "success"
+              ? "border-green-500/30 bg-green-500/10 text-green-300"
+              : "border-red-500/30 bg-red-500/10 text-red-300"
+          }`}>
+            {testResult.message}
+          </div>
+        )}
+
         <div className="flex justify-end gap-2 pt-2">
           <button onClick={onCancel} disabled={isSaving} className="px-3 py-1.5 text-xs rounded-lg border border-border text-slate-400 hover:text-slate-200 transition-colors">
             Cancel
           </button>
-          <button onClick={() => onTest(draft)} disabled={isSaving || isTesting} className="px-3 py-1.5 text-xs rounded-lg border border-border text-slate-300 hover:text-slate-100 transition-colors disabled:opacity-40">
+          <button onClick={runTest} disabled={isSaving || isTesting} className="px-3 py-1.5 text-xs rounded-lg border border-border text-slate-300 hover:text-slate-100 transition-colors disabled:opacity-40">
             {isTesting ? "Testing..." : "Test"}
           </button>
           <button onClick={() => onSave(draft)} disabled={isSaving} className="px-3 py-1.5 text-xs rounded-lg bg-accent hover:bg-accent-hover text-white font-medium transition-colors disabled:opacity-40">
@@ -1104,13 +1130,17 @@ function NotificationsTab({ onDirtyChange }: { onDirtyChange: (dirty: boolean) =
     onError: (err: Error) => showToast(err.message, "error"),
   });
 
-  const { mutate: testDestinationDraft, isPending: isTestingDestinationDraft } = useMutation({
-    mutationFn: (draft: NotificationDestinationPayload) => api.settings.testNotificationDestinationDraft(draft),
-    onSuccess: (result) => {
-      if (result.ok) showToast("Destination test sent", "success");
-      else showToast(result.error ?? "Destination test failed", "error");
+  const { mutateAsync: testDestinationDraft, isPending: isTestingDestinationDraft } = useMutation({
+    mutationFn: (draft: NotificationDestinationPayload) => {
+      if (editingDestination) {
+        return api.settings.testExistingNotificationDestinationDraft(editingDestination.id, {
+          name: draft.name,
+          enabled: draft.enabled,
+          config: draft.config,
+        });
+      }
+      return api.settings.testNotificationDestinationDraft(draft);
     },
-    onError: (err: Error) => showToast(err.message, "error"),
   });
 
   const { mutate: deleteDestination, isPending: isDeletingDestination } = useMutation({

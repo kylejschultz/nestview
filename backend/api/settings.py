@@ -341,6 +341,32 @@ async def test_notification_destination(
     return {"ok": False, "error": "Destination test failed. Check the configuration and try again."}
 
 
+@router.post("/notification-destinations/{destination_id}/test-draft")
+async def test_existing_notification_destination_draft(
+    destination_id: int,
+    payload: NotificationDestinationPatch,
+    session: Session = Depends(get_session),
+) -> dict:
+    saved = session.get(NotificationDestination, destination_id)
+    if saved is None:
+        raise HTTPException(status_code=404, detail="Notification destination not found")
+
+    config = _load_destination_config(saved)
+    if payload.config is not None:
+        config = _clean_destination_config(saved.destination_type, payload.config, config)
+
+    destination = NotificationDestination(
+        name=payload.name or saved.name,
+        destination_type=saved.destination_type,
+        enabled=True,
+        config_json=json.dumps(config),
+    )
+    ok = await notifications.send_test(destination)
+    if ok:
+        return {"ok": True}
+    return {"ok": False, "error": "Destination test failed. Check the configuration and try again."}
+
+
 @router.post("/notification-destinations/test-draft")
 async def test_notification_destination_draft(payload: NotificationDestinationPayload) -> dict:
     destination = NotificationDestination(
