@@ -779,6 +779,48 @@ const DESTINATION_LABELS: Record<NotificationDestinationType, string> = {
   webhook: "Webhook",
 };
 
+const destinationTypeStyles: Record<NotificationDestinationType, string> = {
+  discord: "bg-indigo-500/15 text-indigo-300 border-indigo-400/20",
+  slack: "bg-emerald-500/15 text-emerald-300 border-emerald-400/20",
+  email: "bg-sky-500/15 text-sky-300 border-sky-400/20",
+  webhook: "bg-amber-500/15 text-amber-300 border-amber-400/20",
+};
+
+function NotificationSection({
+  title,
+  description,
+  action,
+  children,
+  elevated = false,
+}: {
+  title: string;
+  description: string;
+  action?: React.ReactNode;
+  children: React.ReactNode;
+  elevated?: boolean;
+}) {
+  return (
+    <section className={`overflow-hidden rounded-xl border ${elevated ? "border-accent/25 bg-surface-2/70 shadow-lg shadow-black/10" : "border-border bg-surface-1"}`}>
+      <div className="flex flex-col gap-3 border-b border-border/80 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h2 className="text-sm font-semibold text-slate-100">{title}</h2>
+          <p className="mt-1 text-xs text-slate-500">{description}</p>
+        </div>
+        {action && <div className="shrink-0">{action}</div>}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function AddIcon() {
+  return (
+    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5} aria-hidden="true">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+    </svg>
+  );
+}
+
 function defaultDestinationDraft(type: NotificationDestinationType): NotificationDestinationPayload {
   const name = DESTINATION_LABELS[type];
   if (type === "email") {
@@ -1178,116 +1220,139 @@ function NotificationsTab({ onDirtyChange }: { onDirtyChange: (dirty: boolean) =
       )}
 
       <div className="space-y-4">
-        {/* Destinations card */}
-        <div className="card overflow-hidden">
-          <div className="flex items-center justify-between px-5 py-3 border-b border-border">
-            <div>
-              <h2 className="text-sm font-semibold text-slate-200">Destinations</h2>
-              <p className="text-xs text-slate-500 mt-0.5">Where Nestview sends enabled alerts.</p>
-            </div>
+        <NotificationSection
+          title="Destinations"
+          description="Delivery endpoints that receive enabled alerts."
+          elevated
+          action={
             <button
               onClick={() => { setEditingDestination(null); setShowDestinationEditor(true); }}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg bg-surface-3 border border-border text-slate-300 hover:text-slate-100 hover:border-slate-500 transition-colors shrink-0"
+              className="flex items-center justify-center gap-1.5 rounded-lg border border-accent/30 bg-accent/15 px-3 py-1.5 text-xs font-medium text-accent-hover transition-colors hover:border-accent/50 hover:bg-accent/25"
             >
-              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-              </svg>
+              <AddIcon />
               Add destination
             </button>
+          }
+        >
+          <div className="border-b border-border/60 bg-surface-1/60 px-5 py-3">
+            <div className="flex flex-wrap gap-2">
+              <span className="rounded-full border border-border bg-surface-2 px-2.5 py-1 text-xs text-slate-400">
+                {destinations.length} configured
+              </span>
+              <span className="rounded-full border border-emerald-400/20 bg-emerald-500/10 px-2.5 py-1 text-xs text-emerald-300">
+                {destinations.filter(destination => destination.enabled).length} enabled
+              </span>
+              <span className="rounded-full border border-border bg-surface-2 px-2.5 py-1 text-xs text-slate-400">
+                {destinations.filter(destination => destination.configured).length} ready
+              </span>
+            </div>
           </div>
 
           {destinations.length === 0 ? (
-            <div className="px-5 py-8 text-center">
+            <div className="px-5 py-10 text-center">
               <p className="text-sm text-slate-500">No alert destinations configured.</p>
             </div>
           ) : (
-            <div>
+            <div className="space-y-2 bg-surface-0/30 p-3">
               {destinations.map((destination) => (
-                <div key={destination.id} className="flex items-center gap-3 px-5 py-3 border-b border-border last:border-0">
+                <div key={destination.id} className="flex flex-col gap-3 rounded-lg border border-border/90 bg-surface-1 px-4 py-3 sm:flex-row sm:items-center">
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
                       <span className="text-sm font-medium text-slate-200 truncate">{destination.name}</span>
-                      <span className="text-[11px] uppercase tracking-wide text-slate-500">{DESTINATION_LABELS[destination.destination_type]}</span>
-                      {!destination.enabled && <span className="text-[11px] text-slate-600">Disabled</span>}
+                      <span className={`rounded-full border px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide ${destinationTypeStyles[destination.destination_type]}`}>
+                        {DESTINATION_LABELS[destination.destination_type]}
+                      </span>
+                      <span className={`rounded-full border px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide ${
+                        destination.enabled
+                          ? "border-emerald-400/20 bg-emerald-500/10 text-emerald-300"
+                          : "border-border bg-surface-2 text-slate-500"
+                      }`}>
+                        {destination.enabled ? "Enabled" : "Disabled"}
+                      </span>
                     </div>
-                    <p className="text-xs text-slate-500 mt-0.5">{destination.configured ? "Configured" : "Needs configuration"}</p>
+                    <p className={`mt-1 text-xs ${destination.configured ? "text-slate-500" : "text-amber-300"}`}>
+                      {destination.configured ? "Configured and ready for test notifications." : "Needs configuration before alerts can be sent."}
+                    </p>
                   </div>
-                  <button
-                    disabled={isTestingDestination || !destination.configured}
-                    onClick={() => testDestination(destination.id)}
-                    className="px-3 py-1.5 text-xs rounded-lg border border-border text-slate-400 hover:text-slate-200 transition-colors disabled:opacity-40"
-                  >
-                    Test
-                  </button>
-                  <button
-                    onClick={() => { setEditingDestination(destination); setShowDestinationEditor(true); }}
-                    className="px-3 py-1.5 text-xs rounded-lg border border-border text-slate-400 hover:text-slate-200 transition-colors"
-                  >
-                    Edit
-                  </button>
-                  <button
-                    disabled={isDeletingDestination}
-                    onClick={() => deleteDestination(destination.id)}
-                    className="px-3 py-1.5 text-xs rounded-lg border border-border text-slate-500 hover:text-red-400 transition-colors disabled:opacity-40"
-                  >
-                    Delete
-                  </button>
+                  <div className="flex shrink-0 flex-wrap gap-2 sm:justify-end">
+                    <button
+                      disabled={isTestingDestination || !destination.configured}
+                      onClick={() => testDestination(destination.id)}
+                      className="min-w-16 rounded-lg border border-border bg-surface-2 px-3 py-1.5 text-xs text-slate-300 transition-colors hover:border-slate-500 hover:text-slate-100 disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      Test
+                    </button>
+                    <button
+                      onClick={() => { setEditingDestination(destination); setShowDestinationEditor(true); }}
+                      className="min-w-16 rounded-lg border border-border bg-surface-2 px-3 py-1.5 text-xs text-slate-300 transition-colors hover:border-slate-500 hover:text-slate-100"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      disabled={isDeletingDestination}
+                      onClick={() => deleteDestination(destination.id)}
+                      className="min-w-16 rounded-lg border border-border bg-surface-2 px-3 py-1.5 text-xs text-slate-500 transition-colors hover:border-red-400/40 hover:text-red-400 disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      Delete
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
           )}
-        </div>
+        </NotificationSection>
 
-        {/* Global defaults card */}
-        <div className="card overflow-hidden">
-          <div className="px-5 py-3 border-b border-border">
-            <h2 className="text-sm font-semibold text-slate-200">Global defaults</h2>
-            <p className="text-xs text-slate-500 mt-0.5">Applies to all containers without an exception configured.</p>
+        <NotificationSection
+          title="Global defaults"
+          description="Baseline alert types for containers without an exception."
+        >
+          <div className="grid gap-2 bg-surface-0/20 p-3 sm:grid-cols-2 lg:grid-cols-4">
+            {NOTIF_TYPES.map(({ key, label }) => (
+              <div key={key} className="flex min-h-24 flex-col justify-between rounded-lg border border-border bg-surface-2/70 p-3">
+                <div>
+                  <p className="text-sm font-medium text-slate-200">{label}</p>
+                  <p className="mt-1 text-xs text-slate-500">{draftDefaults[key] ? "Alerts on" : "Muted by default"}</p>
+                </div>
+                <div className="mt-3 flex justify-end">
+                  <Toggle
+                    checked={draftDefaults[key]}
+                    onChange={(v) => setDraftDefaults(prev => prev ? { ...prev, [key]: v } : prev)}
+                  />
+                </div>
+              </div>
+            ))}
           </div>
-          {NOTIF_TYPES.map(({ key, label }) => (
-            <div key={key} className="flex items-center justify-between px-5 py-3 border-b border-border last:border-0">
-              <span className="text-sm text-slate-300">{label}</span>
-              <Toggle
-                checked={draftDefaults[key]}
-                onChange={(v) => setDraftDefaults(prev => prev ? { ...prev, [key]: v } : prev)}
-              />
-            </div>
-          ))}
-        </div>
+        </NotificationSection>
 
-        {/* Exceptions table */}
-        <div className="card overflow-hidden">
-          <div className="flex items-center justify-between px-5 py-3 border-b border-border">
-            <div>
-              <h2 className="text-sm font-semibold text-slate-200">Container exceptions</h2>
-              <p className="text-xs text-slate-500 mt-0.5">Overrides for individual containers.</p>
-            </div>
-            {sortedExceptions.length > 0 && (
+        <NotificationSection
+          title="Container exceptions"
+          description="Per-container overrides when a service should behave differently."
+          action={sortedExceptions.length > 0 ? (
               <button
                 onClick={() => setShowAddModal(true)}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg bg-surface-3 border border-border text-slate-300 hover:text-slate-100 hover:border-slate-500 transition-colors shrink-0"
+                className="flex items-center justify-center gap-1.5 rounded-lg border border-border bg-surface-3 px-3 py-1.5 text-xs text-slate-300 transition-colors hover:border-slate-500 hover:text-slate-100"
               >
-                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-                </svg>
+                <AddIcon />
                 Add exception
               </button>
-            )}
-          </div>
+          ) : undefined}
+        >
 
           {sortedExceptions.length === 0 ? (
-            <div className="px-5 py-8 text-center space-y-3">
-              <p className="text-sm text-slate-500">All containers are following global defaults.</p>
+            <div className="bg-surface-0/20 px-5 py-10 text-center">
+              <p className="text-sm font-medium text-slate-300">All containers follow the global defaults.</p>
+              <p className="mx-auto mt-1 max-w-md text-xs text-slate-500">Add an exception when one container needs a different alert profile.</p>
               <button
                 onClick={() => setShowAddModal(true)}
-                className="px-3 py-1.5 text-xs rounded-lg bg-surface-3 border border-border text-slate-300 hover:text-slate-100 hover:border-slate-500 transition-colors"
+                className="mt-4 inline-flex items-center justify-center gap-1.5 rounded-lg border border-border bg-surface-3 px-3 py-1.5 text-xs text-slate-300 transition-colors hover:border-slate-500 hover:text-slate-100"
               >
+                <AddIcon />
                 Add exception
               </button>
             </div>
           ) : (
             <>
-              <div className="flex items-center gap-2 px-5 py-2 border-b border-border bg-surface-3/40">
+              <div className="flex items-center gap-2 border-b border-border bg-surface-3/40 px-5 py-2">
                 <span className="flex-1 text-xs font-medium uppercase tracking-wide text-slate-500">Container</span>
                 {NOTIF_TYPES.map(({ key, label, columnLabel }) => (
                   <span key={key} className="w-20 shrink-0 text-center text-xs font-medium uppercase tracking-wide text-slate-500">{columnLabel ?? label}</span>
@@ -1331,19 +1396,17 @@ function NotificationsTab({ onDirtyChange }: { onDirtyChange: (dirty: boolean) =
               ))}
             </>
           )}
-        </div>
+        </NotificationSection>
 
-        <p className="text-xs text-slate-600">Alert toggles only take effect when at least one destination is enabled. Events are always recorded regardless.</p>
-
-        {/* Save bar */}
-        <div className="sticky bottom-0 border-t border-border bg-surface-2/95 backdrop-blur-sm px-5 py-3 flex items-center justify-between">
-          <span className={`text-xs ${isDirty ? "text-amber-400" : "text-slate-600"}`}>
-            {isDirty ? "You have unsaved changes" : "No unsaved changes"}
-          </span>
+        <div className="sticky bottom-0 flex flex-col gap-3 rounded-xl border border-border bg-surface-2/95 px-5 py-3 shadow-xl shadow-black/20 backdrop-blur-sm sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-xs text-slate-500">
+            <span className={isDirty ? "text-amber-400" : "text-slate-500"}>{isDirty ? "Unsaved changes." : "No unsaved changes."}</span>{" "}
+            Alert toggles only send when at least one destination is enabled; events are always recorded.
+          </p>
           <button
             disabled={!isDirty || isSaving}
             onClick={() => save()}
-            className="px-4 py-1.5 text-sm rounded-lg bg-accent hover:bg-accent-hover text-white font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            className="rounded-lg bg-accent px-4 py-1.5 text-sm font-medium text-white transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-40"
           >
             {isSaving ? "Saving..." : "Save"}
           </button>
