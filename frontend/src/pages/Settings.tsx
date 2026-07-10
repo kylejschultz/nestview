@@ -779,13 +779,6 @@ const DESTINATION_LABELS: Record<NotificationDestinationType, string> = {
   webhook: "Webhook",
 };
 
-const destinationTypeStyles: Record<NotificationDestinationType, string> = {
-  discord: "bg-indigo-500/15 text-indigo-300 border-indigo-400/20",
-  slack: "bg-emerald-500/15 text-emerald-300 border-emerald-400/20",
-  email: "bg-sky-500/15 text-sky-300 border-sky-400/20",
-  webhook: "bg-amber-500/15 text-amber-300 border-amber-400/20",
-};
-
 function NotificationSection({
   title,
   description,
@@ -817,6 +810,49 @@ function AddIcon() {
   return (
     <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5} aria-hidden="true">
       <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+    </svg>
+  );
+}
+
+function DestinationTypeIcon({ type }: { type: NotificationDestinationType }) {
+  const label = DESTINATION_LABELS[type];
+  const baseClass = "h-4 w-4 shrink-0";
+  const colorClass: Record<NotificationDestinationType, string> = {
+    discord: "text-indigo-300",
+    slack: "text-emerald-300",
+    email: "text-sky-300",
+    webhook: "text-amber-300",
+  };
+
+  if (type === "slack") {
+    return (
+      <svg className={`${baseClass} ${colorClass[type]}`} viewBox="0 0 24 24" fill="currentColor" aria-label={label} role="img">
+        <path d="M9.6 3.2a2 2 0 0 1 2 2v3.2h-2a2 2 0 1 1 0-4h.8V3.2h-.8Zm4.8 0v5.2h3.2a2 2 0 1 0 0-4h-.8a2 2 0 0 0-2.4-1.2ZM5.2 9.6h5.2v-2H5.2a2 2 0 1 0 0 4h3.2v-2H5.2Zm10.4-2v5.2h2V9.6a2 2 0 1 0-4 0v3.2h2V7.6Zm3.2 4h-5.2v2h5.2a2 2 0 1 0 0-4h-3.2v2h3.2Zm-10.4-.4v5.2h2v-5.2h-2Zm-2 4.4a2 2 0 1 0 0 4h.8a2 2 0 0 0 2.4 1.2v-5.2H6.4Zm8 0v3.2a2 2 0 1 0 4 0v-.8a2 2 0 0 0-1.2-2.4h-2.8Z" />
+      </svg>
+    );
+  }
+
+  if (type === "discord") {
+    return (
+      <svg className={`${baseClass} ${colorClass[type]}`} viewBox="0 0 24 24" fill="currentColor" aria-label={label} role="img">
+        <path d="M8.2 5.8A12 12 0 0 1 12 5.2a12 12 0 0 1 3.8.6l.3.1 1.7 3.2c.8 2.9.7 5.7-.3 8.3A10.7 10.7 0 0 1 14 19l-.8-1.2c.5-.2 1-.4 1.5-.7-1.7.8-3.7.8-5.4 0 .5.3 1 .5 1.5.7L10 19a10.7 10.7 0 0 1-3.5-1.6c-1-2.6-1.1-5.4-.3-8.3l1.7-3.2.3-.1Zm1.3 7.5c.6 0 1-.5 1-1.1s-.4-1.1-1-1.1-1 .5-1 1.1.4 1.1 1 1.1Zm5 0c.6 0 1-.5 1-1.1s-.4-1.1-1-1.1-1 .5-1 1.1.4 1.1 1 1.1Z" />
+      </svg>
+    );
+  }
+
+  if (type === "email") {
+    return (
+      <svg className={`${baseClass} ${colorClass[type]}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-label={label} role="img">
+        <path strokeLinecap="round" strokeLinejoin="round" d="M4 6.5h16v11H4z" />
+        <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 7 7.5 6 7.5-6" />
+      </svg>
+    );
+  }
+
+  return (
+    <svg className={`${baseClass} ${colorClass[type]}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-label={label} role="img">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M10 13a5 5 0 0 0 7.1 0l1.4-1.4a5 5 0 0 0-7.1-7.1l-.8.8" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M14 11a5 5 0 0 0-7.1 0l-1.4 1.4a5 5 0 0 0 7.1 7.1l.8-.8" />
     </svg>
   );
 }
@@ -1259,9 +1295,7 @@ function NotificationsTab({ onDirtyChange }: { onDirtyChange: (dirty: boolean) =
                   <div className="flex-1 min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="text-sm font-medium text-slate-200 truncate">{destination.name}</span>
-                      <span className={`rounded-full border px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide ${destinationTypeStyles[destination.destination_type]}`}>
-                        {DESTINATION_LABELS[destination.destination_type]}
-                      </span>
+                      <DestinationTypeIcon type={destination.destination_type} />
                       <span className={`rounded-full border px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide ${
                         destination.enabled
                           ? "border-emerald-400/20 bg-emerald-500/10 text-emerald-300"
