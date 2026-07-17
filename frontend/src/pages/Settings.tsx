@@ -1,5 +1,8 @@
 import React, { useState, useRef, useMemo, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { FaDiscord, FaSlack } from "react-icons/fa";
+import { MdOutlineEmail } from "react-icons/md";
+import { TbWebhook } from "react-icons/tb";
 import { api } from "../api";
 import { useAuth } from "../AuthContext";
 import type { AlertEventType, AlertSetting, AnalyticsStatus, Container, GeneralSettings, NotificationDestination, NotificationDestinationPayload, NotificationDestinationType, SystemInfo } from "../types";
@@ -817,44 +820,22 @@ function AddIcon() {
 function DestinationTypeIcon({ type }: { type: NotificationDestinationType }) {
   const label = DESTINATION_LABELS[type];
   const baseClass = "h-4 w-4 shrink-0";
-  const colorClass: Record<NotificationDestinationType, string> = {
-    discord: "text-indigo-300",
-    slack: "text-emerald-300",
-    email: "text-sky-300",
-    webhook: "text-amber-300",
+  const iconClass: Record<NotificationDestinationType, string> = {
+    discord: `${baseClass} text-[#5865F2]`,
+    slack: `${baseClass} text-[#36C5F0]`,
+    email: `${baseClass} text-sky-300`,
+    webhook: `${baseClass} text-amber-300`,
   };
 
-  if (type === "slack") {
-    return (
-      <svg className={`${baseClass} ${colorClass[type]}`} viewBox="0 0 24 24" fill="currentColor" aria-label={label} role="img">
-        <path d="M9.6 3.2a2 2 0 0 1 2 2v3.2h-2a2 2 0 1 1 0-4h.8V3.2h-.8Zm4.8 0v5.2h3.2a2 2 0 1 0 0-4h-.8a2 2 0 0 0-2.4-1.2ZM5.2 9.6h5.2v-2H5.2a2 2 0 1 0 0 4h3.2v-2H5.2Zm10.4-2v5.2h2V9.6a2 2 0 1 0-4 0v3.2h2V7.6Zm3.2 4h-5.2v2h5.2a2 2 0 1 0 0-4h-3.2v2h3.2Zm-10.4-.4v5.2h2v-5.2h-2Zm-2 4.4a2 2 0 1 0 0 4h.8a2 2 0 0 0 2.4 1.2v-5.2H6.4Zm8 0v3.2a2 2 0 1 0 4 0v-.8a2 2 0 0 0-1.2-2.4h-2.8Z" />
-      </svg>
-    );
-  }
+  const icons: Record<NotificationDestinationType, React.ComponentType<{ className?: string; "aria-label"?: string; role?: string }>> = {
+    discord: FaDiscord,
+    slack: FaSlack,
+    email: MdOutlineEmail,
+    webhook: TbWebhook,
+  };
+  const Icon = icons[type];
 
-  if (type === "discord") {
-    return (
-      <svg className={`${baseClass} ${colorClass[type]}`} viewBox="0 0 24 24" fill="currentColor" aria-label={label} role="img">
-        <path d="M8.2 5.8A12 12 0 0 1 12 5.2a12 12 0 0 1 3.8.6l.3.1 1.7 3.2c.8 2.9.7 5.7-.3 8.3A10.7 10.7 0 0 1 14 19l-.8-1.2c.5-.2 1-.4 1.5-.7-1.7.8-3.7.8-5.4 0 .5.3 1 .5 1.5.7L10 19a10.7 10.7 0 0 1-3.5-1.6c-1-2.6-1.1-5.4-.3-8.3l1.7-3.2.3-.1Zm1.3 7.5c.6 0 1-.5 1-1.1s-.4-1.1-1-1.1-1 .5-1 1.1.4 1.1 1 1.1Zm5 0c.6 0 1-.5 1-1.1s-.4-1.1-1-1.1-1 .5-1 1.1.4 1.1 1 1.1Z" />
-      </svg>
-    );
-  }
-
-  if (type === "email") {
-    return (
-      <svg className={`${baseClass} ${colorClass[type]}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-label={label} role="img">
-        <path strokeLinecap="round" strokeLinejoin="round" d="M4 6.5h16v11H4z" />
-        <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 7 7.5 6 7.5-6" />
-      </svg>
-    );
-  }
-
-  return (
-    <svg className={`${baseClass} ${colorClass[type]}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-label={label} role="img">
-      <path strokeLinecap="round" strokeLinejoin="round" d="M10 13a5 5 0 0 0 7.1 0l1.4-1.4a5 5 0 0 0-7.1-7.1l-.8.8" />
-      <path strokeLinecap="round" strokeLinejoin="round" d="M14 11a5 5 0 0 0-7.1 0l-1.4 1.4a5 5 0 0 0 7.1 7.1l.8-.8" />
-    </svg>
-  );
+  return <Icon className={iconClass[type]} aria-label={label} role="img" />;
 }
 
 function defaultDestinationDraft(type: NotificationDestinationType): NotificationDestinationPayload {
