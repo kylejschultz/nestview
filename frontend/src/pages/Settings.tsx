@@ -49,12 +49,20 @@ function Toggle({ checked, onChange, disabled, label }: ToggleProps) {
 
 type AlertDefaults = Record<AlertEventType, boolean>;
 type ExceptionMap = Record<string, Record<AlertEventType, boolean>>;
+type AlertLevel = "default" | "muted" | "critical" | "custom";
 
 const NOTIF_TYPES: { key: AlertEventType; label: string; columnLabel?: string }[] = [
   { key: "crash", label: "Crash" },
   { key: "restart", label: "Restart" },
   { key: "oom", label: "OOM" },
   { key: "update_available", label: "Update available", columnLabel: "Update" },
+];
+
+const ALERT_LEVEL_OPTIONS: { value: AlertLevel; label: string }[] = [
+  { value: "default", label: "Default" },
+  { value: "muted", label: "Muted" },
+  { value: "critical", label: "Critical only" },
+  { value: "custom", label: "Custom" },
 ];
 
 function buildDefaultsFromRaw(raw: { event_type: string; enabled: boolean }[]): AlertDefaults {
@@ -98,6 +106,35 @@ function exceptionsEqual(a: ExceptionMap | null, b: ExceptionMap | null): boolea
   const kb = Object.keys(b).sort();
   if (ka.join() !== kb.join()) return false;
   return ka.every(k => NOTIF_TYPES.every(({ key }) => a[k][key] === b[k][key]));
+}
+
+function alertValuesEqual(a: AlertDefaults, b: AlertDefaults): boolean {
+  return NOTIF_TYPES.every(({ key }) => a[key] === b[key]);
+}
+
+function alertValuesForLevel(level: AlertLevel, defaults: AlertDefaults, current: AlertDefaults): AlertDefaults {
+  if (level === "default") return { ...defaults };
+  if (level === "muted") return { crash: false, restart: false, oom: false, update_available: false };
+  if (level === "critical") return { crash: true, restart: false, oom: true, update_available: false };
+  return { ...current };
+}
+
+function alertLevelForValues(values: AlertDefaults, defaults: AlertDefaults): AlertLevel {
+  if (alertValuesEqual(values, defaults)) return "default";
+  if (NOTIF_TYPES.every(({ key }) => !values[key])) return "muted";
+  if (values.crash && values.oom && !values.restart && !values.update_available) return "critical";
+  return "custom";
+}
+
+function alertLevelDescription(level: AlertLevel, values: AlertDefaults): string {
+  if (level === "default") return "Matches global defaults.";
+  if (level === "muted") return "Suppresses all alert notifications.";
+  if (level === "critical") return "Only crash and OOM alerts are sent.";
+
+  const enabled = NOTIF_TYPES
+    .filter(({ key }) => values[key])
+    .map(({ label }) => label);
+  return enabled.length > 0 ? `${enabled.join(", ")} enabled.` : "All alert types muted.";
 }
 
 // ── About tab helpers ─────────────────────────────────────────────────────────
@@ -1092,6 +1129,7 @@ function NotificationsTab({ onDirtyChange }: { onDirtyChange: (dirty: boolean) =
   const [draftExceptions, setDraftExceptions] = useState<ExceptionMap | null>(null);
   const [lastSavedDefaults, setLastSavedDefaults] = useState<AlertDefaults | null>(null);
   const [lastSavedExceptions, setLastSavedExceptions] = useState<ExceptionMap | null>(null);
+  const [customExceptionEditors, setCustomExceptionEditors] = useState<Set<string>>(() => new Set());
   const initialized = useRef(false);
 
   useEffect(() => {
@@ -1153,6 +1191,7 @@ function NotificationsTab({ onDirtyChange }: { onDirtyChange: (dirty: boolean) =
       setDraftExceptions(cleaned);
       setLastSavedDefaults({ ...draftDefaults });
       setLastSavedExceptions(cleaned);
+      setCustomExceptionEditors(new Set());
       queryClient.invalidateQueries({ queryKey: ["alert-defaults"] });
       queryClient.invalidateQueries({ queryKey: ["alert-settings"] });
       showToast("Saved", "success");
@@ -1366,50 +1405,85 @@ function NotificationsTab({ onDirtyChange }: { onDirtyChange: (dirty: boolean) =
               </button>
             </div>
           ) : (
-            <>
-              <div className="flex items-center gap-2 border-b border-border bg-surface-3/40 px-5 py-2">
-                <span className="flex-1 text-xs font-medium uppercase tracking-wide text-slate-500">Container</span>
-                {NOTIF_TYPES.map(({ key, label, columnLabel }) => (
-                  <span key={key} className="w-20 shrink-0 text-center text-xs font-medium uppercase tracking-wide text-slate-500">{columnLabel ?? label}</span>
-                ))}
-                <span className="w-8 shrink-0" />
-              </div>
-              {sortedExceptions.map(([name, vals]) => (
-                <div key={name} className="flex items-center gap-2 px-5 py-2.5 border-b border-border last:border-0">
-                  <span className="flex-1 min-w-0 text-sm text-slate-300 truncate">{name}</span>
-                  {NOTIF_TYPES.map(({ key }) => (
-                    <div key={key} className="w-20 shrink-0 flex justify-center">
-                      <Toggle
-                        checked={vals[key]}
-                        onChange={(v) =>
-                          setDraftExceptions(prev =>
-                            prev ? { ...prev, [name]: { ...prev[name], [key]: v } } : prev
-                          )
-                        }
-                      />
+            <div className="space-y-2 bg-surface-0/30 p-3">
+              {sortedExceptions.map(([name, vals]) => {
+                const savedAlertLevel = alertLevelForValues(vals, draftDefaults);
+                const alertLevel = customExceptionEditors.has(name) ? "custom" : savedAlertLevel;
+                return (
+                  <div key={name} className="rounded-lg border border-border/90 bg-surface-1 px-4 py-3">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium text-slate-200">{name}</p>
+                        <p className="mt-1 text-xs text-slate-500">{alertLevelDescription(alertLevel, vals)}</p>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-2">
+                        <label className="sr-only" htmlFor={`alert-level-${name}`}>Alert level for {name}</label>
+                        <select
+                          id={`alert-level-${name}`}
+                          value={alertLevel}
+                          onChange={(e) => {
+                            const nextLevel = e.target.value as AlertLevel;
+                            setCustomExceptionEditors(prev => {
+                              const next = new Set(prev);
+                              if (nextLevel === "custom") next.add(name);
+                              else next.delete(name);
+                              return next;
+                            });
+                            setDraftExceptions(prev =>
+                              prev ? { ...prev, [name]: alertValuesForLevel(nextLevel, draftDefaults, prev[name]) } : prev
+                            );
+                          }}
+                          className="min-w-36 rounded-lg border border-border bg-surface-2 px-3 py-1.5 text-xs font-medium text-slate-200 focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
+                        >
+                          {ALERT_LEVEL_OPTIONS.map(({ value, label }) => (
+                            <option key={value} value={value}>{label}</option>
+                          ))}
+                        </select>
+                        <button
+                          onClick={() => {
+                            setDraftExceptions(prev => {
+                              if (!prev) return prev;
+                              const next = { ...prev };
+                              delete next[name];
+                              return next;
+                            });
+                            setCustomExceptionEditors(prev => {
+                              if (!prev.has(name)) return prev;
+                              const next = new Set(prev);
+                              next.delete(name);
+                              return next;
+                            });
+                          }}
+                          aria-label={`Remove exception for ${name}`}
+                          className="flex h-8 w-8 items-center justify-center rounded-lg border border-transparent text-slate-600 transition-colors hover:border-red-400/30 hover:bg-red-500/10 hover:text-red-400"
+                        >
+                          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          </svg>
+                        </button>
+                      </div>
                     </div>
-                  ))}
-                  <div className="w-8 shrink-0 flex justify-center">
-                    <button
-                      onClick={() =>
-                        setDraftExceptions(prev => {
-                          if (!prev) return prev;
-                          const next = { ...prev };
-                          delete next[name];
-                          return next;
-                        })
-                      }
-                      aria-label={`Remove exception for ${name}`}
-                      className="p-1 rounded text-slate-600 hover:text-red-400 hover:bg-surface-3 transition-colors"
-                    >
-                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                      </svg>
-                    </button>
+                    {alertLevel === "custom" && (
+                      <div className="mt-3 grid gap-2 border-t border-border/70 pt-3 sm:grid-cols-2 lg:grid-cols-4">
+                        {NOTIF_TYPES.map(({ key, label }) => (
+                          <div key={key} className="flex items-center justify-between rounded-lg border border-border/70 bg-surface-2/60 px-3 py-2">
+                            <span className="text-xs font-medium text-slate-400">{label}</span>
+                            <Toggle
+                              checked={vals[key]}
+                              onChange={(v) =>
+                                setDraftExceptions(prev =>
+                                  prev ? { ...prev, [name]: { ...prev[name], [key]: v } } : prev
+                                )
+                              }
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
-                </div>
-              ))}
-            </>
+                );
+              })}
+            </div>
           )}
         </NotificationSection>
 
