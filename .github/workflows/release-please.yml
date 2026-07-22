@@ -1,0 +1,32 @@
+name: Release Please
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+jobs:
+  release-please:
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Verify release token is configured
+        env:
+          RELEASE_PLEASE_TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+        run: |
+          if [ -z "$RELEASE_PLEASE_TOKEN" ]; then
+            echo "RELEASE_PLEASE_TOKEN must be configured so release-created events trigger publish workflows."
+            exit 1
+          fi
+
+      - name: Create or update release PR
+        uses: googleapis/release-please-action@v4
+        with:
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
