@@ -1,6 +1,13 @@
 # Changelog
 
 ---
+## [1.5.0](https://github.com/kylejschultz/nestview/compare/v1.4.1...v1.5.0) (2026-07-23)
+
+
+### Features
+
+* add notification destinations ([#149](https://github.com/kylejschultz/nestview/issues/149)) ([6bdafe8](https://github.com/kylejschultz/nestview/commit/6bdafe82d527e97704c0a3eecfc07943b952406f))
+
 ## [1.4.1] - 2026-07-04
 ### Fixed
 - Pin React and React DOM to the same patch version to prevent a startup crash that rendered a blank screen.
