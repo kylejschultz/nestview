@@ -22,7 +22,7 @@ from sqlmodel import Session, delete, select
 
 from database import engine
 from models import Container, ContainerAlertSetting, ContainerEvent, ContainerLog, ContainerMetricsHistory, ContainerNetworkHistory
-from services import discord
+from services import notifications
 from services.app_settings import get_setting
 
 logger = logging.getLogger(__name__)
@@ -717,22 +717,20 @@ def _watch_events() -> None:
                         if event_type in _ALERT_EVENT_TYPES and not _alert_suppressed(
                             container_name, event_type, session
                         ):
-                            webhook_url = get_setting(session, "discord_webhook_url") or ""
-                            if webhook_url:
-                                try:
-                                    alerted = asyncio.run(discord.send_alert(
-                                        webhook_url=webhook_url,
-                                        container_name=container_name,
-                                        event_type=event_type,
-                                        details=details,
-                                        timestamp=ts,
-                                    ))
-                                    if alerted:
-                                        db_event.alerted = True
-                                        session.add(db_event)
-                                        session.commit()
-                                except Exception as exc:
-                                    logger.error("Discord alert failed: %s", exc)
+                            try:
+                                alerted = asyncio.run(notifications.send_alert(
+                                    session=session,
+                                    container_name=container_name,
+                                    event_type=event_type,
+                                    details=details,
+                                    timestamp=ts,
+                                ))
+                                if alerted:
+                                    db_event.alerted = True
+                                    session.add(db_event)
+                                    session.commit()
+                            except Exception as exc:
+                                logger.error("Alert notification failed: %s", exc)
                 except Exception as exc:
                     logger.error("Event write failed: %s", exc)
         except Exception as exc:

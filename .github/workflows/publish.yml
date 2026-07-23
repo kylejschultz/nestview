@@ -1,8 +1,14 @@
 name: Publish (main)
 
 on:
-  push:
-    branches: [main]
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Release tag to publish, for example v1.5.0
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -24,9 +30,11 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: ${{ github.event_name == 'release' && github.event.release.tag_name || inputs.ref }}
 
       - name: Log in to GHCR
-        uses: docker/login-action@c99871dec2022cc055c062a10cc1a1310835ceb4 # v4.3.0
+        uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0 # v4.4.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -34,11 +42,16 @@ jobs:
 
       - name: Set short SHA
         id: sha
-        run: echo "short=$(echo ${{ github.sha }} | cut -c1-7)" >> $GITHUB_OUTPUT
+        run: echo "short=$(git rev-parse --short=7 HEAD)" >> $GITHUB_OUTPUT
 
       - name: Read VERSION
         id: version
         run: echo "tag=$(cat VERSION)" >> $GITHUB_OUTPUT
+
+      - name: Verify release tag matches VERSION
+        env:
+          RELEASE_REF: ${{ github.event_name == 'release' && github.event.release.tag_name || inputs.ref }}
+        run: test "v${{ steps.version.outputs.tag }}" = "$RELEASE_REF"
 
       - name: Build and push
         run: |
@@ -58,9 +71,11 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: ${{ github.event_name == 'release' && github.event.release.tag_name || inputs.ref }}
 
       - name: Log in to GHCR
-        uses: docker/login-action@c99871dec2022cc055c062a10cc1a1310835ceb4 # v4.3.0
+        uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0 # v4.4.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -68,7 +83,7 @@ jobs:
 
       - name: Set short SHA
         id: sha
-        run: echo "short=$(echo ${{ github.sha }} | cut -c1-7)" >> $GITHUB_OUTPUT
+        run: echo "short=$(git rev-parse --short=7 HEAD)" >> $GITHUB_OUTPUT
 
       - name: Read VERSION
         id: version
@@ -94,12 +109,18 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: ${{ github.event_name == 'release' && github.event.release.tag_name || inputs.ref }}
+
+      - name: Set release SHA
+        id: sha
+        run: echo "full=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
 
       - name: Send Discord release card
         env:
           DISCORD_RELEASE_WEBHOOK_URL: ${{ secrets.DISCORD_RELEASE_WEBHOOK_URL }}
           DISCORD_ANNOUNCEMENT_ROLE_ID: ${{ vars.DISCORD_ANNOUNCEMENT_ROLE_ID }}
-          GITHUB_SHA: ${{ github.sha }}
+          GITHUB_SHA: ${{ steps.sha.outputs.full }}
           GITHUB_SERVER_URL: ${{ github.server_url }}
           GITHUB_REPOSITORY: ${{ github.repository }}
         run: |

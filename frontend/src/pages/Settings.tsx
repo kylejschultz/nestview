@@ -1,10 +1,12 @@
 import React, { useState, useRef, useMemo, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { FaDiscord, FaSlack } from "react-icons/fa";
+import { MdOutlineEmail } from "react-icons/md";
+import { TbWebhook } from "react-icons/tb";
 import { api } from "../api";
 import { useAuth } from "../AuthContext";
-import type { AlertEventType, AlertSetting, AnalyticsStatus, Container, GeneralSettings, SystemInfo } from "../types";
-import WebhookField from "../components/WebhookField";
-import DiscordWebhookHelpModal from "../components/DiscordWebhookHelpModal";
+import type { AlertEventType, AlertSetting, AnalyticsStatus, Container, GeneralSettings, NotificationDestination, NotificationDestinationPayload, NotificationDestinationType, SystemInfo } from "../types";
+import SlackWebhookHelpModal from "../components/SlackWebhookHelpModal";
 import TimezoneSelect from "../components/TimezoneSelect";
 import Toast from "../components/Toast";
 import InfoPopover from "../components/InfoPopover";
@@ -47,12 +49,20 @@ function Toggle({ checked, onChange, disabled, label }: ToggleProps) {
 
 type AlertDefaults = Record<AlertEventType, boolean>;
 type ExceptionMap = Record<string, Record<AlertEventType, boolean>>;
+type AlertLevel = "default" | "muted" | "critical" | "custom";
 
 const NOTIF_TYPES: { key: AlertEventType; label: string; columnLabel?: string }[] = [
   { key: "crash", label: "Crash" },
   { key: "restart", label: "Restart" },
   { key: "oom", label: "OOM" },
   { key: "update_available", label: "Update available", columnLabel: "Update" },
+];
+
+const ALERT_LEVEL_OPTIONS: { value: AlertLevel; label: string }[] = [
+  { value: "default", label: "Default" },
+  { value: "muted", label: "Muted" },
+  { value: "critical", label: "Critical only" },
+  { value: "custom", label: "Custom" },
 ];
 
 function buildDefaultsFromRaw(raw: { event_type: string; enabled: boolean }[]): AlertDefaults {
@@ -96,6 +106,35 @@ function exceptionsEqual(a: ExceptionMap | null, b: ExceptionMap | null): boolea
   const kb = Object.keys(b).sort();
   if (ka.join() !== kb.join()) return false;
   return ka.every(k => NOTIF_TYPES.every(({ key }) => a[k][key] === b[k][key]));
+}
+
+function alertValuesEqual(a: AlertDefaults, b: AlertDefaults): boolean {
+  return NOTIF_TYPES.every(({ key }) => a[key] === b[key]);
+}
+
+function alertValuesForLevel(level: AlertLevel, defaults: AlertDefaults, current: AlertDefaults): AlertDefaults {
+  if (level === "default") return { ...defaults };
+  if (level === "muted") return { crash: false, restart: false, oom: false, update_available: false };
+  if (level === "critical") return { crash: true, restart: false, oom: true, update_available: false };
+  return { ...current };
+}
+
+function alertLevelForValues(values: AlertDefaults, defaults: AlertDefaults): AlertLevel {
+  if (alertValuesEqual(values, defaults)) return "default";
+  if (NOTIF_TYPES.every(({ key }) => !values[key])) return "muted";
+  if (values.crash && values.oom && !values.restart && !values.update_available) return "critical";
+  return "custom";
+}
+
+function alertLevelDescription(level: AlertLevel, values: AlertDefaults): string {
+  if (level === "default") return "Matches global defaults.";
+  if (level === "muted") return "Suppresses all alert notifications.";
+  if (level === "critical") return "Only crash and OOM alerts are sent.";
+
+  const enabled = NOTIF_TYPES
+    .filter(({ key }) => values[key])
+    .map(({ label }) => label);
+  return enabled.length > 0 ? `${enabled.join(", ")} enabled.` : "All alert types muted.";
 }
 
 // ── About tab helpers ─────────────────────────────────────────────────────────
@@ -277,7 +316,6 @@ function GeneralTab({ authMode, version, onDirtyChange }: { authMode?: string; v
     enabled: isAuthenticated,
   });
 
-  const [webhookDraft, setWebhookDraft] = useState<string | null>(null);
   const [retentionDraft, setRetentionDraft] = useState<string | null>(null);
   const [netRetentionDraft, setNetRetentionDraft] = useState<number | null>(null);
   const [timezoneDraft, setTimezoneDraft] = useState<string | null>(null);
@@ -290,7 +328,6 @@ function GeneralTab({ authMode, version, onDirtyChange }: { authMode?: string; v
   const [pwError, setPwError] = useState<string | null>(null);
   const [authModeDraft, setAuthModeDraft] = useState<"password" | "none" | null>(null);
   const [noAuthConfirmed, setNoAuthConfirmed] = useState(false);
-  const [showWebhookHelp, setShowWebhookHelp] = useState(false);
 
   const { data: analyticsStatus } = useQuery<AnalyticsStatus>({
     queryKey: ["analytics-status"],
@@ -305,7 +342,6 @@ function GeneralTab({ authMode, version, onDirtyChange }: { authMode?: string; v
   const serverEnabled = (allSettings?.image_check_enabled ?? "true") !== "false";
   const serverTime = allSettings?.image_check_time ?? "03:00";
 
-  const webhook = webhookDraft ?? general?.discord_webhook_url ?? "";
   const retention = retentionDraft ?? String(general?.log_retention_days ?? 7);
   const netRetention = netRetentionDraft ?? general?.network_history_retention_hours ?? 6;
   const timezone = timezoneDraft ?? general?.timezone ?? "UTC";
@@ -323,7 +359,6 @@ function GeneralTab({ authMode, version, onDirtyChange }: { authMode?: string; v
   const sessionExpiryApplies = selectedMode === "password" && authMode === "password";
 
   const isDirty =
-    webhookDraft !== null ||
     retentionDraft !== null ||
     netRetentionDraft !== null ||
     timezoneDraft !== null ||
@@ -342,7 +377,6 @@ function GeneralTab({ authMode, version, onDirtyChange }: { authMode?: string; v
   const { mutate: saveAll, isPending: isSavingAll } = useMutation({
     mutationFn: async () => {
       const generalBody: Partial<GeneralSettings> = {};
-      if (webhookDraft !== null) generalBody.discord_webhook_url = webhook;
       if (retentionDraft !== null && retentionValid) generalBody.log_retention_days = retentionNum;
       if (netRetentionDraft !== null && netRetentionValid) generalBody.network_history_retention_hours = netRetention;
       if (timezoneDraft !== null) generalBody.timezone = timezone;
@@ -359,7 +393,6 @@ function GeneralTab({ authMode, version, onDirtyChange }: { authMode?: string; v
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["settings-general"] });
       queryClient.invalidateQueries({ queryKey: ["settings-all"] });
-      setWebhookDraft(null);
       setRetentionDraft(null);
       setNetRetentionDraft(null);
       setTimezoneDraft(null);
@@ -451,38 +484,7 @@ function GeneralTab({ authMode, version, onDirtyChange }: { authMode?: string; v
           onDismiss={dismissToast}
         />
       )}
-      {showWebhookHelp && <DiscordWebhookHelpModal onClose={() => setShowWebhookHelp(false)} />}
-
-      {/* Row 1: Discord Webhook URL - full width */}
-      <div className="bg-surface-2 border border-border rounded-xl overflow-hidden">
-        <div className="flex items-start gap-4 px-4 py-2.5">
-          <div className="flex flex-col shrink-0 pt-1">
-            <div className="flex items-center gap-1.5">
-              <span className="text-sm text-slate-300">Discord Webhook URL</span>
-              <InfoPopover content="The Discord webhook URL used to send container event alerts. Leave blank to disable Discord notifications." />
-            </div>
-            <button
-              type="button"
-              onClick={() => setShowWebhookHelp(true)}
-              className="text-xs text-slate-500 hover:text-accent transition-colors text-left mt-0.5"
-            >
-              How do I get this?
-            </button>
-          </div>
-          <div className="flex-1 min-w-0">
-            <WebhookField
-              value={webhook}
-              onChange={setWebhookDraft}
-              disabled={isSavingAll}
-              onTestSuccess={() => showToast("Webhook test successful", "success")}
-              onTestError={(msg) => showToast(msg, "error")}
-              hideHelpLink
-            />
-          </div>
-        </div>
-      </div>
-
-      {/* Row 2: Auth (left, tall) + Retention/Timezone/Analytics/Image Updates (right) */}
+      {/* Row 1: Auth (left, tall) + Retention/Timezone/Analytics/Image Updates (right) */}
       <div className="grid grid-cols-2 gap-2">
 
         {/* Left: Auth card */}
@@ -810,11 +812,288 @@ function AddExceptionModal({
 
 // ── Notifications tab ─────────────────────────────────────────────────────────
 
+const DESTINATION_LABELS: Record<NotificationDestinationType, string> = {
+  discord: "Discord",
+  slack: "Slack",
+  email: "Email",
+  webhook: "Webhook",
+};
+
+function NotificationSection({
+  title,
+  description,
+  action,
+  children,
+  elevated = false,
+}: {
+  title: string;
+  description: string;
+  action?: React.ReactNode;
+  children: React.ReactNode;
+  elevated?: boolean;
+}) {
+  return (
+    <section className={`overflow-hidden rounded-xl border ${elevated ? "border-accent/25 bg-surface-2/70 shadow-lg shadow-black/10" : "border-border bg-surface-1"}`}>
+      <div className="flex flex-col gap-3 border-b border-border/80 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h2 className="text-sm font-semibold text-slate-100">{title}</h2>
+          <p className="mt-1 text-xs text-slate-500">{description}</p>
+        </div>
+        {action && <div className="shrink-0">{action}</div>}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function AddIcon() {
+  return (
+    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5} aria-hidden="true">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+    </svg>
+  );
+}
+
+function DestinationTypeIcon({ type }: { type: NotificationDestinationType }) {
+  const label = DESTINATION_LABELS[type];
+  const baseClass = "h-4 w-4 shrink-0";
+  const iconClass: Record<NotificationDestinationType, string> = {
+    discord: `${baseClass} text-[#5865F2]`,
+    slack: `${baseClass} text-[#36C5F0]`,
+    email: `${baseClass} text-sky-300`,
+    webhook: `${baseClass} text-amber-300`,
+  };
+
+  const icons: Record<NotificationDestinationType, React.ComponentType<{ className?: string; "aria-label"?: string; role?: string }>> = {
+    discord: FaDiscord,
+    slack: FaSlack,
+    email: MdOutlineEmail,
+    webhook: TbWebhook,
+  };
+  const Icon = icons[type];
+
+  return <Icon className={iconClass[type]} aria-label={label} role="img" />;
+}
+
+function defaultDestinationDraft(type: NotificationDestinationType): NotificationDestinationPayload {
+  const name = DESTINATION_LABELS[type];
+  if (type === "email") {
+    return {
+      name,
+      destination_type: type,
+      enabled: true,
+      config: { host: "", port: 587, username: "", password: "", from_email: "", to_emails: "", use_tls: true },
+    };
+  }
+  return { name, destination_type: type, enabled: true, config: { webhook_url: "" } };
+}
+
+function mergeDestinationDraft(destination: NotificationDestination): NotificationDestinationPayload {
+  return {
+    name: destination.name,
+    destination_type: destination.destination_type,
+    enabled: destination.enabled,
+    config: { ...defaultDestinationDraft(destination.destination_type).config, ...destination.config },
+  };
+}
+
+function DestinationEditor({
+  destination,
+  onCancel,
+  onSave,
+  onTest,
+  isSaving,
+  isTesting,
+}: {
+  destination: NotificationDestination | null;
+  onCancel: () => void;
+  onSave: (draft: NotificationDestinationPayload) => void;
+  onTest: (draft: NotificationDestinationPayload) => Promise<{ ok: boolean; error?: string }>;
+  isSaving: boolean;
+  isTesting: boolean;
+}) {
+  const [draft, setDraft] = useState<NotificationDestinationPayload>(() =>
+    destination ? mergeDestinationDraft(destination) : defaultDestinationDraft("slack")
+  );
+  const [showSlackHelp, setShowSlackHelp] = useState(false);
+  const [testResult, setTestResult] = useState<{ type: "success" | "error"; message: string } | null>(null);
+
+  function setType(type: NotificationDestinationType) {
+    setDraft(defaultDestinationDraft(type));
+  }
+
+  function setConfig(key: string, value: string | number | boolean) {
+    setDraft(prev => ({ ...prev, config: { ...prev.config, [key]: value } }));
+  }
+
+  const isEmail = draft.destination_type === "email";
+  const saveLabel = destination ? "Save destination" : "Add destination";
+
+  async function runTest() {
+    setTestResult(null);
+    try {
+      const result = await onTest(draft);
+      if (result.ok) {
+        setTestResult({ type: "success", message: "Test notification sent." });
+      } else {
+        setTestResult({ type: "error", message: result.error ?? "Destination test failed." });
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Destination test failed.";
+      setTestResult({ type: "error", message });
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
+      {showSlackHelp && <SlackWebhookHelpModal onClose={() => setShowSlackHelp(false)} />}
+      <div className="bg-surface-2 border border-border rounded-xl shadow-xl w-full max-w-lg p-5 space-y-4">
+        <div>
+          <h3 className="text-sm font-semibold text-slate-100">{destination ? "Edit destination" : "Add destination"}</h3>
+          <p className="text-xs text-slate-500 mt-1">Secrets are stored server-side and are not shown after saving.</p>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <label className="space-y-1">
+            <span className="text-xs text-slate-500">Type</span>
+            <select
+              value={draft.destination_type}
+              onChange={(e) => setType(e.target.value as NotificationDestinationType)}
+              disabled={isSaving || destination !== null}
+              className={`${inputBase} w-full`}
+            >
+              {Object.entries(DESTINATION_LABELS).map(([value, label]) => (
+                <option key={value} value={value}>{label}</option>
+              ))}
+            </select>
+          </label>
+          <label className="space-y-1">
+            <span className="text-xs text-slate-500">Name</span>
+            <input
+              value={draft.name}
+              onChange={(e) => setDraft(prev => ({ ...prev, name: e.target.value }))}
+              disabled={isSaving}
+              className={`${inputBase} w-full`}
+            />
+          </label>
+        </div>
+
+        {!isEmail && (
+          <label className="space-y-1 block">
+            <span className="flex items-center justify-between gap-3 text-xs text-slate-500">
+              <span>{draft.destination_type === "webhook" ? "Webhook URL" : `${DESTINATION_LABELS[draft.destination_type]} webhook URL`}</span>
+              {draft.destination_type === "slack" && (
+                <button
+                  type="button"
+                  onClick={() => setShowSlackHelp(true)}
+                  className="text-slate-500 hover:text-accent transition-colors"
+                >
+                  How do I get this?
+                </button>
+              )}
+            </span>
+            <input
+              type="password"
+              value={String(draft.config.webhook_url ?? "")}
+              onChange={(e) => setConfig("webhook_url", e.target.value)}
+              placeholder={destination?.configured ? "Configured - enter a new URL to replace" : "https://..."}
+              disabled={isSaving}
+              className={`${inputBase} w-full`}
+            />
+          </label>
+        )}
+
+        {isEmail && (
+          <div className="space-y-3">
+            <div className="grid grid-cols-[1fr_6rem] gap-3">
+              <label className="space-y-1">
+                <span className="text-xs text-slate-500">SMTP host</span>
+                <input value={String(draft.config.host ?? "")} onChange={(e) => setConfig("host", e.target.value)} disabled={isSaving} className={`${inputBase} w-full`} />
+              </label>
+              <label className="space-y-1">
+                <span className="text-xs text-slate-500">Port</span>
+                <input type="number" value={Number(draft.config.port ?? 587)} onChange={(e) => setConfig("port", Number(e.target.value))} disabled={isSaving} className={`${inputBase} w-full`} />
+              </label>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <label className="space-y-1">
+                <span className="text-xs text-slate-500">Username</span>
+                <input value={String(draft.config.username ?? "")} onChange={(e) => setConfig("username", e.target.value)} disabled={isSaving} className={`${inputBase} w-full`} />
+              </label>
+              <label className="space-y-1">
+                <span className="text-xs text-slate-500">Password</span>
+                <input type="password" value={String(draft.config.password ?? "")} onChange={(e) => setConfig("password", e.target.value)} placeholder={destination?.configured ? "Configured" : ""} disabled={isSaving} className={`${inputBase} w-full`} />
+              </label>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <label className="space-y-1">
+                <span className="text-xs text-slate-500">From</span>
+                <input value={String(draft.config.from_email ?? "")} onChange={(e) => setConfig("from_email", e.target.value)} disabled={isSaving} className={`${inputBase} w-full`} />
+              </label>
+              <label className="space-y-1">
+                <span className="text-xs text-slate-500">To</span>
+                <input value={String(draft.config.to_emails ?? "")} onChange={(e) => setConfig("to_emails", e.target.value)} disabled={isSaving} className={`${inputBase} w-full`} />
+              </label>
+            </div>
+            <label className="flex items-center gap-2 text-xs text-slate-400">
+              <input type="checkbox" checked={Boolean(draft.config.use_tls ?? true)} onChange={(e) => setConfig("use_tls", e.target.checked)} className="accent-accent" />
+              Use TLS
+            </label>
+          </div>
+        )}
+
+        {draft.destination_type === "webhook" && (
+          <label className="space-y-1 block">
+            <span className="text-xs text-slate-500">Optional secret header</span>
+            <input
+              type="password"
+              value={String(draft.config.secret ?? "")}
+              onChange={(e) => setConfig("secret", e.target.value)}
+              placeholder={destination?.configured ? "Configured - enter a new secret to replace" : "Sent as X-Nestview-Secret"}
+              disabled={isSaving}
+              className={`${inputBase} w-full`}
+            />
+          </label>
+        )}
+
+        <label className="flex items-center gap-2 text-xs text-slate-400">
+          <input type="checkbox" checked={draft.enabled} onChange={(e) => setDraft(prev => ({ ...prev, enabled: e.target.checked }))} className="accent-accent" />
+          Enabled
+        </label>
+
+        {testResult && (
+          <div className={`rounded-lg border px-3 py-2 text-xs ${
+            testResult.type === "success"
+              ? "border-green-500/30 bg-green-500/10 text-green-300"
+              : "border-red-500/30 bg-red-500/10 text-red-300"
+          }`}>
+            {testResult.message}
+          </div>
+        )}
+
+        <div className="flex justify-end gap-2 pt-2">
+          <button onClick={onCancel} disabled={isSaving} className="px-3 py-1.5 text-xs rounded-lg border border-border text-slate-400 hover:text-slate-200 transition-colors">
+            Cancel
+          </button>
+          <button onClick={runTest} disabled={isSaving || isTesting} className="px-3 py-1.5 text-xs rounded-lg border border-border text-slate-300 hover:text-slate-100 transition-colors disabled:opacity-40">
+            {isTesting ? "Testing..." : "Test"}
+          </button>
+          <button onClick={() => onSave(draft)} disabled={isSaving} className="px-3 py-1.5 text-xs rounded-lg bg-accent hover:bg-accent-hover text-white font-medium transition-colors disabled:opacity-40">
+            {isSaving ? "Saving..." : saveLabel}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function NotificationsTab({ onDirtyChange }: { onDirtyChange: (dirty: boolean) => void }) {
   const queryClient = useQueryClient();
   const { isAuthenticated } = useAuth();
   const { toastState, showToast, dismissToast } = useToast();
   const [showAddModal, setShowAddModal] = useState(false);
+  const [editingDestination, setEditingDestination] = useState<NotificationDestination | null>(null);
+  const [showDestinationEditor, setShowDestinationEditor] = useState(false);
 
   const { data: defaultsRaw = [], isLoading: loadingDefaults } = useQuery<{ event_type: string; enabled: boolean }[]>({
     queryKey: ["alert-defaults"],
@@ -825,6 +1104,12 @@ function NotificationsTab({ onDirtyChange }: { onDirtyChange: (dirty: boolean) =
   const { data: alertSettings = [], isLoading: loadingAlerts } = useQuery<AlertSetting[]>({
     queryKey: ["alert-settings"],
     queryFn: api.settings.alerts,
+    enabled: isAuthenticated,
+  });
+
+  const { data: destinations = [], isLoading: loadingDestinations } = useQuery<NotificationDestination[]>({
+    queryKey: ["notification-destinations"],
+    queryFn: api.settings.notificationDestinations,
     enabled: isAuthenticated,
   });
 
@@ -844,6 +1129,7 @@ function NotificationsTab({ onDirtyChange }: { onDirtyChange: (dirty: boolean) =
   const [draftExceptions, setDraftExceptions] = useState<ExceptionMap | null>(null);
   const [lastSavedDefaults, setLastSavedDefaults] = useState<AlertDefaults | null>(null);
   const [lastSavedExceptions, setLastSavedExceptions] = useState<ExceptionMap | null>(null);
+  const [customExceptionEditors, setCustomExceptionEditors] = useState<Set<string>>(() => new Set());
   const initialized = useRef(false);
 
   useEffect(() => {
@@ -905,6 +1191,7 @@ function NotificationsTab({ onDirtyChange }: { onDirtyChange: (dirty: boolean) =
       setDraftExceptions(cleaned);
       setLastSavedDefaults({ ...draftDefaults });
       setLastSavedExceptions(cleaned);
+      setCustomExceptionEditors(new Set());
       queryClient.invalidateQueries({ queryKey: ["alert-defaults"] });
       queryClient.invalidateQueries({ queryKey: ["alert-settings"] });
       showToast("Saved", "success");
@@ -912,7 +1199,58 @@ function NotificationsTab({ onDirtyChange }: { onDirtyChange: (dirty: boolean) =
     onError: (err: Error) => showToast(err.message, "error"),
   });
 
-  const isLoading = loadingDefaults || loadingAlerts;
+  const { mutate: saveDestination, isPending: isSavingDestination } = useMutation({
+    mutationFn: (draft: NotificationDestinationPayload) => {
+      if (editingDestination) {
+        return api.settings.updateNotificationDestination(editingDestination.id, {
+          name: draft.name,
+          enabled: draft.enabled,
+          config: draft.config,
+        });
+      }
+      return api.settings.createNotificationDestination(draft);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["notification-destinations"] });
+      setShowDestinationEditor(false);
+      setEditingDestination(null);
+      showToast("Destination saved", "success");
+    },
+    onError: (err: Error) => showToast(err.message, "error"),
+  });
+
+  const { mutate: testDestination, isPending: isTestingDestination } = useMutation({
+    mutationFn: (id: number) => api.settings.testNotificationDestination(id),
+    onSuccess: (result) => {
+      if (result.ok) showToast("Destination test sent", "success");
+      else showToast(result.error ?? "Destination test failed", "error");
+    },
+    onError: (err: Error) => showToast(err.message, "error"),
+  });
+
+  const { mutateAsync: testDestinationDraft, isPending: isTestingDestinationDraft } = useMutation({
+    mutationFn: (draft: NotificationDestinationPayload) => {
+      if (editingDestination) {
+        return api.settings.testExistingNotificationDestinationDraft(editingDestination.id, {
+          name: draft.name,
+          enabled: draft.enabled,
+          config: draft.config,
+        });
+      }
+      return api.settings.testNotificationDestinationDraft(draft);
+    },
+  });
+
+  const { mutate: deleteDestination, isPending: isDeletingDestination } = useMutation({
+    mutationFn: (id: number) => api.settings.deleteNotificationDestination(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["notification-destinations"] });
+      showToast("Destination deleted", "success");
+    },
+    onError: (err: Error) => showToast(err.message, "error"),
+  });
+
+  const isLoading = loadingDefaults || loadingAlerts || loadingDestinations;
 
   if (isLoading || draftDefaults === null || draftExceptions === null) {
     return <div className="py-12 text-center text-slate-500">Loading...</div>;
@@ -926,114 +1264,238 @@ function NotificationsTab({ onDirtyChange }: { onDirtyChange: (dirty: boolean) =
       {toastState && (
         <Toast key={toastState.id} message={toastState.message} type={toastState.type} duration={toastState.duration} onDismiss={dismissToast} />
       )}
+      {showDestinationEditor && (
+        <DestinationEditor
+          destination={editingDestination}
+          isSaving={isSavingDestination}
+          isTesting={isTestingDestinationDraft}
+          onCancel={() => { setShowDestinationEditor(false); setEditingDestination(null); }}
+          onSave={(draft) => saveDestination(draft)}
+          onTest={(draft) => testDestinationDraft(draft)}
+        />
+      )}
 
       <div className="space-y-4">
-        {/* Global defaults card */}
-        <div className="card overflow-hidden">
-          <div className="px-5 py-3 border-b border-border">
-            <h2 className="text-sm font-semibold text-slate-200">Global defaults</h2>
-            <p className="text-xs text-slate-500 mt-0.5">Applies to all containers without an exception configured.</p>
-          </div>
-          {NOTIF_TYPES.map(({ key, label }) => (
-            <div key={key} className="flex items-center justify-between px-5 py-3 border-b border-border last:border-0">
-              <span className="text-sm text-slate-300">{label}</span>
-              <Toggle
-                checked={draftDefaults[key]}
-                onChange={(v) => setDraftDefaults(prev => prev ? { ...prev, [key]: v } : prev)}
-              />
+        <NotificationSection
+          title="Destinations"
+          description="Delivery endpoints that receive enabled alerts."
+          elevated
+          action={
+            <button
+              onClick={() => { setEditingDestination(null); setShowDestinationEditor(true); }}
+              className="flex items-center justify-center gap-1.5 rounded-lg border border-accent/30 bg-accent/15 px-3 py-1.5 text-xs font-medium text-accent-hover transition-colors hover:border-accent/50 hover:bg-accent/25"
+            >
+              <AddIcon />
+              Add destination
+            </button>
+          }
+        >
+          <div className="border-b border-border/60 bg-surface-1/60 px-5 py-3">
+            <div className="flex flex-wrap gap-2">
+              <span className="rounded-full border border-border bg-surface-2 px-2.5 py-1 text-xs text-slate-400">
+                {destinations.length} configured
+              </span>
+              <span className="rounded-full border border-emerald-400/20 bg-emerald-500/10 px-2.5 py-1 text-xs text-emerald-300">
+                {destinations.filter(destination => destination.enabled).length} enabled
+              </span>
+              <span className="rounded-full border border-border bg-surface-2 px-2.5 py-1 text-xs text-slate-400">
+                {destinations.filter(destination => destination.configured).length} ready
+              </span>
             </div>
-          ))}
-        </div>
-
-        {/* Exceptions table */}
-        <div className="card overflow-hidden">
-          <div className="flex items-center justify-between px-5 py-3 border-b border-border">
-            <div>
-              <h2 className="text-sm font-semibold text-slate-200">Container exceptions</h2>
-              <p className="text-xs text-slate-500 mt-0.5">Overrides for individual containers.</p>
-            </div>
-            {sortedExceptions.length > 0 && (
-              <button
-                onClick={() => setShowAddModal(true)}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg bg-surface-3 border border-border text-slate-300 hover:text-slate-100 hover:border-slate-500 transition-colors shrink-0"
-              >
-                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-                </svg>
-                Add exception
-              </button>
-            )}
           </div>
 
-          {sortedExceptions.length === 0 ? (
-            <div className="px-5 py-8 text-center space-y-3">
-              <p className="text-sm text-slate-500">All containers are following global defaults.</p>
-              <button
-                onClick={() => setShowAddModal(true)}
-                className="px-3 py-1.5 text-xs rounded-lg bg-surface-3 border border-border text-slate-300 hover:text-slate-100 hover:border-slate-500 transition-colors"
-              >
-                Add exception
-              </button>
+          {destinations.length === 0 ? (
+            <div className="px-5 py-10 text-center">
+              <p className="text-sm text-slate-500">No alert destinations configured.</p>
             </div>
           ) : (
-            <>
-              <div className="flex items-center gap-2 px-5 py-2 border-b border-border bg-surface-3/40">
-                <span className="flex-1 text-xs font-medium uppercase tracking-wide text-slate-500">Container</span>
-                {NOTIF_TYPES.map(({ key, label, columnLabel }) => (
-                  <span key={key} className="w-20 shrink-0 text-center text-xs font-medium uppercase tracking-wide text-slate-500">{columnLabel ?? label}</span>
-                ))}
-                <span className="w-8 shrink-0" />
-              </div>
-              {sortedExceptions.map(([name, vals]) => (
-                <div key={name} className="flex items-center gap-2 px-5 py-2.5 border-b border-border last:border-0">
-                  <span className="flex-1 min-w-0 text-sm text-slate-300 truncate">{name}</span>
-                  {NOTIF_TYPES.map(({ key }) => (
-                    <div key={key} className="w-20 shrink-0 flex justify-center">
-                      <Toggle
-                        checked={vals[key]}
-                        onChange={(v) =>
-                          setDraftExceptions(prev =>
-                            prev ? { ...prev, [name]: { ...prev[name], [key]: v } } : prev
-                          )
-                        }
-                      />
+            <div className="space-y-2 bg-surface-0/30 p-3">
+              {destinations.map((destination) => (
+                <div key={destination.id} className="flex flex-col gap-3 rounded-lg border border-border/90 bg-surface-1 px-4 py-3 sm:flex-row sm:items-center">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-sm font-medium text-slate-200 truncate">{destination.name}</span>
+                      <DestinationTypeIcon type={destination.destination_type} />
+                      <span className={`rounded-full border px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide ${
+                        destination.enabled
+                          ? "border-emerald-400/20 bg-emerald-500/10 text-emerald-300"
+                          : "border-border bg-surface-2 text-slate-500"
+                      }`}>
+                        {destination.enabled ? "Enabled" : "Disabled"}
+                      </span>
                     </div>
-                  ))}
-                  <div className="w-8 shrink-0 flex justify-center">
+                    <p className={`mt-1 text-xs ${destination.configured ? "text-slate-500" : "text-amber-300"}`}>
+                      {destination.configured ? "Configured and ready for test notifications." : "Needs configuration before alerts can be sent."}
+                    </p>
+                  </div>
+                  <div className="flex shrink-0 flex-wrap gap-2 sm:justify-end">
                     <button
-                      onClick={() =>
-                        setDraftExceptions(prev => {
-                          if (!prev) return prev;
-                          const next = { ...prev };
-                          delete next[name];
-                          return next;
-                        })
-                      }
-                      aria-label={`Remove exception for ${name}`}
-                      className="p-1 rounded text-slate-600 hover:text-red-400 hover:bg-surface-3 transition-colors"
+                      disabled={isTestingDestination || !destination.configured}
+                      onClick={() => testDestination(destination.id)}
+                      className="min-w-16 rounded-lg border border-border bg-surface-2 px-3 py-1.5 text-xs text-slate-300 transition-colors hover:border-slate-500 hover:text-slate-100 disabled:cursor-not-allowed disabled:opacity-40"
                     >
-                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                      </svg>
+                      Test
+                    </button>
+                    <button
+                      onClick={() => { setEditingDestination(destination); setShowDestinationEditor(true); }}
+                      className="min-w-16 rounded-lg border border-border bg-surface-2 px-3 py-1.5 text-xs text-slate-300 transition-colors hover:border-slate-500 hover:text-slate-100"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      disabled={isDeletingDestination}
+                      onClick={() => deleteDestination(destination.id)}
+                      className="min-w-16 rounded-lg border border-border bg-surface-2 px-3 py-1.5 text-xs text-slate-500 transition-colors hover:border-red-400/40 hover:text-red-400 disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      Delete
                     </button>
                   </div>
                 </div>
               ))}
-            </>
+            </div>
           )}
-        </div>
+        </NotificationSection>
 
-        <p className="text-xs text-slate-600">Alert toggles only take effect when a Discord webhook URL is configured. Events are always recorded regardless.</p>
+        <NotificationSection
+          title="Global defaults"
+          description="Baseline alert types for containers without an exception."
+        >
+          <div className="grid gap-2 bg-surface-0/20 p-3 sm:grid-cols-2 lg:grid-cols-4">
+            {NOTIF_TYPES.map(({ key, label }) => (
+              <div key={key} className="flex min-h-24 flex-col justify-between rounded-lg border border-border bg-surface-2/70 p-3">
+                <div>
+                  <p className="text-sm font-medium text-slate-200">{label}</p>
+                  <p className="mt-1 text-xs text-slate-500">{draftDefaults[key] ? "Alerts on" : "Muted by default"}</p>
+                </div>
+                <div className="mt-3 flex justify-end">
+                  <Toggle
+                    checked={draftDefaults[key]}
+                    onChange={(v) => setDraftDefaults(prev => prev ? { ...prev, [key]: v } : prev)}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+        </NotificationSection>
 
-        {/* Save bar */}
-        <div className="sticky bottom-0 border-t border-border bg-surface-2/95 backdrop-blur-sm px-5 py-3 flex items-center justify-between">
-          <span className={`text-xs ${isDirty ? "text-amber-400" : "text-slate-600"}`}>
-            {isDirty ? "You have unsaved changes" : "No unsaved changes"}
-          </span>
+        <NotificationSection
+          title="Container exceptions"
+          description="Per-container overrides when a service should behave differently."
+          action={sortedExceptions.length > 0 ? (
+              <button
+                onClick={() => setShowAddModal(true)}
+                className="flex items-center justify-center gap-1.5 rounded-lg border border-border bg-surface-3 px-3 py-1.5 text-xs text-slate-300 transition-colors hover:border-slate-500 hover:text-slate-100"
+              >
+                <AddIcon />
+                Add exception
+              </button>
+          ) : undefined}
+        >
+
+          {sortedExceptions.length === 0 ? (
+            <div className="bg-surface-0/20 px-5 py-10 text-center">
+              <p className="text-sm font-medium text-slate-300">All containers follow the global defaults.</p>
+              <p className="mx-auto mt-1 max-w-md text-xs text-slate-500">Add an exception when one container needs a different alert profile.</p>
+              <button
+                onClick={() => setShowAddModal(true)}
+                className="mt-4 inline-flex items-center justify-center gap-1.5 rounded-lg border border-border bg-surface-3 px-3 py-1.5 text-xs text-slate-300 transition-colors hover:border-slate-500 hover:text-slate-100"
+              >
+                <AddIcon />
+                Add exception
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-2 bg-surface-0/30 p-3">
+              {sortedExceptions.map(([name, vals]) => {
+                const savedAlertLevel = alertLevelForValues(vals, draftDefaults);
+                const alertLevel = customExceptionEditors.has(name) ? "custom" : savedAlertLevel;
+                return (
+                  <div key={name} className="rounded-lg border border-border/90 bg-surface-1 px-4 py-3">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium text-slate-200">{name}</p>
+                        <p className="mt-1 text-xs text-slate-500">{alertLevelDescription(alertLevel, vals)}</p>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-2">
+                        <label className="sr-only" htmlFor={`alert-level-${name}`}>Alert level for {name}</label>
+                        <select
+                          id={`alert-level-${name}`}
+                          value={alertLevel}
+                          onChange={(e) => {
+                            const nextLevel = e.target.value as AlertLevel;
+                            setCustomExceptionEditors(prev => {
+                              const next = new Set(prev);
+                              if (nextLevel === "custom") next.add(name);
+                              else next.delete(name);
+                              return next;
+                            });
+                            setDraftExceptions(prev =>
+                              prev ? { ...prev, [name]: alertValuesForLevel(nextLevel, draftDefaults, prev[name]) } : prev
+                            );
+                          }}
+                          className="min-w-36 rounded-lg border border-border bg-surface-2 px-3 py-1.5 text-xs font-medium text-slate-200 focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
+                        >
+                          {ALERT_LEVEL_OPTIONS.map(({ value, label }) => (
+                            <option key={value} value={value}>{label}</option>
+                          ))}
+                        </select>
+                        <button
+                          onClick={() => {
+                            setDraftExceptions(prev => {
+                              if (!prev) return prev;
+                              const next = { ...prev };
+                              delete next[name];
+                              return next;
+                            });
+                            setCustomExceptionEditors(prev => {
+                              if (!prev.has(name)) return prev;
+                              const next = new Set(prev);
+                              next.delete(name);
+                              return next;
+                            });
+                          }}
+                          aria-label={`Remove exception for ${name}`}
+                          className="flex h-8 w-8 items-center justify-center rounded-lg border border-transparent text-slate-600 transition-colors hover:border-red-400/30 hover:bg-red-500/10 hover:text-red-400"
+                        >
+                          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          </svg>
+                        </button>
+                      </div>
+                    </div>
+                    {alertLevel === "custom" && (
+                      <div className="mt-3 grid gap-2 border-t border-border/70 pt-3 sm:grid-cols-2 lg:grid-cols-4">
+                        {NOTIF_TYPES.map(({ key, label }) => (
+                          <div key={key} className="flex items-center justify-between rounded-lg border border-border/70 bg-surface-2/60 px-3 py-2">
+                            <span className="text-xs font-medium text-slate-400">{label}</span>
+                            <Toggle
+                              checked={vals[key]}
+                              onChange={(v) =>
+                                setDraftExceptions(prev =>
+                                  prev ? { ...prev, [name]: { ...prev[name], [key]: v } } : prev
+                                )
+                              }
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </NotificationSection>
+
+        <div className="sticky bottom-0 flex flex-col gap-3 rounded-xl border border-border bg-surface-2/95 px-5 py-3 shadow-xl shadow-black/20 backdrop-blur-sm sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-xs text-slate-500">
+            <span className={isDirty ? "text-amber-400" : "text-slate-500"}>{isDirty ? "Unsaved changes." : "No unsaved changes."}</span>{" "}
+            Alert toggles only send when at least one destination is enabled; events are always recorded.
+          </p>
           <button
             disabled={!isDirty || isSaving}
             onClick={() => save()}
-            className="px-4 py-1.5 text-sm rounded-lg bg-accent hover:bg-accent-hover text-white font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            className="rounded-lg bg-accent px-4 py-1.5 text-sm font-medium text-white transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-40"
           >
             {isSaving ? "Saving..." : "Save"}
           </button>

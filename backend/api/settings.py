@@ -1,4 +1,6 @@
-from typing import Dict, List
+import json
+from datetime import datetime
+from typing import Any, Dict, List
 from zoneinfo import available_timezones
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -6,15 +8,16 @@ from pydantic import BaseModel, Field, field_validator
 from sqlmodel import Session, select
 
 from database import get_session
-from models import AppSetting, ContainerAlertSetting
+from models import AppSetting, ContainerAlertSetting, NotificationDestination
 from services.app_settings import get_setting, set_setting
-from services import discord
+from services import discord, notifications
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
 
 # The event types exposed in the UI.
 # "die" events reuse the "crash" setting (see events.py).
 ALERT_EVENT_TYPES = ("crash", "restart", "oom", "update_available")
+DESTINATION_TYPES = ("discord", "slack", "email", "webhook")
 
 _DEFAULT_LOG_RETENTION_DAYS = 7
 _DEFAULT_EXITED_CONTAINER_TTL_SECONDS = 300
@@ -135,6 +138,249 @@ def patch_alert_setting(
     return existing.dict()
 
 
+# ── Notification destinations ─────────────────────────────────────────────────
+
+_SECRET_CONFIG_KEYS = {"webhook_url", "password", "secret"}
+
+
+class NotificationDestinationPayload(BaseModel):
+    name: str = Field(min_length=1, max_length=128)
+    destination_type: str = Field(max_length=32)
+    enabled: bool = True
+    config: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("destination_type")
+    @classmethod
+    def validate_destination_type(cls, value: str) -> str:
+        if value not in DESTINATION_TYPES:
+            raise ValueError(f"destination_type must be one of {DESTINATION_TYPES}")
+        return value
+
+
+class NotificationDestinationPatch(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=128)
+    enabled: bool | None = None
+    config: dict[str, Any] | None = None
+
+
+def _load_destination_config(destination: NotificationDestination) -> dict[str, Any]:
+    try:
+        parsed = json.loads(destination.config_json or "{}")
+    except json.JSONDecodeError:
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
+
+
+def _public_destination(destination: NotificationDestination) -> dict:
+    config = _load_destination_config(destination)
+    public_config = {k: v for k, v in config.items() if k not in _SECRET_CONFIG_KEYS}
+    return {
+        "id": destination.id,
+        "name": destination.name,
+        "destination_type": destination.destination_type,
+        "enabled": destination.enabled,
+        "configured": bool(config),
+        "config": public_config,
+        "created_at": destination.created_at,
+        "updated_at": destination.updated_at,
+    }
+
+
+def _clean_destination_config(
+    destination_type: str,
+    config: dict[str, Any],
+    existing: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    base = dict(existing or {})
+    incoming = {k: v for k, v in config.items() if v is not None and v != ""}
+    merged = {**base, **incoming}
+
+    if destination_type == "discord":
+        webhook_url = str(merged.get("webhook_url") or "")
+        if not (webhook_url.startswith("https://discord.com/webhooks/") or webhook_url.startswith("https://discord.com/api/webhooks/")):
+            raise HTTPException(status_code=422, detail="Discord webhook URL must be a Discord webhook URL.")
+        return {"webhook_url": webhook_url}
+
+    if destination_type == "slack":
+        webhook_url = str(merged.get("webhook_url") or "")
+        if not webhook_url.startswith("https://hooks.slack.com/services/"):
+            raise HTTPException(status_code=422, detail="Slack webhook URL must start with https://hooks.slack.com/services/.")
+        return {"webhook_url": webhook_url}
+
+    if destination_type == "webhook":
+        webhook_url = str(merged.get("webhook_url") or "")
+        if not (webhook_url.startswith("https://") or webhook_url.startswith("http://")):
+            raise HTTPException(status_code=422, detail="Webhook URL must start with http:// or https://.")
+        result = {"webhook_url": webhook_url}
+        secret = str(merged.get("secret") or "")
+        if secret:
+            result["secret"] = secret
+        return result
+
+    if destination_type == "email":
+        host = str(merged.get("host") or "")
+        from_email = str(merged.get("from_email") or "")
+        to_emails = str(merged.get("to_emails") or "")
+        if not host or not from_email or not to_emails:
+            raise HTTPException(status_code=422, detail="Email destinations require host, from_email, and to_emails.")
+        try:
+            port = int(merged.get("port") or 587)
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=422, detail="Email port must be a number.")
+        return {
+            "host": host,
+            "port": port,
+            "username": str(merged.get("username") or ""),
+            "password": str(merged.get("password") or ""),
+            "from_email": from_email,
+            "to_emails": to_emails,
+            "use_tls": bool(merged.get("use_tls", True)),
+        }
+
+    raise HTTPException(status_code=422, detail=f"Unknown destination type: {destination_type}")
+
+
+def _upsert_discord_destination(session: Session, webhook_url: str) -> None:
+    existing = session.exec(
+        select(NotificationDestination)
+        .where(NotificationDestination.destination_type == "discord")
+    ).first()
+    if webhook_url == "":
+        if existing:
+            existing.enabled = False
+            existing.updated_at = datetime.utcnow()
+            session.add(existing)
+        return
+
+    config_json = json.dumps({"webhook_url": webhook_url})
+    if existing:
+        existing.config_json = config_json
+        existing.enabled = True
+        existing.updated_at = datetime.utcnow()
+        session.add(existing)
+        return
+
+    session.add(NotificationDestination(
+        name="Discord",
+        destination_type="discord",
+        enabled=True,
+        config_json=config_json,
+    ))
+
+
+@router.get("/notification-destinations")
+def get_notification_destinations(session: Session = Depends(get_session)) -> list[dict]:
+    rows = session.exec(select(NotificationDestination)).all()
+    return [_public_destination(row) for row in rows]
+
+
+@router.post("/notification-destinations")
+def create_notification_destination(
+    payload: NotificationDestinationPayload,
+    session: Session = Depends(get_session),
+) -> dict:
+    destination = NotificationDestination(
+        name=payload.name,
+        destination_type=payload.destination_type,
+        enabled=payload.enabled,
+        config_json=json.dumps(_clean_destination_config(payload.destination_type, payload.config)),
+    )
+    session.add(destination)
+    session.commit()
+    session.refresh(destination)
+    return _public_destination(destination)
+
+
+@router.patch("/notification-destinations/{destination_id}")
+def update_notification_destination(
+    destination_id: int,
+    payload: NotificationDestinationPatch,
+    session: Session = Depends(get_session),
+) -> dict:
+    destination = session.get(NotificationDestination, destination_id)
+    if destination is None:
+        raise HTTPException(status_code=404, detail="Notification destination not found")
+    if payload.name is not None:
+        destination.name = payload.name
+    if payload.enabled is not None:
+        destination.enabled = payload.enabled
+    if payload.config is not None:
+        existing = _load_destination_config(destination)
+        destination.config_json = json.dumps(_clean_destination_config(destination.destination_type, payload.config, existing))
+    destination.updated_at = datetime.utcnow()
+    session.add(destination)
+    session.commit()
+    session.refresh(destination)
+    return _public_destination(destination)
+
+
+@router.delete("/notification-destinations/{destination_id}")
+def delete_notification_destination(
+    destination_id: int,
+    session: Session = Depends(get_session),
+) -> dict:
+    destination = session.get(NotificationDestination, destination_id)
+    if destination is None:
+        raise HTTPException(status_code=404, detail="Notification destination not found")
+    session.delete(destination)
+    session.commit()
+    return {"ok": True}
+
+
+@router.post("/notification-destinations/{destination_id}/test")
+async def test_notification_destination(
+    destination_id: int,
+    session: Session = Depends(get_session),
+) -> dict:
+    destination = session.get(NotificationDestination, destination_id)
+    if destination is None:
+        raise HTTPException(status_code=404, detail="Notification destination not found")
+    ok = await notifications.send_test(destination)
+    if ok:
+        return {"ok": True}
+    return {"ok": False, "error": "Destination test failed. Check the configuration and try again."}
+
+
+@router.post("/notification-destinations/{destination_id}/test-draft")
+async def test_existing_notification_destination_draft(
+    destination_id: int,
+    payload: NotificationDestinationPatch,
+    session: Session = Depends(get_session),
+) -> dict:
+    saved = session.get(NotificationDestination, destination_id)
+    if saved is None:
+        raise HTTPException(status_code=404, detail="Notification destination not found")
+
+    config = _load_destination_config(saved)
+    if payload.config is not None:
+        config = _clean_destination_config(saved.destination_type, payload.config, config)
+
+    destination = NotificationDestination(
+        name=payload.name or saved.name,
+        destination_type=saved.destination_type,
+        enabled=True,
+        config_json=json.dumps(config),
+    )
+    ok = await notifications.send_test(destination)
+    if ok:
+        return {"ok": True}
+    return {"ok": False, "error": "Destination test failed. Check the configuration and try again."}
+
+
+@router.post("/notification-destinations/test-draft")
+async def test_notification_destination_draft(payload: NotificationDestinationPayload) -> dict:
+    destination = NotificationDestination(
+        name=payload.name,
+        destination_type=payload.destination_type,
+        enabled=True,
+        config_json=json.dumps(_clean_destination_config(payload.destination_type, payload.config)),
+    )
+    ok = await notifications.send_test(destination)
+    if ok:
+        return {"ok": True}
+    return {"ok": False, "error": "Destination test failed. Check the configuration and try again."}
+
+
 # ── Generic key-value settings ────────────────────────────────────────────────
 
 @router.get("")
@@ -158,6 +404,8 @@ def patch_settings(
             except (ValueError, TypeError):
                 raise HTTPException(status_code=422, detail=f"'{key}' must be a valid number")
         set_setting(session, key, value)
+        if key == "discord_webhook_url":
+            _upsert_discord_destination(session, value)
     session.commit()
     rows = session.exec(select(AppSetting)).all()
     return {row.key: row.value for row in rows if row.key not in _SENSITIVE_SETTING_KEYS}
@@ -248,6 +496,7 @@ def patch_general_settings(
 ) -> dict:
     if payload.discord_webhook_url is not None:
         set_setting(session, "discord_webhook_url", payload.discord_webhook_url)
+        _upsert_discord_destination(session, payload.discord_webhook_url)
     if payload.log_retention_days is not None:
         set_setting(session, "log_retention_days", str(payload.log_retention_days))
     if payload.exited_container_ttl_seconds is not None:
@@ -267,7 +516,8 @@ def get_wizard_status(session: Session = Depends(get_session)) -> dict:
     try:
         dismissed = get_setting(session, "wizard_dismissed")
         webhook = get_setting(session, "discord_webhook_url") or ""
-        completed = bool(dismissed) or bool(webhook)
+        has_destination = session.exec(select(NotificationDestination)).first() is not None
+        completed = bool(dismissed) or bool(webhook) or has_destination
     except Exception:
         completed = False
     return {"completed": completed}
