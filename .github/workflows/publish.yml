@@ -144,7 +144,7 @@ jobs:
               changelog = changelog_file.read()
 
           section_match = re.search(
-              rf"^## \[{re.escape(version)}\].*?\n(.*?)(?=\n---\n## |\Z)",
+              rf"^## \[{re.escape(version)}\].*?\n(.*?)(?=\n(?:---\n)?## \[|\Z)",
               changelog,
               re.MULTILINE | re.DOTALL,
           )
