@@ -134,7 +134,7 @@ function ContainerMobileRow({ container }: { container: Container }) {
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="truncate text-sm font-medium text-slate-100">{container.name}</p>
-          <p className="mt-1 truncate text-xs text-slate-500">{container.image}</p>
+          <p className="mt-1 truncate font-mono text-xs text-slate-500">{container.short_id}</p>
         </div>
         <StatusBadge state={container.state} className="shrink-0" />
       </div>
@@ -196,19 +196,17 @@ function ContainerTable({ containers, checkingId, onCheckUpdates }: { containers
       <div className="overflow-hidden">
         <table className="w-full table-fixed text-left text-sm">
           <colgroup>
+            <col className="w-[30%]" />
+            <col className="w-[16%]" />
             <col className="w-[24%]" />
-            <col className="w-[14%]" />
             <col className="w-[18%]" />
-            <col className="w-[22%]" />
-            <col className="w-[14%]" />
-            <col className="w-[8%]" />
+            <col className="w-[12%]" />
           </colgroup>
           <thead className="border-b border-border bg-surface-2 text-xs uppercase text-slate-500">
             <tr>
               <th className="px-4 py-3 font-medium">Container</th>
               <th className="px-4 py-3 font-medium">Status</th>
               <th className="px-4 py-3 font-medium">Resources</th>
-              <th className="px-4 py-3 font-medium">Image</th>
               <th className="px-4 py-3 font-medium">Uptime</th>
               <th className="px-4 py-3 text-right font-medium">Actions</th>
             </tr>
@@ -284,9 +282,6 @@ function ContainerTable({ containers, checkingId, onCheckUpdates }: { containers
                       </div>
                     </td>
                     <td className="px-4 py-3">
-                      <p className="truncate font-mono text-xs text-slate-300" title={container.image}>{container.image}</p>
-                    </td>
-                    <td className="px-4 py-3">
                       <p className="truncate text-xs text-slate-300">{uptimeLabel}</p>
                       <p className="mt-1 text-xs text-slate-600">{container.restart_count} restart{container.restart_count === 1 ? "" : "s"}</p>
                     </td>
@@ -319,7 +314,7 @@ function ContainerTable({ containers, checkingId, onCheckUpdates }: { containers
                   </tr>
                   {isExpanded && (
                     <tr className={isStopped ? "bg-surface-0/25 opacity-70" : "bg-surface-0/45"}>
-                      <td colSpan={6} className="px-5 pb-5 pt-3">
+                      <td colSpan={5} className="px-5 pb-5 pt-3">
                         <div className="grid gap-x-6 gap-y-4 rounded-lg border border-border bg-surface-1/70 p-4 text-xs sm:grid-cols-2 xl:grid-cols-4">
                           <div className="min-w-0">
                             <p className="uppercase text-slate-600">Ports</p>
@@ -340,6 +335,10 @@ function ContainerTable({ containers, checkingId, onCheckUpdates }: { containers
                           <div className="min-w-0">
                             <p className="uppercase text-slate-600">Source</p>
                             <p className="mt-1 truncate text-slate-300" title={sourceLabel(container)}>{sourceLabel(container)}</p>
+                          </div>
+                          <div className="min-w-0 sm:col-span-2">
+                            <p className="uppercase text-slate-600">Image</p>
+                            <p className="mt-1 truncate font-mono text-slate-300" title={container.image}>{container.image}</p>
                           </div>
                           <div className="min-w-0">
                             <p className="uppercase text-slate-600">Restarts</p>
