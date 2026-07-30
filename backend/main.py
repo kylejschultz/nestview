@@ -14,7 +14,7 @@ from sqlmodel import Session
 
 logger = logging.getLogger(__name__)
 
-from build_info import APP_VERSION, BUILD_SHA
+from build_info import APP_VERSION, BUILD_CHANNEL, BUILD_DISPLAY, BUILD_LABEL, BUILD_SHA
 from database import create_db_and_tables, engine
 from api import containers, logs, events, settings, actions, admin, stack_actions, operations, analytics as analytics_router
 from api import auth as auth_router
@@ -168,7 +168,13 @@ def version():
     # Intentionally public — version info is useful for unauthenticated users
     # (e.g., confirming an upgrade took effect from the login page) and carries
     # no meaningful attack surface beyond what's visible in the image tag.
-    return {"version": APP_VERSION, "build_sha": BUILD_SHA}
+    return {
+        "version": APP_VERSION,
+        "build_channel": BUILD_CHANNEL,
+        "build_label": BUILD_LABEL,
+        "build_sha": BUILD_SHA,
+        "display_version": BUILD_DISPLAY,
+    }
 
 
 @app.get("/api/health")

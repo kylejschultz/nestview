@@ -40,6 +40,7 @@ jobs:
         run: |
           docker build --platform ${{ matrix.platform }} \
             --build-arg BUILD_CHANNEL=dev \
+            --build-arg BUILD_LABEL="v2 dev" \
             --build-arg GIT_SHA=${{ steps.sha.outputs.short }} \
             -t ghcr.io/kylejschultz/nestview:dev-${{ steps.sha.outputs.short }}-${{ matrix.suffix }} \
             -f Dockerfile \

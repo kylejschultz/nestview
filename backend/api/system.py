@@ -1,10 +1,9 @@
-import os
 from datetime import datetime, timezone
 
 import docker
 from fastapi import APIRouter
 
-from build_info import APP_VERSION, BUILD_SHA, APP_START_TIME
+from build_info import APP_VERSION, BUILD_CHANNEL, BUILD_DISPLAY, BUILD_LABEL, BUILD_SHA, APP_START_TIME
 from database import DB_PATH as _DB_PATH
 
 router = APIRouter(prefix="/api/system", tags=["system"])
@@ -26,8 +25,10 @@ def get_system_info() -> dict:
 
     return {
         "version": APP_VERSION,
-        "build_channel": os.environ.get("BUILD_CHANNEL", ""),
+        "build_channel": BUILD_CHANNEL,
+        "build_label": BUILD_LABEL,
         "build_sha": BUILD_SHA,
+        "display_version": BUILD_DISPLAY,
         "uptime_seconds": uptime_seconds,
         "db_size_bytes": db_size_bytes,
         "docker_connected": docker_connected,

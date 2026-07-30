@@ -132,7 +132,9 @@ export interface AnalyticsStatus {
 export interface SystemInfo {
   version: string;
   build_channel: string;
+  build_label: string;
   build_sha: string | null;
+  display_version: string;
   uptime_seconds: number;
   db_size_bytes: number | null;
   docker_connected: boolean;

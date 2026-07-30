@@ -94,7 +94,13 @@ async function del<T>(path: string): Promise<T> {
 }
 
 export const api = {
-  version: () => fetch(`${BASE}/version`).then((r) => r.json()) as Promise<{ version: string; build_sha: string | null }>,
+  version: () => fetch(`${BASE}/version`).then((r) => r.json()) as Promise<{
+    version: string;
+    build_channel: string;
+    build_label: string;
+    build_sha: string | null;
+    display_version: string;
+  }>,
   containers: {
     list: () => get<Container[]>("/containers"),
     get: (id: string) => get<Container>(`/containers/${id}`),

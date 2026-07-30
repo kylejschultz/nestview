@@ -193,6 +193,10 @@ function AboutTab() {
                 <span className="text-sm text-slate-200">{sysInfo.version}</span>
               </div>
               <div className="flex items-center justify-between px-5 py-2.5 border-b border-border">
+                <span className="text-sm text-slate-400">Build</span>
+                <span className="text-sm text-slate-200">{sysInfo.display_version}</span>
+              </div>
+              <div className="flex items-center justify-between px-5 py-2.5 border-b border-border">
                 <span className="text-sm text-slate-400">Build channel</span>
                 <span className="text-sm text-slate-200">{resolveBuildChannel(sysInfo.build_channel)}</span>
               </div>
@@ -1552,7 +1556,7 @@ export default function Settings({ authMode }: { authMode?: string }) {
         <h1 className="text-xl font-semibold text-slate-100">Settings</h1>
         {versionData && (
           <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-accent/10 text-accent border border-accent/30">
-            Nestview v{versionData.version}
+            Nestview {versionData.display_version}
           </span>
         )}
       </div>

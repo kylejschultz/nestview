@@ -107,7 +107,7 @@ export default function AppShell({ children, onLogout, authMode }: AppShellProps
                 <div>
                   <p className="text-xs uppercase text-slate-500">Build</p>
                   <p className="mt-1 text-sm text-slate-200">
-                    {versionData ? `v${versionData.version}` : "Loading"}
+                    {versionData ? versionData.display_version : "Loading"}
                   </p>
                 </div>
                 <FiSliders className="h-4 w-4 text-slate-500" />

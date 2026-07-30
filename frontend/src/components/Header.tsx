@@ -69,7 +69,7 @@ export default function Header({ onLogout, authMode }: HeaderProps) {
               className="text-xs font-medium px-2 py-0.5 rounded-full bg-accent/10 text-accent border border-accent/30"
               title={versionData.build_sha ? `SHA: ${versionData.build_sha}` : undefined}
             >
-              v{versionData.version}
+              {versionData.display_version}
             </span>
           )}
 
