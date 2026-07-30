@@ -3,10 +3,11 @@ import { Routes, Route, Navigate, useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import Dashboard from "./pages/Dashboard";
 import ContainerDetail from "./pages/ContainerDetail";
+import PlaceholderPage from "./pages/PlaceholderPage";
 import Settings from "./pages/Settings";
 import Setup from "./pages/Setup";
 import Login from "./pages/Login";
-import Header from "./components/Header";
+import AppShell from "./components/AppShell";
 import SetupWizard from "./components/SetupWizard";
 import { TimezoneProvider } from "./TimezoneContext";
 import { AuthContext } from "./AuthContext";
@@ -130,19 +131,25 @@ export default function App() {
   return (
     <AuthContext.Provider value={{ isAuthenticated }}>
       <TimezoneProvider>
-        <div className="min-h-screen flex flex-col">
-          <Header onLogout={handleLogout} authMode={authStatus?.auth_mode} />
-          <main className="flex-1 px-4 py-6 max-w-7xl mx-auto w-full">
+        <AppShell onLogout={handleLogout} authMode={authStatus?.auth_mode}>
+          <main className="w-full">
             <Routes>
-              <Route path="/" element={<Dashboard />} />
+              <Route path="/" element={<Navigate to="/dashboard" replace />} />
+              <Route path="/dashboard" element={<Dashboard />} />
+              <Route path="/services" element={<PlaceholderPage page="Services" />} />
+              <Route path="/containers" element={<PlaceholderPage page="Containers" />} />
               <Route path="/containers/:id" element={<ContainerDetail />} />
+              <Route path="/hosts" element={<PlaceholderPage page="Hosts" />} />
+              <Route path="/alerts" element={<PlaceholderPage page="Alerts" />} />
+              <Route path="/notifications" element={<PlaceholderPage page="Notifications" />} />
+              <Route path="/integrations" element={<PlaceholderPage page="Integrations" />} />
               <Route path="/settings" element={<Settings authMode={authStatus?.auth_mode} />} />
               <Route path="/setup" element={<Navigate to="/" replace />} />
               <Route path="/login" element={<Navigate to="/" replace />} />
             </Routes>
           </main>
           {showWizard && <SetupWizard onDone={() => setWizardDismissed(true)} />}
-        </div>
+        </AppShell>
       </TimezoneProvider>
     </AuthContext.Provider>
   );

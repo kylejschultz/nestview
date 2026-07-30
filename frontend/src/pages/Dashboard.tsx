@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import { Link } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
 import { useAuth } from "../AuthContext";
@@ -526,6 +527,13 @@ export default function Dashboard() {
 
   const running = containers.filter((c) => c.state === "running").length;
   const stopped = containers.filter((c) => c.state !== "running").length;
+  const updates = containers.filter((c) => c.update_available).length;
+  const unhealthy = containers.filter((c) => c.state !== "running");
+  const avgCpu = running > 0
+    ? containers.filter((c) => c.state === "running").reduce((sum, c) => sum + c.cpu_percent, 0) / running
+    : 0;
+  const totalMemUsage = containers.reduce((sum, c) => sum + c.mem_usage, 0);
+  const totalMemLimit = containers.reduce((sum, c) => sum + c.mem_limit, 0);
 
   const groups: Record<string, Container[]> = {};
   const ungrouped: Container[] = [];
@@ -537,11 +545,140 @@ export default function Dashboard() {
     }
   }
 
+  const suggestedServices = Object.entries(groups)
+    .map(([project, members]) => ({
+      project,
+      members,
+      running: members.filter((c) => c.state === "running").length,
+      updates: members.filter((c) => c.update_available).length,
+    }))
+    .sort((a, b) => a.project.localeCompare(b.project));
+
   return (
     <>
     <AnalyticsBanner />
-    <div className="grid grid-cols-1 xl:grid-cols-[1fr_320px] gap-6">
-      <div className="space-y-6">
+    <div className="space-y-6">
+      <section className="grid gap-3 md:grid-cols-4">
+        <div className="rounded-lg border border-border bg-surface-1 p-4">
+          <p className="text-xs uppercase text-slate-500">Fleet</p>
+          <p className="mt-2 text-2xl font-semibold text-slate-100">{running}/{containers.length}</p>
+          <p className="mt-1 text-xs text-slate-500">containers running</p>
+        </div>
+        <div className="rounded-lg border border-border bg-surface-1 p-4">
+          <p className="text-xs uppercase text-slate-500">Needs attention</p>
+          <p className={`mt-2 text-2xl font-semibold ${unhealthy.length > 0 ? "text-red-300" : "text-emerald-300"}`}>
+            {unhealthy.length}
+          </p>
+          <p className="mt-1 text-xs text-slate-500">stopped or unhealthy</p>
+        </div>
+        <div className="rounded-lg border border-border bg-surface-1 p-4">
+          <p className="text-xs uppercase text-slate-500">Updates</p>
+          <p className={`mt-2 text-2xl font-semibold ${updates > 0 ? "text-blue-300" : "text-slate-100"}`}>{updates}</p>
+          <p className="mt-1 text-xs text-slate-500">available image updates</p>
+        </div>
+        <div className="rounded-lg border border-border bg-surface-1 p-4">
+          <p className="text-xs uppercase text-slate-500">Resource pulse</p>
+          <p className="mt-2 text-2xl font-semibold text-slate-100">{avgCpu.toFixed(1)}%</p>
+          <p className="mt-1 text-xs text-slate-500">
+            avg CPU, {totalMemLimit > 0 ? `${Math.round((totalMemUsage / totalMemLimit) * 100)}%` : "unknown"} memory
+          </p>
+        </div>
+      </section>
+
+      <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_340px] gap-6">
+        <div className="space-y-6">
+          <section className="rounded-lg border border-border bg-surface-1 p-5">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+              <div>
+                <p className="text-xs uppercase text-slate-500">Dashboard</p>
+                <h2 className="mt-1 text-2xl font-semibold text-slate-100">Fleet command center</h2>
+                <p className="mt-2 max-w-2xl text-sm text-slate-400">
+                  This first v2 pass keeps existing container controls available while introducing the service-aware overview shape.
+                </p>
+              </div>
+              <div className="grid grid-cols-2 gap-2 text-sm sm:min-w-64">
+                <div className="rounded-lg border border-border bg-surface-2 p-3">
+                  <p className="text-xs text-slate-500">Suggested services</p>
+                  <p className="mt-1 text-lg font-semibold text-slate-100">{suggestedServices.length}</p>
+                </div>
+                <div className="rounded-lg border border-border bg-surface-2 p-3">
+                  <p className="text-xs text-slate-500">Ungrouped</p>
+                  <p className="mt-1 text-lg font-semibold text-slate-100">{ungrouped.length}</p>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section className="grid gap-3 lg:grid-cols-2">
+            <div className="rounded-lg border border-border bg-surface-1 p-4">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-xs uppercase text-slate-500">Needs attention</p>
+                  <h3 className="mt-1 text-base font-semibold text-slate-100">Current exceptions</h3>
+                </div>
+                <span className="rounded-lg border border-border bg-surface-2 px-2 py-1 text-xs text-slate-400">
+                  {unhealthy.length + updates} items
+                </span>
+              </div>
+              <div className="mt-4 space-y-2">
+                {unhealthy.slice(0, 4).map((container) => (
+                  <Link
+                    key={container.docker_id}
+                    to={`/containers/${container.docker_id}`}
+                    className="flex items-center justify-between gap-3 rounded-lg border border-border bg-surface-2 px-3 py-2 text-sm transition-colors hover:border-accent/50"
+                  >
+                    <span className="truncate text-slate-200">{container.name}</span>
+                    <span className="shrink-0 text-xs text-red-300">{container.state}</span>
+                  </Link>
+                ))}
+                {updates > 0 && (
+                  <div className="rounded-lg border border-blue-500/20 bg-blue-500/10 px-3 py-2 text-sm text-blue-200">
+                    {updates} container{updates !== 1 ? "s" : ""} with image updates available.
+                  </div>
+                )}
+                {unhealthy.length === 0 && updates === 0 && (
+                  <p className="rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-200">
+                    No immediate container issues.
+                  </p>
+                )}
+              </div>
+            </div>
+
+            <div className="rounded-lg border border-border bg-surface-1 p-4">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-xs uppercase text-slate-500">Services preview</p>
+                  <h3 className="mt-1 text-base font-semibold text-slate-100">Suggested flat groups</h3>
+                </div>
+                <span className="rounded-lg border border-border bg-surface-2 px-2 py-1 text-xs text-slate-400">
+                  compose-derived
+                </span>
+              </div>
+              <div className="mt-4 grid gap-2 sm:grid-cols-2">
+                {suggestedServices.slice(0, 6).map((service) => (
+                  <div key={service.project} className="rounded-lg border border-border bg-surface-2 p-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="truncate text-sm font-medium text-slate-100">{service.project}</p>
+                      <span className="text-xs text-slate-500">{service.running}/{service.members.length}</span>
+                    </div>
+                    <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-surface-3">
+                      <div
+                        className="h-full rounded-full bg-accent"
+                        style={{ width: `${service.members.length > 0 ? (service.running / service.members.length) * 100 : 0}%` }}
+                      />
+                    </div>
+                    {service.updates > 0 && <p className="mt-2 text-xs text-blue-300">{service.updates} update{service.updates !== 1 ? "s" : ""}</p>}
+                  </div>
+                ))}
+                {suggestedServices.length === 0 && (
+                  <p className="rounded-lg border border-border bg-surface-2 p-3 text-sm text-slate-500">
+                    No Compose-derived service suggestions yet.
+                  </p>
+                )}
+              </div>
+            </div>
+          </section>
+
         {/* Toolbar */}
         <div className="flex flex-wrap gap-3 items-center">
           <input
@@ -601,7 +738,7 @@ export default function Dashboard() {
             </div>
           </section>
         )}
-      </div>
+        </div>
 
       {/* Sidebar — recent events */}
       <aside className="space-y-3">
@@ -645,6 +782,7 @@ export default function Dashboard() {
         </div>
         <EventTimeline limit={eventLimit} />
       </aside>
+    </div>
     </div>
     </>
   );
