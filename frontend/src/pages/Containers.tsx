@@ -244,11 +244,13 @@ function ContainerTable({ containers, checkingId, onCheckUpdates }: { containers
                     </td>
                     <td className="px-4 py-3">
                       <div className="space-y-2">
-                        <div className="grid grid-cols-[3rem_minmax(0,1fr)] items-center gap-2">
+                        <div className="grid grid-cols-[2rem_3rem_minmax(0,1fr)] items-center gap-2">
+                          <span className="text-[0.65rem] uppercase text-slate-600">CPU</span>
                           <span className="font-mono text-xs text-slate-200">{container.cpu_percent.toFixed(1)}%</span>
                           <ResourceBar value={container.cpu_percent} tone={container.cpu_percent > 75 ? "amber" : "accent"} />
                         </div>
-                        <div className="grid grid-cols-[3rem_minmax(0,1fr)] items-center gap-2">
+                        <div className="grid grid-cols-[2rem_3rem_minmax(0,1fr)] items-center gap-2">
+                          <span className="text-[0.65rem] uppercase text-slate-600">RAM</span>
                           <span className="font-mono text-xs text-slate-200">{memPct.toFixed(0)}%</span>
                           <ResourceBar value={memPct} tone={memPct > 80 ? "amber" : "emerald"} />
                         </div>
@@ -285,8 +287,8 @@ function ContainerTable({ containers, checkingId, onCheckUpdates }: { containers
                   </tr>
                   {isExpanded && (
                     <tr className="bg-surface-0/45">
-                      <td colSpan={6} className="px-4 pb-4">
-                        <div className="grid gap-3 rounded-lg border border-border bg-surface-1/70 p-3 text-xs sm:grid-cols-2 xl:grid-cols-4">
+                      <td colSpan={6} className="px-5 pb-5 pt-3">
+                        <div className="grid gap-x-6 gap-y-4 rounded-lg border border-border bg-surface-1/70 p-4 text-xs sm:grid-cols-2 xl:grid-cols-4">
                           <div className="min-w-0">
                             <p className="uppercase text-slate-600">Ports</p>
                             <p className="mt-1 truncate text-slate-300" title={container.ports.join(", ")}>{portSummary(container.ports)}</p>
