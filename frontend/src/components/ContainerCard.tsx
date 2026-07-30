@@ -1,4 +1,4 @@
-import { Link } from "react-router-dom";
+import { Link } from "../router";
 import type { Container } from "../types";
 import StatusBadge from "./StatusBadge";
 import MetricBar from "./MetricBar";

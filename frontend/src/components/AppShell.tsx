@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Link, NavLink, useLocation } from "react-router-dom";
+import { Link, NavLink, useLocation } from "../router";
 import { useQuery } from "@tanstack/react-query";
 import {
   FiActivity,

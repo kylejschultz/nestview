@@ -1,5 +1,4 @@
 import { useState, useEffect } from "react";
-import { Routes, Route, Navigate, useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import Dashboard from "./pages/Dashboard";
 import ContainerDetail from "./pages/ContainerDetail";
@@ -13,10 +12,12 @@ import { TimezoneProvider } from "./TimezoneContext";
 import { AuthContext } from "./AuthContext";
 import { api, setOn401Handler } from "./api";
 import type { AuthStatus, MeResponse, WizardStatus } from "./types";
+import { Redirect, useLocation, useNavigate } from "./router";
 
 export default function App() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+  const location = useLocation();
 
   // Once the wizard is dismissed in this session, don't re-show it without a reload.
   const [wizardDismissed, setWizardDismissed] = useState(false);
@@ -119,12 +120,23 @@ export default function App() {
   const isAuthenticated = authStatus?.auth_mode === "none" || meData?.authenticated === true;
 
   if (!isAuthenticated) {
-    return (
-      <Routes>
-        <Route path="/login" element={<Login onLogin={handleLogin} />} />
-        <Route path="*" element={<Navigate to="/login" replace />} />
-      </Routes>
-    );
+    if (location.pathname === "/login") return <Login onLogin={handleLogin} />;
+    return <Redirect to="/login" replace />;
+  }
+
+  function renderRoute() {
+    if (location.pathname === "/") return <Redirect to="/dashboard" replace />;
+    if (location.pathname === "/dashboard") return <Dashboard />;
+    if (location.pathname === "/services") return <PlaceholderPage page="Services" />;
+    if (location.pathname === "/containers") return <PlaceholderPage page="Containers" />;
+    if (location.pathname.startsWith("/containers/")) return <ContainerDetail />;
+    if (location.pathname === "/hosts") return <PlaceholderPage page="Hosts" />;
+    if (location.pathname === "/alerts") return <PlaceholderPage page="Alerts" />;
+    if (location.pathname === "/notifications") return <PlaceholderPage page="Notifications" />;
+    if (location.pathname === "/integrations") return <PlaceholderPage page="Integrations" />;
+    if (location.pathname === "/settings") return <Settings authMode={authStatus?.auth_mode} />;
+    if (location.pathname === "/setup" || location.pathname === "/login") return <Redirect to="/" replace />;
+    return <Redirect to="/dashboard" replace />;
   }
 
   // Full app (auth_mode "none" or authenticated)
@@ -133,20 +145,7 @@ export default function App() {
       <TimezoneProvider>
         <AppShell onLogout={handleLogout} authMode={authStatus?.auth_mode}>
           <main className="w-full">
-            <Routes>
-              <Route path="/" element={<Navigate to="/dashboard" replace />} />
-              <Route path="/dashboard" element={<Dashboard />} />
-              <Route path="/services" element={<PlaceholderPage page="Services" />} />
-              <Route path="/containers" element={<PlaceholderPage page="Containers" />} />
-              <Route path="/containers/:id" element={<ContainerDetail />} />
-              <Route path="/hosts" element={<PlaceholderPage page="Hosts" />} />
-              <Route path="/alerts" element={<PlaceholderPage page="Alerts" />} />
-              <Route path="/notifications" element={<PlaceholderPage page="Notifications" />} />
-              <Route path="/integrations" element={<PlaceholderPage page="Integrations" />} />
-              <Route path="/settings" element={<Settings authMode={authStatus?.auth_mode} />} />
-              <Route path="/setup" element={<Navigate to="/" replace />} />
-              <Route path="/login" element={<Navigate to="/" replace />} />
-            </Routes>
+            {renderRoute()}
           </main>
           {showWizard && <SetupWizard onDone={() => setWizardDismissed(true)} />}
         </AppShell>
