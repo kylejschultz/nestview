@@ -10,6 +10,19 @@ import {
   CartesianGrid,
   Tooltip,
 } from "recharts";
+import {
+  FiActivity,
+  FiAlertTriangle,
+  FiArrowLeft,
+  FiArrowUp,
+  FiBox,
+  FiClock,
+  FiCpu,
+  FiDatabase,
+  FiHardDrive,
+  FiRefreshCw,
+  FiWifi,
+} from "react-icons/fi";
 import { api } from "../api";
 import { useAuth } from "../AuthContext";
 import type { Container, MetricsHistoryPoint, NetworkHistoryPoint, OperationStatus } from "../types";
@@ -968,24 +981,90 @@ function MemChart({ data }: { data: MetricsHistoryPoint[] }) {
 
 function InfoRow({ label, value }: { label: string; value: React.ReactNode }) {
   return (
-    <div className="flex gap-3 py-2.5 border-b border-border last:border-0">
-      <span className="text-sm text-slate-500 w-32 shrink-0">{label}</span>
-      <span className="text-sm text-slate-200 font-mono break-all">{value}</span>
+    <div className="grid gap-1 border-b border-border py-2.5 last:border-0 sm:grid-cols-[8rem_minmax(0,1fr)] sm:gap-3">
+      <span className="text-xs uppercase text-slate-600 sm:text-sm sm:normal-case sm:text-slate-500">{label}</span>
+      <span className="min-w-0 break-words font-mono text-sm text-slate-200">{value}</span>
     </div>
   );
 }
 
 // ── Stat tile ─────────────────────────────────────────────────────────────────
 
-function StatTile({ label, value, highlight = false }: { label: string; value: React.ReactNode; highlight?: boolean }) {
+function StatTile({
+  label,
+  value,
+  subtext,
+  icon,
+  highlight = false,
+}: {
+  label: string;
+  value: React.ReactNode;
+  subtext?: React.ReactNode;
+  icon: React.ReactNode;
+  highlight?: boolean;
+}) {
   return (
-    <div className="card px-4 py-3 flex flex-col gap-1">
-      <span className="text-xs text-slate-500">{label}</span>
-      <span className={`text-sm font-mono font-medium truncate ${highlight ? "text-yellow-400" : "text-slate-200"}`}>
+    <div className="rounded-lg border border-border bg-surface-1 px-4 py-3">
+      <div className="flex items-center justify-between gap-3">
+        <span className="text-xs uppercase text-slate-500">{label}</span>
+        <span className={`shrink-0 ${highlight ? "text-yellow-400" : "text-slate-600"}`}>{icon}</span>
+      </div>
+      <div className={`mt-2 truncate font-mono text-base font-semibold ${highlight ? "text-yellow-300" : "text-slate-100"}`}>
         {value}
-      </span>
+      </div>
+      {subtext && <div className="mt-1 truncate text-xs text-slate-500">{subtext}</div>}
     </div>
   );
+}
+
+function DetailSection({ title, icon, children }: { title: string; icon: React.ReactNode; children: React.ReactNode }) {
+  return (
+    <section className="rounded-lg border border-border bg-surface-1 px-4">
+      <h2 className="flex items-center gap-2 border-b border-border py-3 text-sm font-medium text-slate-300">
+        <span className="text-slate-500">{icon}</span>
+        {title}
+      </h2>
+      <div>{children}</div>
+    </section>
+  );
+}
+
+function PillList({ items, empty = "None" }: { items: string[]; empty?: string }) {
+  if (items.length === 0) return <span className="text-slate-500">{empty}</span>;
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {items.map((item) => (
+        <span key={item} className="badge max-w-full break-all border border-border bg-surface-3 font-mono text-slate-300">
+          {item}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function imageParts(image: string) {
+  const slashIndex = image.lastIndexOf("/");
+  const tagIndex = image.lastIndexOf(":");
+  if (tagIndex > slashIndex) {
+    return {
+      repo: image.slice(0, tagIndex),
+      tag: image.slice(tagIndex + 1),
+    };
+  }
+  return { repo: image, tag: "latest" };
+}
+
+function sourceLabel(container: Container) {
+  if (!container.compose_project) return "Standalone";
+  return container.compose_service
+    ? `${container.compose_project} / ${container.compose_service}`
+    : container.compose_project;
+}
+
+function latestNetworkTotal(container: Container) {
+  const rx = container.net_rx_bytes ?? 0;
+  const tx = container.net_tx_bytes ?? 0;
+  return rx > 0 || tx > 0 ? `${formatBytes(rx)} in / ${formatBytes(tx)} out` : "No traffic";
 }
 
 // ── Page ──────────────────────────────────────────────────────────────────────
@@ -1044,55 +1123,139 @@ export default function ContainerDetail() {
     return <div className="text-center py-16 text-slate-500">Loading…</div>;
   }
 
+  const imageInfo = imageParts(container.image);
+  const isRunning = container.state === "running";
+  const uptimeLabel = container.started_at && isRunning ? formatUptime(container.started_at) : "-";
+  const memoryPercent = container.mem_limit > 0 ? (container.mem_usage / container.mem_limit) * 100 : 0;
+  const hasAttention = container.state !== "running" || container.update_available || container.restart_count > 0;
+
   return (
     <div className="space-y-6">
-      {/* Breadcrumb + title */}
-      <div className="space-y-2">
-        <Link to="/" className="text-sm text-slate-500 hover:text-slate-300 flex items-center gap-1">
-          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
-          </svg>
-          Dashboard
-        </Link>
-        <div className="flex items-center gap-3 flex-wrap">
-          <h1 className="text-xl font-semibold text-slate-100">{container.name}</h1>
-          <StatusBadge state={container.state} />
+      <section className="rounded-lg border border-border bg-surface-1">
+        <div className="border-b border-border px-4 py-3">
+          <Link to="/containers" className="inline-flex items-center gap-1.5 text-sm text-slate-500 transition-colors hover:text-slate-300">
+            <FiArrowLeft className="h-4 w-4" />
+            Containers
+          </Link>
         </div>
-        <p className="text-sm text-slate-500 font-mono">{container.image}</p>
+
+        <div className="grid gap-4 px-4 py-5 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-start">
+          <div className="min-w-0 space-y-3">
+            <div className="flex flex-wrap items-center gap-3">
+              <h1 className="min-w-0 break-words text-2xl font-semibold text-slate-100">{container.name}</h1>
+              <StatusBadge state={container.state} />
+              {container.update_available && (
+                <span className="inline-flex items-center gap-1 rounded border border-blue-500/30 bg-blue-500/10 px-2 py-1 text-xs font-medium text-blue-300">
+                  <FiArrowUp className="h-3.5 w-3.5" />
+                  Image update
+                </span>
+              )}
+            </div>
+            <div className="grid gap-2 text-sm text-slate-500 md:grid-cols-[auto_minmax(0,1fr)] md:items-center">
+              <span className="font-mono text-slate-400">{container.short_id}</span>
+              <span className="min-w-0 break-words font-mono text-slate-500">{container.image}</span>
+            </div>
+            <div className="flex flex-wrap gap-x-5 gap-y-1 text-xs text-slate-500">
+              <span>{sourceLabel(container)}</span>
+              <span>{container.status}</span>
+              <span>Last seen {formatDateTime(container.last_seen, tz)}</span>
+            </div>
+          </div>
+
+          <div className="xl:max-w-[38rem]">
+            <ActionButtons container={container} onModalOpenChange={setOperationModalOpen} />
+          </div>
+        </div>
+      </section>
+
+      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+        <StatTile label="CPU" value={`${container.cpu_percent.toFixed(2)}%`} subtext={isRunning ? "current usage" : "not running"} icon={<FiCpu className="h-4 w-4" />} />
+        <StatTile
+          label="Memory"
+          value={
+            container.mem_limit > 0
+              ? `${memoryPercent.toFixed(0)}%`
+              : formatBytes(container.mem_usage)
+          }
+          subtext={
+            container.mem_limit > 0
+              ? `${formatBytes(container.mem_usage)} / ${formatBytes(container.mem_limit)}`
+              : "limit unknown"
+          }
+          icon={<FiDatabase className="h-4 w-4" />}
+        />
+        <StatTile label="Uptime" value={uptimeLabel} subtext={container.started_at ? `Started ${formatDateTime(container.started_at, tz)}` : "not started"} icon={<FiClock className="h-4 w-4" />} />
+        <StatTile label="Restarts" value={container.restart_count} subtext={container.restart_count === 1 ? "recorded restart" : "recorded restarts"} icon={<FiRefreshCw className="h-4 w-4" />} highlight={container.restart_count > 0} />
+        <StatTile label="Network" value={latestNetworkTotal(container)} subtext={container.networks.length > 0 ? container.networks.join(", ") : "no networks"} icon={<FiWifi className="h-4 w-4" />} />
+      </section>
+
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,2fr)_minmax(20rem,1fr)]">
+        <div className="grid gap-4 lg:grid-cols-2">
+          <DetailSection title="Runtime" icon={<FiActivity className="h-4 w-4" />}>
+            <InfoRow label="State" value={<StatusBadge state={container.state} />} />
+            <InfoRow label="Status" value={container.status} />
+            <InfoRow label="Created" value={container.created_at ? formatDateTime(container.created_at, tz) : "Unknown"} />
+            <InfoRow label="Started" value={container.started_at ? formatDateTime(container.started_at, tz) : "Not running"} />
+            <InfoRow label="Last seen" value={formatDateTime(container.last_seen, tz)} />
+            <InfoRow label="Restarts" value={container.restart_count} />
+          </DetailSection>
+
+          <DetailSection title="Source" icon={<FiBox className="h-4 w-4" />}>
+            <InfoRow label="Container ID" value={container.short_id} />
+            <InfoRow label="Source" value={sourceLabel(container)} />
+            {container.compose_project && <InfoRow label="Project" value={container.compose_project} />}
+            {container.compose_service && <InfoRow label="Service" value={container.compose_service} />}
+            <InfoRow label="Image" value={imageInfo.repo} />
+            <InfoRow label="Tag" value={imageInfo.tag} />
+            <InfoRow label="Image size" value={container.image_size !== null ? formatBytes(container.image_size) : "Unknown"} />
+            <InfoRow
+              label="Update check"
+              value={
+                <span className="flex flex-wrap items-center gap-2">
+                  <span>{container.last_digest_check ? formatDateTime(container.last_digest_check, tz) : "Never checked"}</span>
+                  {container.update_available && (
+                    <span className="inline-flex items-center gap-1 rounded border border-blue-500/30 bg-blue-500/10 px-1.5 py-0.5 text-xs font-medium text-blue-300">
+                      <FiArrowUp className="h-3 w-3" />
+                      Update available
+                    </span>
+                  )}
+                </span>
+              }
+            />
+          </DetailSection>
+
+          <DetailSection title="Connectivity" icon={<FiWifi className="h-4 w-4" />}>
+            <InfoRow label="Ports" value={<PillList items={container.ports} />} />
+            <InfoRow label="Networks" value={<PillList items={container.networks} />} />
+            <InfoRow label="Traffic" value={latestNetworkTotal(container)} />
+          </DetailSection>
+
+          <DetailSection title="Storage" icon={<FiHardDrive className="h-4 w-4" />}>
+            <InfoRow label="Volumes" value={<PillList items={container.volumes} empty="No volumes reported" />} />
+          </DetailSection>
+        </div>
+
+        <aside className="space-y-4">
+          {hasAttention && (
+            <section className="rounded-lg border border-yellow-500/30 bg-yellow-500/10 px-4 py-3">
+              <h2 className="flex items-center gap-2 text-sm font-medium text-yellow-300">
+                <FiAlertTriangle className="h-4 w-4" />
+                Attention
+              </h2>
+              <div className="mt-3 space-y-2 text-sm text-yellow-100/80">
+                {container.state !== "running" && <p>Container is currently {container.state}.</p>}
+                {container.update_available && <p>A newer image is available.</p>}
+                {container.restart_count > 0 && <p>{container.restart_count} restart{container.restart_count === 1 ? "" : "s"} recorded.</p>}
+              </div>
+            </section>
+          )}
+          <EventTimeline dockerId={container.docker_id} showHeader showContainerName={false} />
+        </aside>
       </div>
 
-      {/* Action buttons */}
-      <ActionButtons container={container} onModalOpenChange={setOperationModalOpen} />
-
-      {/* Live stats strip — only when running */}
-      {container.state === "running" && (
-        <div className="grid grid-cols-4 gap-3">
-          <StatTile label="CPU" value={`${container.cpu_percent.toFixed(2)}%`} />
-          <StatTile
-            label="Memory"
-            value={
-              container.mem_limit > 0
-                ? `${formatBytes(container.mem_usage)} / ${formatBytes(container.mem_limit)}`
-                : formatBytes(container.mem_usage)
-            }
-          />
-          <StatTile
-            label="Uptime"
-            value={container.started_at ? formatUptime(container.started_at) : "-"}
-          />
-          <StatTile
-            label="Restarts"
-            value={container.restart_count}
-            highlight={container.restart_count > 0}
-          />
-        </div>
-      )}
-
-      {/* Charts row */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {/* CPU */}
+      <section className="grid grid-cols-1 gap-6 md:grid-cols-3">
         <div className="card">
-          <div className="px-4 pt-3 pb-2 space-y-2">
+          <div className="space-y-2 px-4 pb-2 pt-3">
             <h2 className="text-sm font-medium text-slate-300">CPU</h2>
             <div className="flex gap-4 text-xs text-slate-400">
               <span className="flex items-center gap-1.5">
@@ -1108,9 +1271,8 @@ export default function ContainerDetail() {
           </div>
         </div>
 
-        {/* Memory */}
         <div className="card">
-          <div className="px-4 pt-3 pb-2 space-y-2">
+          <div className="space-y-2 px-4 pb-2 pt-3">
             <h2 className="text-sm font-medium text-slate-300">Memory</h2>
             <div className="flex gap-4 text-xs text-slate-400">
               <span className="flex items-center gap-1.5">
@@ -1126,9 +1288,8 @@ export default function ContainerDetail() {
           </div>
         </div>
 
-        {/* Network I/O */}
         <div className="card">
-          <div className="px-4 pt-3 pb-2 space-y-2">
+          <div className="space-y-2 px-4 pb-2 pt-3">
             <h2 className="text-sm font-medium text-slate-300">Network I/O</h2>
             <div className="flex gap-4 text-xs text-slate-400">
               <span className="flex items-center gap-1.5">
@@ -1149,86 +1310,8 @@ export default function ContainerDetail() {
             <NetworkIOChart data={networkHistory} />
           </div>
         </div>
-      </div>
+      </section>
 
-      {/* Details + Events row */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {/* Details — 2/3 width */}
-        <div className="card px-4 md:col-span-2">
-          <h2 className="text-sm font-medium text-slate-300 py-3">Details</h2>
-          <InfoRow label="ID" value={container.short_id} />
-          <InfoRow label="Image" value={container.image.includes(":") ? container.image.slice(0, container.image.lastIndexOf(":")) : container.image} />
-          {container.image.includes(":") && (
-            <InfoRow label="Tag" value={container.image.split(":").pop()!} />
-          )}
-          <InfoRow label="State" value={<StatusBadge state={container.state} />} />
-          {container.compose_project && (
-            <InfoRow label="Compose Project" value={container.compose_project} />
-          )}
-          {container.ports.length > 0 && (
-            <InfoRow
-              label="Ports"
-              value={
-                <div className="flex flex-wrap gap-1">
-                  {container.ports.map((p) => (
-                    <span key={p} className="badge bg-surface-3 text-slate-300 border border-border">{p}</span>
-                  ))}
-                </div>
-              }
-            />
-          )}
-          {container.networks.length > 0 && (
-            <InfoRow
-              label="Networks"
-              value={
-                <div className="flex flex-wrap gap-1">
-                  {container.networks.map((n) => (
-                    <span key={n} className="badge bg-surface-3 text-slate-300 border border-border">{n}</span>
-                  ))}
-                </div>
-              }
-            />
-          )}
-          {container.volumes.length > 0 && (
-            <InfoRow
-              label="Volumes"
-              value={
-                <div className="space-y-1">
-                  {container.volumes.map((v) => (
-                    <div key={v} className="text-xs">{v}</div>
-                  ))}
-                </div>
-              }
-            />
-          )}
-          {container.image_size != null && (
-            <InfoRow label="Image size" value={formatBytes(container.image_size)} />
-          )}
-          {container.last_digest_check != null && (
-            <InfoRow
-              label="Update check"
-              value={
-                <span className="flex items-center gap-2 flex-wrap">
-                  <span>{formatDateTime(container.last_digest_check, tz)}</span>
-                  {container.update_available && (
-                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium bg-blue-500/15 text-blue-400 border border-blue-500/30">
-                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 10l7-7m0 0l7 7m-7-7v18" />
-                      </svg>
-                      Update available
-                    </span>
-                  )}
-                </span>
-              }
-            />
-          )}
-        </div>
-
-        {/* Events — 1/3 width */}
-        <EventTimeline dockerId={container.docker_id} showHeader showContainerName={false} />
-      </div>
-
-      {/* Logs */}
       <section className="space-y-3">
         <h2 className="text-sm font-medium text-slate-300">Logs</h2>
         <LogViewer dockerId={container.docker_id} />
