@@ -334,11 +334,11 @@ function ContainerTable({ containers, checkingId, onCheckUpdates }: { containers
                           </div>
                           <div className="min-w-0">
                             <p className="uppercase text-slate-600">Source</p>
-                            <p className="mt-1 truncate text-slate-300" title={sourceLabel(container)}>{sourceLabel(container)}</p>
+                            <p className="mt-1 line-clamp-2 break-words text-slate-300" title={sourceLabel(container)}>{sourceLabel(container)}</p>
                           </div>
-                          <div className="min-w-0 sm:col-span-2">
+                          <div className="min-w-0 sm:col-span-2 xl:col-span-2">
                             <p className="uppercase text-slate-600">Image</p>
-                            <p className="mt-1 truncate font-mono text-slate-300" title={container.image}>{container.image}</p>
+                            <p className="mt-1 line-clamp-2 break-words font-mono leading-5 text-slate-300" title={container.image}>{container.image}</p>
                           </div>
                           <div className="min-w-0">
                             <p className="uppercase text-slate-600">Restarts</p>
@@ -348,9 +348,9 @@ function ContainerTable({ containers, checkingId, onCheckUpdates }: { containers
                             <p className="uppercase text-slate-600">Image Size</p>
                             <p className="mt-1 text-slate-300">{container.image_size !== null ? formatBytes(container.image_size) : "Unknown"}</p>
                           </div>
-                          <div className="min-w-0 sm:col-span-2">
+                          <div className="min-w-0 sm:col-span-2 xl:col-span-2">
                             <p className="uppercase text-slate-600">Status</p>
-                            <p className="mt-1 truncate text-slate-300" title={container.status}>{container.status}</p>
+                            <p className="mt-1 line-clamp-2 break-words text-slate-300" title={container.status}>{container.status}</p>
                           </div>
                         </div>
                       </td>
