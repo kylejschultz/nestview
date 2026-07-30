@@ -1,4 +1,4 @@
-import { Fragment, useMemo, useState } from "react";
+import { Fragment, useMemo, useState, type KeyboardEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   FiArrowUp,
@@ -7,6 +7,7 @@ import {
   FiChevronRight,
   FiExternalLink,
   FiFilter,
+  FiImage,
   FiRefreshCw,
   FiSearch,
 } from "react-icons/fi";
@@ -180,6 +181,13 @@ function ContainerTable({ containers, checkingId, onCheckUpdates }: { containers
     });
   }
 
+  function onRowKeyDown(event: KeyboardEvent<HTMLTableRowElement>, dockerId: string) {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      toggleExpanded(dockerId);
+    }
+  }
+
   return (
     <div className="hidden overflow-hidden rounded-lg border border-border bg-surface-1 lg:block">
       <div className="overflow-hidden">
@@ -198,7 +206,7 @@ function ContainerTable({ containers, checkingId, onCheckUpdates }: { containers
               <th className="px-4 py-3 font-medium">Status</th>
               <th className="px-4 py-3 font-medium">Resources</th>
               <th className="px-4 py-3 font-medium">Image</th>
-              <th className="px-4 py-3 font-medium">Source</th>
+              <th className="px-4 py-3 font-medium">Uptime</th>
               <th className="px-4 py-3 text-right font-medium">Actions</th>
             </tr>
           </thead>
@@ -207,15 +215,28 @@ function ContainerTable({ containers, checkingId, onCheckUpdates }: { containers
               const memPct = memoryPercent(container);
               const isChecking = checkingId === container.docker_id;
               const isExpanded = expandedIds.has(container.docker_id);
+              const uptimeLabel = container.started_at && container.state === "running"
+                ? formatUptime(container.started_at)
+                : "-";
 
               return (
                 <Fragment key={container.docker_id}>
-                  <tr className="transition-colors hover:bg-surface-2/70">
+                  <tr
+                    className="cursor-pointer transition-colors hover:bg-surface-2/70"
+                    onClick={() => toggleExpanded(container.docker_id)}
+                    onKeyDown={(event) => onRowKeyDown(event, container.docker_id)}
+                    tabIndex={0}
+                    role="button"
+                    aria-expanded={isExpanded}
+                  >
                     <td className="px-4 py-3">
                       <div className="flex min-w-0 items-center gap-2">
                         <button
                           type="button"
-                          onClick={() => toggleExpanded(container.docker_id)}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            toggleExpanded(container.docker_id);
+                          }}
                           aria-expanded={isExpanded}
                           aria-label={`${isExpanded ? "Collapse" : "Expand"} ${container.name}`}
                           title={isExpanded ? "Collapse row" : "Expand row"}
@@ -224,9 +245,7 @@ function ContainerTable({ containers, checkingId, onCheckUpdates }: { containers
                           <FiChevronDown className={`h-3.5 w-3.5 transition-transform ${isExpanded ? "rotate-180" : ""}`} />
                         </button>
                         <div className="min-w-0">
-                          <Link to={`/containers/${container.docker_id}`} className="block truncate font-medium text-slate-100 hover:text-accent">
-                            {container.name}
-                          </Link>
+                          <p className="truncate font-medium text-slate-100">{container.name}</p>
                           <p className="mt-1 truncate font-mono text-xs text-slate-600">{container.short_id}</p>
                         </div>
                       </div>
@@ -237,7 +256,7 @@ function ContainerTable({ containers, checkingId, onCheckUpdates }: { containers
                         {container.update_available && (
                           <span className="inline-flex items-center gap-1 rounded border border-blue-500/30 bg-blue-500/10 px-1.5 py-0.5 text-xs font-medium text-blue-300">
                             <FiArrowUp className="h-3 w-3" />
-                            Update
+                            Image update
                           </span>
                         )}
                       </div>
@@ -260,24 +279,29 @@ function ContainerTable({ containers, checkingId, onCheckUpdates }: { containers
                       <p className="truncate font-mono text-xs text-slate-300" title={container.image}>{container.image}</p>
                     </td>
                     <td className="px-4 py-3">
-                      <p className="truncate text-xs text-slate-300" title={sourceLabel(container)}>{sourceLabel(container)}</p>
+                      <p className="truncate text-xs text-slate-300">{uptimeLabel}</p>
+                      <p className="mt-1 text-xs text-slate-600">{container.restart_count} restart{container.restart_count === 1 ? "" : "s"}</p>
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex justify-end gap-1.5">
                         <button
                           type="button"
-                          onClick={() => onCheckUpdates(container)}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            onCheckUpdates(container);
+                          }}
                           disabled={isChecking}
                           aria-label={`Check ${container.name} for updates`}
-                          title="Check for updates"
-                          className="rounded-lg border border-border bg-surface-2 p-2 text-slate-400 transition-colors hover:border-accent/40 hover:text-accent disabled:cursor-wait disabled:opacity-60"
+                          title="Check image update"
+                          className="rounded-lg border border-border bg-surface-2 p-2 text-slate-400 transition-colors hover:border-blue-400/40 hover:text-blue-300 disabled:cursor-wait disabled:opacity-60"
                         >
-                          <FiRefreshCw className={`h-4 w-4 ${isChecking ? "animate-spin" : ""}`} />
+                          {isChecking ? <FiRefreshCw className="h-4 w-4 animate-spin" /> : <FiImage className="h-4 w-4" />}
                         </button>
                         <Link
                           to={`/containers/${container.docker_id}`}
                           aria-label={`Open ${container.name} detail`}
                           title="Open detail"
+                          onClick={(event) => event.stopPropagation()}
                           className="rounded-lg border border-border bg-surface-2 p-2 text-slate-400 transition-colors hover:border-accent/40 hover:text-accent"
                         >
                           <FiExternalLink className="h-4 w-4" />
@@ -306,10 +330,8 @@ function ContainerTable({ containers, checkingId, onCheckUpdates }: { containers
                             </p>
                           </div>
                           <div className="min-w-0">
-                            <p className="uppercase text-slate-600">Uptime</p>
-                            <p className="mt-1 truncate text-slate-300">
-                              {container.started_at && container.state === "running" ? formatUptime(container.started_at) : container.status}
-                            </p>
+                            <p className="uppercase text-slate-600">Source</p>
+                            <p className="mt-1 truncate text-slate-300" title={sourceLabel(container)}>{sourceLabel(container)}</p>
                           </div>
                           <div className="min-w-0">
                             <p className="uppercase text-slate-600">Restarts</p>
@@ -322,6 +344,10 @@ function ContainerTable({ containers, checkingId, onCheckUpdates }: { containers
                           <div className="min-w-0 sm:col-span-2">
                             <p className="uppercase text-slate-600">Status</p>
                             <p className="mt-1 truncate text-slate-300" title={container.status}>{container.status}</p>
+                          </div>
+                          <div className="min-w-0">
+                            <p className="uppercase text-slate-600">Uptime</p>
+                            <p className="mt-1 truncate text-slate-300">{uptimeLabel}</p>
                           </div>
                         </div>
                       </td>
