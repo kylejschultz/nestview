@@ -91,6 +91,15 @@ def _net_bytes(stats: dict) -> tuple[int, int]:
     return rx, tx
 
 
+def _restart_policy(attrs: dict) -> Optional[str]:
+    policy = attrs.get("HostConfig", {}).get("RestartPolicy", {}) or {}
+    name = policy.get("Name") or "no"
+    retry_count = policy.get("MaximumRetryCount")
+    if name == "on-failure" and retry_count:
+        return f"{name}:{retry_count}"
+    return name
+
+
 # ── Container data collection ──────────────────────────────────────────────────
 
 
@@ -98,6 +107,8 @@ def _collect_one(container) -> Optional[dict]:
     try:
         container.reload()
         raw_stats = container.stats(stream=False)
+        attrs = container.attrs
+        state = attrs.get("State", {})
 
         cpu = _cpu_percent(raw_stats)
         mem_usage, mem_limit = _mem_bytes(raw_stats)
@@ -110,19 +121,19 @@ def _collect_one(container) -> Optional[dict]:
             for cport, h in ports_map.items()
             if h
         ]
-        mounts = container.attrs.get("Mounts", [])
+        mounts = attrs.get("Mounts", [])
         volumes = [
             f"{m.get('Source', '?')}:{m.get('Destination', '?')}" for m in mounts
         ]
         networks = list(
-            container.attrs.get("NetworkSettings", {}).get("Networks", {}).keys()
+            attrs.get("NetworkSettings", {}).get("Networks", {}).keys()
         )
 
         image_tags = container.image.tags
         image = (
             image_tags[0]
             if image_tags
-            else container.attrs.get("Config", {}).get("Image", "unknown")
+            else attrs.get("Config", {}).get("Image", "unknown")
         )
 
         return {
@@ -131,8 +142,8 @@ def _collect_one(container) -> Optional[dict]:
             "name": container.name.lstrip("/"),
             "image": image,
             "status": container.status,
-            "state": container.attrs["State"]["Status"],
-            "restart_count": container.attrs.get("RestartCount", 0),
+            "state": state.get("Status", container.status),
+            "restart_count": attrs.get("RestartCount", 0),
             "cpu_percent": cpu,
             "mem_usage": mem_usage,
             "mem_limit": mem_limit,
@@ -141,10 +152,16 @@ def _collect_one(container) -> Optional[dict]:
             "networks": json.dumps(networks),
             "compose_project": labels.get("com.docker.compose.project"),
             "compose_service": labels.get("com.docker.compose.service"),
-            "created_at": container.attrs.get("Created"),
-            "started_at": container.attrs.get("State", {}).get("StartedAt"),
+            "created_at": attrs.get("Created"),
+            "started_at": state.get("StartedAt"),
             "net_rx_bytes": net_rx,
             "net_tx_bytes": net_tx,
+            "health_status": state.get("Health", {}).get("Status"),
+            "restart_policy": _restart_policy(attrs),
+            "exit_code": state.get("ExitCode"),
+            "oom_killed": bool(state.get("OOMKilled", False)),
+            "finished_at": state.get("FinishedAt"),
+            "container_error": state.get("Error") or None,
         }
     except Exception as exc:
         name = _safe_name(getattr(container, "name", "?"))
@@ -238,6 +255,12 @@ def _apply_batch(containers_data: list[dict]) -> None:
                 existing.started_at = _parse_dt(c["started_at"])
                 existing.net_rx_bytes = c["net_rx_bytes"]
                 existing.net_tx_bytes = c["net_tx_bytes"]
+                existing.health_status = c.get("health_status")
+                existing.restart_policy = c.get("restart_policy")
+                existing.exit_code = c.get("exit_code")
+                existing.oom_killed = bool(c.get("oom_killed", False))
+                existing.finished_at = _parse_dt(c.get("finished_at"))
+                existing.container_error = c.get("container_error")
                 existing.last_seen = datetime.utcnow()
                 session.add(existing)
             else:
@@ -310,6 +333,12 @@ def _apply_batch(containers_data: list[dict]) -> None:
                             old.started_at = _parse_dt(c["started_at"])
                             old.net_rx_bytes = c["net_rx_bytes"]
                             old.net_tx_bytes = c["net_tx_bytes"]
+                            old.health_status = c.get("health_status")
+                            old.restart_policy = c.get("restart_policy")
+                            old.exit_code = c.get("exit_code")
+                            old.oom_killed = bool(c.get("oom_killed", False))
+                            old.finished_at = _parse_dt(c.get("finished_at"))
+                            old.container_error = c.get("container_error")
                             old.last_seen = datetime.utcnow()
                             session.add(old)
 
@@ -358,6 +387,12 @@ def _apply_batch(containers_data: list[dict]) -> None:
                         started_at=_parse_dt(c["started_at"]),
                         net_rx_bytes=c["net_rx_bytes"],
                         net_tx_bytes=c["net_tx_bytes"],
+                        health_status=c.get("health_status"),
+                        restart_policy=c.get("restart_policy"),
+                        exit_code=c.get("exit_code"),
+                        oom_killed=bool(c.get("oom_killed", False)),
+                        finished_at=_parse_dt(c.get("finished_at")),
+                        container_error=c.get("container_error"),
                         last_seen=datetime.utcnow(),
                     )
                     session.add(new_container)

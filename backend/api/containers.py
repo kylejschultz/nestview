@@ -16,7 +16,6 @@ _CONTAINER_EXCLUDE = {
     "previous_docker_id",        # internal re-association field, not for API consumers
     "image_digest",              # raw local image ID (sha256 of config blob), not surfaced in UI
     "registry_digest",           # raw registry manifest digest, not surfaced in UI
-    "last_pulled",               # not surfaced in UI
 }
 
 

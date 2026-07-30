@@ -43,6 +43,12 @@ class Container(SQLModel, table=True):
     net_rx_bytes: Optional[int] = 0
     net_tx_bytes: Optional[int] = 0
     previous_docker_id: Optional[str] = None
+    health_status: Optional[str] = None
+    restart_policy: Optional[str] = None
+    exit_code: Optional[int] = None
+    oom_killed: bool = False
+    finished_at: Optional[datetime] = None
+    container_error: Optional[str] = None
 
 
 class ContainerLog(SQLModel, table=True):

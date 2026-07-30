@@ -30,7 +30,7 @@ def test_run_migrations_advances_schema_version_and_is_idempotent():
         ).first()
 
     assert schema_version is not None
-    assert schema_version.value == "016"
+    assert schema_version.value == "017"
     assert analytics_last_ping is not None
     assert analytics_last_ping.value == ""
     assert retention is not None
@@ -43,6 +43,14 @@ def test_run_migrations_advances_schema_version_and_is_idempotent():
     }
     assert "operation" in inspect(engine).get_table_names()
     assert "notification_destination" in inspect(engine).get_table_names()
+    assert {
+        "health_status",
+        "restart_policy",
+        "exit_code",
+        "oom_killed",
+        "finished_at",
+        "container_error",
+    }.issubset({col["name"] for col in inspect(engine).get_columns("container")})
     assert discord_destination is not None
     assert discord_destination.name == "Discord"
     assert "ix_operation_running_target" in {

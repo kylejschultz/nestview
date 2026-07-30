@@ -394,6 +394,34 @@ def _migrate_016(engine: Engine) -> None:
     logger.info("migration 016: backfilled legacy Discord notification destination")
 
 
+def _migrate_017(engine: Engine) -> None:
+    """Add container operational metadata for detail inspector context."""
+    inspector = inspect(engine)
+    existing_cols = {col["name"] for col in inspector.get_columns("container")}
+
+    columns_to_add = [
+        ("health_status", "TEXT"),
+        ("restart_policy", "TEXT"),
+        ("exit_code", "INTEGER"),
+        ("oom_killed", "INTEGER NOT NULL DEFAULT 0"),
+        ("finished_at", "TEXT"),
+        ("container_error", "TEXT"),
+    ]
+
+    with engine.connect() as conn:
+        for col_name, col_type in columns_to_add:
+            if col_name in existing_cols:
+                logger.info("migration 017: column %s already present, skipping", col_name)
+                continue
+            try:
+                conn.execute(text(f"ALTER TABLE container ADD COLUMN {col_name} {col_type}"))
+                logger.info("migration 017: added column %s", col_name)
+            except Exception as e:
+                logger.warning("migration 017: could not add column %s: %s", col_name, e)
+                raise
+        conn.commit()
+
+
 MIGRATIONS: list[tuple[str, Callable]] = [
     ("001", _migrate_001),
     ("002", _migrate_002),
@@ -411,6 +439,7 @@ MIGRATIONS: list[tuple[str, Callable]] = [
     ("014", _migrate_014),
     ("015", _migrate_015),
     ("016", _migrate_016),
+    ("017", _migrate_017),
 ]
 
 

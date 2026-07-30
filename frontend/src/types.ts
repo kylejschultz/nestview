@@ -21,8 +21,15 @@ export interface Container {
   update_available: boolean;
   image_size: number | null;
   last_digest_check: string | null;
+  last_pulled: string | null;
   net_rx_bytes: number | null;
   net_tx_bytes: number | null;
+  health_status: string | null;
+  restart_policy: string | null;
+  exit_code: number | null;
+  oom_killed: boolean;
+  finished_at: string | null;
+  container_error: string | null;
 }
 
 export interface ContainerLog {

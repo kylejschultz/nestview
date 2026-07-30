@@ -20,6 +20,7 @@ import {
   FiCpu,
   FiDatabase,
   FiHardDrive,
+  FiHeart,
   FiRefreshCw,
   FiWifi,
 } from "react-icons/fi";
@@ -1061,6 +1062,28 @@ function sourceLabel(container: Container) {
     : container.compose_project;
 }
 
+function restartPolicyLabel(policy: string | null) {
+  if (!policy || policy === "no") return "No auto-restart";
+  return policy;
+}
+
+function healthTone(status: string | null) {
+  if (status === "healthy") return "border-green-500/30 bg-green-500/10 text-green-300";
+  if (status === "unhealthy") return "border-red-500/30 bg-red-500/10 text-red-300";
+  if (status === "starting") return "border-yellow-500/30 bg-yellow-500/10 text-yellow-300";
+  return "border-slate-700 bg-surface-3 text-slate-400";
+}
+
+function HealthBadge({ status }: { status: string | null }) {
+  if (!status) return null;
+  return (
+    <span className={`inline-flex items-center gap-1 rounded border px-2 py-1 text-xs font-medium ${healthTone(status)}`}>
+      <FiHeart className="h-3.5 w-3.5" />
+      {status}
+    </span>
+  );
+}
+
 function latestNetworkTotal(container: Container) {
   const rx = container.net_rx_bytes ?? 0;
   const tx = container.net_tx_bytes ?? 0;
@@ -1070,6 +1093,9 @@ function latestNetworkTotal(container: Container) {
 function AttentionBand({ container }: { container: Container }) {
   const items = [
     container.state !== "running" ? `Container is currently ${container.state}.` : null,
+    container.health_status === "unhealthy" ? "Healthcheck is failing." : null,
+    container.oom_killed ? "Last stop was OOM-killed." : null,
+    container.container_error ? `Docker reported: ${container.container_error}` : null,
     container.update_available ? "A newer image is available." : null,
     container.restart_count > 0
       ? `${container.restart_count} restart${container.restart_count === 1 ? "" : "s"} recorded.`
@@ -1169,6 +1195,7 @@ export default function ContainerDetail() {
             <div className="flex flex-wrap items-center gap-3">
               <h1 className="min-w-0 break-words text-2xl font-semibold text-slate-100">{container.name}</h1>
               <StatusBadge state={container.state} />
+              <HealthBadge status={container.health_status} />
               {container.update_available && (
                 <span className="inline-flex items-center gap-1 rounded border border-blue-500/30 bg-blue-500/10 px-2 py-1 text-xs font-medium text-blue-300">
                   <FiArrowUp className="h-3.5 w-3.5" />
@@ -1222,6 +1249,12 @@ export default function ContainerDetail() {
           <InfoRow label="Status" value={container.status} />
           <InfoRow label="Created" value={container.created_at ? formatDateTime(container.created_at, tz) : "Unknown"} />
           <InfoRow label="Started" value={container.started_at ? formatDateTime(container.started_at, tz) : "Not running"} />
+          {container.health_status && <InfoRow label="Health" value={<HealthBadge status={container.health_status} />} />}
+          <InfoRow label="Restart policy" value={restartPolicyLabel(container.restart_policy)} />
+          {!isRunning && container.exit_code !== null && <InfoRow label="Exit code" value={container.exit_code} />}
+          {!isRunning && container.finished_at && <InfoRow label="Finished" value={formatDateTime(container.finished_at, tz)} />}
+          {container.oom_killed && <InfoRow label="OOM killed" value="Yes" />}
+          {container.container_error && <InfoRow label="Error" value={container.container_error} />}
           <InfoRow label="Last seen" value={formatDateTime(container.last_seen, tz)} />
           <InfoRow label="Restarts" value={container.restart_count} />
         </DetailSection>
@@ -1234,6 +1267,7 @@ export default function ContainerDetail() {
           <InfoRow label="Image" value={imageInfo.repo} />
           <InfoRow label="Tag" value={imageInfo.tag} />
           <InfoRow label="Image size" value={container.image_size !== null ? formatBytes(container.image_size) : "Unknown"} />
+          <InfoRow label="Last pulled" value={container.last_pulled ? formatDateTime(container.last_pulled, tz) : "Unknown"} />
           <InfoRow
             label="Update check"
             value={

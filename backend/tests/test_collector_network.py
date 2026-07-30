@@ -65,6 +65,12 @@ def _container_data(started_at: str, rx: int, tx: int) -> dict:
         "started_at": started_at,
         "net_rx_bytes": rx,
         "net_tx_bytes": tx,
+        "health_status": "healthy",
+        "restart_policy": "unless-stopped",
+        "exit_code": 0,
+        "oom_killed": False,
+        "finished_at": "2026-06-28T10:00:00Z",
+        "container_error": None,
     }
 
 
@@ -180,3 +186,32 @@ def test_apply_batch_ignores_stale_snapshot_for_previous_docker_id(collector_eng
     assert containers[0].previous_docker_id == "docker-old"
     assert len(events) == 1
     assert events[0].details == "Container recreated: docker-old -> docker-new"
+
+
+def test_apply_batch_persists_operational_metadata(collector_engine):
+    stopped = _container_data(
+        started_at="2026-06-28T10:00:00Z",
+        rx=0,
+        tx=0,
+    )
+    stopped.update({
+        "status": "exited",
+        "state": "exited",
+        "health_status": None,
+        "restart_policy": "on-failure:3",
+        "exit_code": 137,
+        "oom_killed": True,
+        "finished_at": "2026-06-28T11:30:00Z",
+        "container_error": "out of memory",
+    })
+
+    collector._apply_batch([stopped])
+
+    with Session(collector_engine) as session:
+        container = session.exec(select(Container)).one()
+
+    assert container.restart_policy == "on-failure:3"
+    assert container.exit_code == 137
+    assert container.oom_killed is True
+    assert container.finished_at == datetime(2026, 6, 28, 11, 30, 0)
+    assert container.container_error == "out of memory"
