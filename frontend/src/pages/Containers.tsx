@@ -1,8 +1,9 @@
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   FiArrowUp,
   FiBox,
+  FiChevronDown,
   FiChevronRight,
   FiExternalLink,
   FiFilter,
@@ -165,20 +166,39 @@ function ContainerMobileRow({ container }: { container: Container }) {
 }
 
 function ContainerTable({ containers, checkingId, onCheckUpdates }: { containers: Container[]; checkingId: string | null; onCheckUpdates: (container: Container) => void }) {
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+
+  function toggleExpanded(dockerId: string) {
+    setExpandedIds((current) => {
+      const next = new Set(current);
+      if (next.has(dockerId)) {
+        next.delete(dockerId);
+      } else {
+        next.add(dockerId);
+      }
+      return next;
+    });
+  }
+
   return (
     <div className="hidden overflow-hidden rounded-lg border border-border bg-surface-1 lg:block">
-      <div className="overflow-x-auto">
-        <table className="min-w-[1120px] w-full text-left text-sm">
+      <div className="overflow-hidden">
+        <table className="w-full table-fixed text-left text-sm">
+          <colgroup>
+            <col className="w-[24%]" />
+            <col className="w-[14%]" />
+            <col className="w-[18%]" />
+            <col className="w-[22%]" />
+            <col className="w-[14%]" />
+            <col className="w-[8%]" />
+          </colgroup>
           <thead className="border-b border-border bg-surface-2 text-xs uppercase text-slate-500">
             <tr>
               <th className="px-4 py-3 font-medium">Container</th>
               <th className="px-4 py-3 font-medium">Status</th>
-              <th className="px-4 py-3 font-medium">CPU</th>
-              <th className="px-4 py-3 font-medium">Memory</th>
+              <th className="px-4 py-3 font-medium">Resources</th>
               <th className="px-4 py-3 font-medium">Image</th>
               <th className="px-4 py-3 font-medium">Source</th>
-              <th className="px-4 py-3 font-medium">Ports</th>
-              <th className="px-4 py-3 font-medium">Uptime</th>
               <th className="px-4 py-3 text-right font-medium">Actions</th>
             </tr>
           </thead>
@@ -186,88 +206,126 @@ function ContainerTable({ containers, checkingId, onCheckUpdates }: { containers
             {containers.map((container) => {
               const memPct = memoryPercent(container);
               const isChecking = checkingId === container.docker_id;
+              const isExpanded = expandedIds.has(container.docker_id);
 
               return (
-                <tr key={container.docker_id} className="transition-colors hover:bg-surface-2/70">
-                  <td className="px-4 py-3">
-                    <div className="min-w-0">
-                      <Link to={`/containers/${container.docker_id}`} className="font-medium text-slate-100 hover:text-accent">
-                        {container.name}
-                      </Link>
-                      <p className="mt-1 font-mono text-xs text-slate-600">{container.short_id}</p>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex flex-col items-start gap-1.5">
-                      <StatusBadge state={container.state} />
-                      {container.update_available && (
-                        <span className="inline-flex items-center gap-1 rounded border border-blue-500/30 bg-blue-500/10 px-1.5 py-0.5 text-xs font-medium text-blue-300">
-                          <FiArrowUp className="h-3 w-3" />
-                          Update
-                        </span>
-                      )}
-                    </div>
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="w-24 space-y-1.5">
-                      <p className="font-mono text-xs text-slate-200">{container.cpu_percent.toFixed(1)}%</p>
-                      <ResourceBar value={container.cpu_percent} tone={container.cpu_percent > 75 ? "amber" : "accent"} />
-                    </div>
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="w-32 space-y-1.5">
-                      <p className="font-mono text-xs text-slate-200">
-                        {container.mem_limit > 0
-                          ? `${formatBytes(container.mem_usage)} / ${formatBytes(container.mem_limit)}`
-                          : formatBytes(container.mem_usage)}
-                      </p>
-                      <ResourceBar value={memPct} tone={memPct > 80 ? "amber" : "emerald"} />
-                    </div>
-                  </td>
-                  <td className="px-4 py-3">
-                    <p className="max-w-64 truncate font-mono text-xs text-slate-300" title={container.image}>{container.image}</p>
-                    {container.image_size !== null && (
-                      <p className="mt-1 text-xs text-slate-600">{formatBytes(container.image_size)}</p>
-                    )}
-                  </td>
-                  <td className="px-4 py-3">
-                    <p className="max-w-44 truncate text-xs text-slate-300" title={sourceLabel(container)}>{sourceLabel(container)}</p>
-                    {container.networks.length > 0 && (
-                      <p className="mt-1 max-w-44 truncate text-xs text-slate-600" title={container.networks.join(", ")}>{container.networks.join(", ")}</p>
-                    )}
-                  </td>
-                  <td className="px-4 py-3">
-                    <p className="max-w-36 truncate text-xs text-slate-300" title={container.ports.join(", ")}>{portSummary(container.ports)}</p>
-                  </td>
-                  <td className="px-4 py-3">
-                    <p className="text-xs text-slate-300">
-                      {container.started_at && container.state === "running" ? formatUptime(container.started_at) : "-"}
-                    </p>
-                    <p className="mt-1 text-xs text-slate-600">{container.restart_count} restart{container.restart_count === 1 ? "" : "s"}</p>
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex justify-end gap-1.5">
-                      <button
-                        type="button"
-                        onClick={() => onCheckUpdates(container)}
-                        disabled={isChecking}
-                        aria-label={`Check ${container.name} for updates`}
-                        title="Check for updates"
-                        className="rounded-lg border border-border bg-surface-2 p-2 text-slate-400 transition-colors hover:border-accent/40 hover:text-accent disabled:cursor-wait disabled:opacity-60"
-                      >
-                        <FiRefreshCw className={`h-4 w-4 ${isChecking ? "animate-spin" : ""}`} />
-                      </button>
-                      <Link
-                        to={`/containers/${container.docker_id}`}
-                        aria-label={`Open ${container.name} detail`}
-                        title="Open detail"
-                        className="rounded-lg border border-border bg-surface-2 p-2 text-slate-400 transition-colors hover:border-accent/40 hover:text-accent"
-                      >
-                        <FiExternalLink className="h-4 w-4" />
-                      </Link>
-                    </div>
-                  </td>
-                </tr>
+                <Fragment key={container.docker_id}>
+                  <tr className="transition-colors hover:bg-surface-2/70">
+                    <td className="px-4 py-3">
+                      <div className="flex min-w-0 items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => toggleExpanded(container.docker_id)}
+                          aria-expanded={isExpanded}
+                          aria-label={`${isExpanded ? "Collapse" : "Expand"} ${container.name}`}
+                          title={isExpanded ? "Collapse row" : "Expand row"}
+                          className="shrink-0 rounded-md border border-border bg-surface-2 p-1 text-slate-500 transition-colors hover:border-accent/40 hover:text-accent"
+                        >
+                          <FiChevronDown className={`h-3.5 w-3.5 transition-transform ${isExpanded ? "rotate-180" : ""}`} />
+                        </button>
+                        <div className="min-w-0">
+                          <Link to={`/containers/${container.docker_id}`} className="block truncate font-medium text-slate-100 hover:text-accent">
+                            {container.name}
+                          </Link>
+                          <p className="mt-1 truncate font-mono text-xs text-slate-600">{container.short_id}</p>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex flex-col items-start gap-1.5">
+                        <StatusBadge state={container.state} />
+                        {container.update_available && (
+                          <span className="inline-flex items-center gap-1 rounded border border-blue-500/30 bg-blue-500/10 px-1.5 py-0.5 text-xs font-medium text-blue-300">
+                            <FiArrowUp className="h-3 w-3" />
+                            Update
+                          </span>
+                        )}
+                      </div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="space-y-2">
+                        <div className="grid grid-cols-[3rem_minmax(0,1fr)] items-center gap-2">
+                          <span className="font-mono text-xs text-slate-200">{container.cpu_percent.toFixed(1)}%</span>
+                          <ResourceBar value={container.cpu_percent} tone={container.cpu_percent > 75 ? "amber" : "accent"} />
+                        </div>
+                        <div className="grid grid-cols-[3rem_minmax(0,1fr)] items-center gap-2">
+                          <span className="font-mono text-xs text-slate-200">{memPct.toFixed(0)}%</span>
+                          <ResourceBar value={memPct} tone={memPct > 80 ? "amber" : "emerald"} />
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <p className="truncate font-mono text-xs text-slate-300" title={container.image}>{container.image}</p>
+                    </td>
+                    <td className="px-4 py-3">
+                      <p className="truncate text-xs text-slate-300" title={sourceLabel(container)}>{sourceLabel(container)}</p>
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex justify-end gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => onCheckUpdates(container)}
+                          disabled={isChecking}
+                          aria-label={`Check ${container.name} for updates`}
+                          title="Check for updates"
+                          className="rounded-lg border border-border bg-surface-2 p-2 text-slate-400 transition-colors hover:border-accent/40 hover:text-accent disabled:cursor-wait disabled:opacity-60"
+                        >
+                          <FiRefreshCw className={`h-4 w-4 ${isChecking ? "animate-spin" : ""}`} />
+                        </button>
+                        <Link
+                          to={`/containers/${container.docker_id}`}
+                          aria-label={`Open ${container.name} detail`}
+                          title="Open detail"
+                          className="rounded-lg border border-border bg-surface-2 p-2 text-slate-400 transition-colors hover:border-accent/40 hover:text-accent"
+                        >
+                          <FiExternalLink className="h-4 w-4" />
+                        </Link>
+                      </div>
+                    </td>
+                  </tr>
+                  {isExpanded && (
+                    <tr className="bg-surface-0/45">
+                      <td colSpan={6} className="px-4 pb-4">
+                        <div className="grid gap-3 rounded-lg border border-border bg-surface-1/70 p-3 text-xs sm:grid-cols-2 xl:grid-cols-4">
+                          <div className="min-w-0">
+                            <p className="uppercase text-slate-600">Ports</p>
+                            <p className="mt-1 truncate text-slate-300" title={container.ports.join(", ")}>{portSummary(container.ports)}</p>
+                          </div>
+                          <div className="min-w-0">
+                            <p className="uppercase text-slate-600">Networks</p>
+                            <p className="mt-1 truncate text-slate-300" title={container.networks.join(", ")}>{container.networks.length > 0 ? container.networks.join(", ") : "None"}</p>
+                          </div>
+                          <div className="min-w-0">
+                            <p className="uppercase text-slate-600">Memory</p>
+                            <p className="mt-1 truncate font-mono text-slate-300">
+                              {container.mem_limit > 0
+                                ? `${formatBytes(container.mem_usage)} / ${formatBytes(container.mem_limit)}`
+                                : formatBytes(container.mem_usage)}
+                            </p>
+                          </div>
+                          <div className="min-w-0">
+                            <p className="uppercase text-slate-600">Uptime</p>
+                            <p className="mt-1 truncate text-slate-300">
+                              {container.started_at && container.state === "running" ? formatUptime(container.started_at) : container.status}
+                            </p>
+                          </div>
+                          <div className="min-w-0">
+                            <p className="uppercase text-slate-600">Restarts</p>
+                            <p className="mt-1 text-slate-300">{container.restart_count}</p>
+                          </div>
+                          <div className="min-w-0">
+                            <p className="uppercase text-slate-600">Image Size</p>
+                            <p className="mt-1 text-slate-300">{container.image_size !== null ? formatBytes(container.image_size) : "Unknown"}</p>
+                          </div>
+                          <div className="min-w-0 sm:col-span-2">
+                            <p className="uppercase text-slate-600">Status</p>
+                            <p className="mt-1 truncate text-slate-300" title={container.status}>{container.status}</p>
+                          </div>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
               );
             })}
           </tbody>
