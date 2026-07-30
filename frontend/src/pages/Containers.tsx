@@ -122,11 +122,14 @@ function EmptyState({ search }: { search: string }) {
 
 function ContainerMobileRow({ container }: { container: Container }) {
   const memPct = memoryPercent(container);
+  const isStopped = container.state !== "running";
 
   return (
     <Link
       to={`/containers/${container.docker_id}`}
-      className="block rounded-lg border border-border bg-surface-1 p-4 transition-colors hover:border-accent/50 hover:bg-surface-2"
+      className={`block rounded-lg border border-border bg-surface-1 p-4 transition-[border-color,background-color,opacity] hover:border-accent/50 hover:bg-surface-2 ${
+        isStopped ? "opacity-60 hover:opacity-80" : ""
+      }`}
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
@@ -215,6 +218,7 @@ function ContainerTable({ containers, checkingId, onCheckUpdates }: { containers
               const memPct = memoryPercent(container);
               const isChecking = checkingId === container.docker_id;
               const isExpanded = expandedIds.has(container.docker_id);
+              const isStopped = container.state !== "running";
               const uptimeLabel = container.started_at && container.state === "running"
                 ? formatUptime(container.started_at)
                 : "-";
@@ -222,7 +226,11 @@ function ContainerTable({ containers, checkingId, onCheckUpdates }: { containers
               return (
                 <Fragment key={container.docker_id}>
                   <tr
-                    className="cursor-pointer transition-colors hover:bg-surface-2/70"
+                    className={`cursor-pointer transition-[background-color,opacity] ${
+                      isStopped
+                        ? "bg-surface-0/35 opacity-55 hover:bg-surface-1/80 hover:opacity-75"
+                        : "hover:bg-surface-2/70"
+                    }`}
                     onClick={() => toggleExpanded(container.docker_id)}
                     onKeyDown={(event) => onRowKeyDown(event, container.docker_id)}
                     tabIndex={0}
@@ -310,7 +318,7 @@ function ContainerTable({ containers, checkingId, onCheckUpdates }: { containers
                     </td>
                   </tr>
                   {isExpanded && (
-                    <tr className="bg-surface-0/45">
+                    <tr className={isStopped ? "bg-surface-0/25 opacity-70" : "bg-surface-0/45"}>
                       <td colSpan={6} className="px-5 pb-5 pt-3">
                         <div className="grid gap-x-6 gap-y-4 rounded-lg border border-border bg-surface-1/70 p-4 text-xs sm:grid-cols-2 xl:grid-cols-4">
                           <div className="min-w-0">
