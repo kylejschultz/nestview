@@ -149,8 +149,8 @@ function ContainerMobileRow({ container }: { container: Container }) {
           <p className="mt-1 font-mono text-slate-200">{memPct.toFixed(0)}%</p>
         </div>
         <div>
-          <p className="text-slate-500">Source</p>
-          <p className="mt-1 truncate text-slate-200">{sourceLabel(container)}</p>
+          <p className="text-slate-500">Uptime</p>
+          <p className="mt-1 truncate text-slate-200">{container.started_at && container.state === "running" ? formatUptime(container.started_at) : "-"}</p>
         </div>
         <div>
           <p className="text-slate-500">Ports</p>
@@ -159,7 +159,7 @@ function ContainerMobileRow({ container }: { container: Container }) {
       </div>
 
       <div className="mt-4 flex items-center justify-between gap-3 border-t border-border pt-3 text-xs text-slate-500">
-        <span>{container.started_at && container.state === "running" ? `Up ${formatUptime(container.started_at)}` : container.status}</span>
+        <span className="truncate">{container.status}</span>
         <span className="inline-flex items-center gap-1 text-accent">
           Detail
           <FiChevronRight className="h-3.5 w-3.5" />
