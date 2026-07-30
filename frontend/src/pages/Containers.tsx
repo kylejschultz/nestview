@@ -345,10 +345,6 @@ function ContainerTable({ containers, checkingId, onCheckUpdates }: { containers
                             <p className="uppercase text-slate-600">Status</p>
                             <p className="mt-1 truncate text-slate-300" title={container.status}>{container.status}</p>
                           </div>
-                          <div className="min-w-0">
-                            <p className="uppercase text-slate-600">Uptime</p>
-                            <p className="mt-1 truncate text-slate-300">{uptimeLabel}</p>
-                          </div>
                         </div>
                       </td>
                     </tr>
