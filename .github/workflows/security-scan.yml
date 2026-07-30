@@ -79,6 +79,7 @@ jobs:
           image-ref: nestview:security-scan
           format: table
           ignore-unfixed: true
+          cache: false
           severity: HIGH,CRITICAL
           vuln-type: os,library
           exit-code: "1"
