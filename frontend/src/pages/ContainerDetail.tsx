@@ -981,7 +981,7 @@ function MemChart({ data }: { data: MetricsHistoryPoint[] }) {
 
 function InfoRow({ label, value }: { label: string; value: React.ReactNode }) {
   return (
-    <div className="grid gap-1 border-b border-border py-2.5 last:border-0 sm:grid-cols-[8rem_minmax(0,1fr)] sm:gap-3">
+    <div className="grid gap-1 border-b border-border py-2 last:border-0 sm:grid-cols-[7rem_minmax(0,1fr)] sm:gap-3 xl:grid-cols-1 2xl:grid-cols-[6.5rem_minmax(0,1fr)]">
       <span className="text-xs uppercase text-slate-600 sm:text-sm sm:normal-case sm:text-slate-500">{label}</span>
       <span className="min-w-0 break-words font-mono text-sm text-slate-200">{value}</span>
     </div>
@@ -1067,6 +1067,32 @@ function latestNetworkTotal(container: Container) {
   return rx > 0 || tx > 0 ? `${formatBytes(rx)} in / ${formatBytes(tx)} out` : "No traffic";
 }
 
+function AttentionBand({ container }: { container: Container }) {
+  const items = [
+    container.state !== "running" ? `Container is currently ${container.state}.` : null,
+    container.update_available ? "A newer image is available." : null,
+    container.restart_count > 0
+      ? `${container.restart_count} restart${container.restart_count === 1 ? "" : "s"} recorded.`
+      : null,
+  ].filter(Boolean);
+
+  if (items.length === 0) return null;
+
+  return (
+    <section className="rounded-lg border border-yellow-500/30 bg-yellow-500/10 px-4 py-3">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-yellow-100/80">
+        <span className="inline-flex items-center gap-2 font-medium text-yellow-300">
+          <FiAlertTriangle className="h-4 w-4" />
+          Attention
+        </span>
+        {items.map((item) => (
+          <span key={item} className="min-w-0">{item}</span>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function ContainerDetail() {
@@ -1127,7 +1153,6 @@ export default function ContainerDetail() {
   const isRunning = container.state === "running";
   const uptimeLabel = container.started_at && isRunning ? formatUptime(container.started_at) : "-";
   const memoryPercent = container.mem_limit > 0 ? (container.mem_usage / container.mem_limit) * 100 : 0;
-  const hasAttention = container.state !== "running" || container.update_available || container.restart_count > 0;
 
   return (
     <div className="space-y-6">
@@ -1189,69 +1214,56 @@ export default function ContainerDetail() {
         <StatTile label="Network" value={latestNetworkTotal(container)} subtext={container.networks.length > 0 ? container.networks.join(", ") : "no networks"} icon={<FiWifi className="h-4 w-4" />} />
       </section>
 
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,2fr)_minmax(20rem,1fr)]">
-        <div className="grid gap-4 lg:grid-cols-2">
-          <DetailSection title="Runtime" icon={<FiActivity className="h-4 w-4" />}>
-            <InfoRow label="State" value={<StatusBadge state={container.state} />} />
-            <InfoRow label="Status" value={container.status} />
-            <InfoRow label="Created" value={container.created_at ? formatDateTime(container.created_at, tz) : "Unknown"} />
-            <InfoRow label="Started" value={container.started_at ? formatDateTime(container.started_at, tz) : "Not running"} />
-            <InfoRow label="Last seen" value={formatDateTime(container.last_seen, tz)} />
-            <InfoRow label="Restarts" value={container.restart_count} />
-          </DetailSection>
+      <AttentionBand container={container} />
 
-          <DetailSection title="Source" icon={<FiBox className="h-4 w-4" />}>
-            <InfoRow label="Container ID" value={container.short_id} />
-            <InfoRow label="Source" value={sourceLabel(container)} />
-            {container.compose_project && <InfoRow label="Project" value={container.compose_project} />}
-            {container.compose_service && <InfoRow label="Service" value={container.compose_service} />}
-            <InfoRow label="Image" value={imageInfo.repo} />
-            <InfoRow label="Tag" value={imageInfo.tag} />
-            <InfoRow label="Image size" value={container.image_size !== null ? formatBytes(container.image_size) : "Unknown"} />
-            <InfoRow
-              label="Update check"
-              value={
-                <span className="flex flex-wrap items-center gap-2">
-                  <span>{container.last_digest_check ? formatDateTime(container.last_digest_check, tz) : "Never checked"}</span>
-                  {container.update_available && (
-                    <span className="inline-flex items-center gap-1 rounded border border-blue-500/30 bg-blue-500/10 px-1.5 py-0.5 text-xs font-medium text-blue-300">
-                      <FiArrowUp className="h-3 w-3" />
-                      Update available
-                    </span>
-                  )}
-                </span>
-              }
-            />
-          </DetailSection>
+      <section className="grid items-start gap-4 lg:grid-cols-2 2xl:grid-cols-4">
+        <DetailSection title="Runtime" icon={<FiActivity className="h-4 w-4" />}>
+          <InfoRow label="State" value={<StatusBadge state={container.state} />} />
+          <InfoRow label="Status" value={container.status} />
+          <InfoRow label="Created" value={container.created_at ? formatDateTime(container.created_at, tz) : "Unknown"} />
+          <InfoRow label="Started" value={container.started_at ? formatDateTime(container.started_at, tz) : "Not running"} />
+          <InfoRow label="Last seen" value={formatDateTime(container.last_seen, tz)} />
+          <InfoRow label="Restarts" value={container.restart_count} />
+        </DetailSection>
 
-          <DetailSection title="Connectivity" icon={<FiWifi className="h-4 w-4" />}>
-            <InfoRow label="Ports" value={<PillList items={container.ports} />} />
-            <InfoRow label="Networks" value={<PillList items={container.networks} />} />
-            <InfoRow label="Traffic" value={latestNetworkTotal(container)} />
-          </DetailSection>
+        <DetailSection title="Source" icon={<FiBox className="h-4 w-4" />}>
+          <InfoRow label="Container ID" value={container.short_id} />
+          <InfoRow label="Source" value={sourceLabel(container)} />
+          {container.compose_project && <InfoRow label="Project" value={container.compose_project} />}
+          {container.compose_service && <InfoRow label="Service" value={container.compose_service} />}
+          <InfoRow label="Image" value={imageInfo.repo} />
+          <InfoRow label="Tag" value={imageInfo.tag} />
+          <InfoRow label="Image size" value={container.image_size !== null ? formatBytes(container.image_size) : "Unknown"} />
+          <InfoRow
+            label="Update check"
+            value={
+              <span className="flex flex-wrap items-center gap-2">
+                <span>{container.last_digest_check ? formatDateTime(container.last_digest_check, tz) : "Never checked"}</span>
+                {container.update_available && (
+                  <span className="inline-flex items-center gap-1 rounded border border-blue-500/30 bg-blue-500/10 px-1.5 py-0.5 text-xs font-medium text-blue-300">
+                    <FiArrowUp className="h-3 w-3" />
+                    Update available
+                  </span>
+                )}
+              </span>
+            }
+          />
+        </DetailSection>
 
-          <DetailSection title="Storage" icon={<FiHardDrive className="h-4 w-4" />}>
-            <InfoRow label="Volumes" value={<PillList items={container.volumes} empty="No volumes reported" />} />
-          </DetailSection>
-        </div>
+        <DetailSection title="Connectivity" icon={<FiWifi className="h-4 w-4" />}>
+          <InfoRow label="Ports" value={<PillList items={container.ports} />} />
+          <InfoRow label="Networks" value={<PillList items={container.networks} />} />
+          <InfoRow label="Traffic" value={latestNetworkTotal(container)} />
+        </DetailSection>
 
-        <aside className="space-y-4">
-          {hasAttention && (
-            <section className="rounded-lg border border-yellow-500/30 bg-yellow-500/10 px-4 py-3">
-              <h2 className="flex items-center gap-2 text-sm font-medium text-yellow-300">
-                <FiAlertTriangle className="h-4 w-4" />
-                Attention
-              </h2>
-              <div className="mt-3 space-y-2 text-sm text-yellow-100/80">
-                {container.state !== "running" && <p>Container is currently {container.state}.</p>}
-                {container.update_available && <p>A newer image is available.</p>}
-                {container.restart_count > 0 && <p>{container.restart_count} restart{container.restart_count === 1 ? "" : "s"} recorded.</p>}
-              </div>
-            </section>
-          )}
-          <EventTimeline dockerId={container.docker_id} showHeader showContainerName={false} />
-        </aside>
-      </div>
+        <DetailSection title="Storage" icon={<FiHardDrive className="h-4 w-4" />}>
+          <InfoRow label="Volumes" value={<PillList items={container.volumes} empty="No volumes reported" />} />
+        </DetailSection>
+      </section>
+
+      <section>
+        <EventTimeline dockerId={container.docker_id} showHeader showContainerName={false} />
+      </section>
 
       <section className="grid grid-cols-1 gap-6 md:grid-cols-3">
         <div className="card">
