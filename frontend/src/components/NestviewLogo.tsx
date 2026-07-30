@@ -1,6 +1,15 @@
-export default function NestviewLogo() {
+interface NestviewLogoProps {
+  compact?: boolean;
+}
+
+export default function NestviewLogo({ compact = false }: NestviewLogoProps) {
   return (
-    <svg viewBox="0 0 580 120" xmlns="http://www.w3.org/2000/svg" height="32" style={{ display: "block" }}>
+    <svg
+      viewBox={compact ? "0 0 120 120" : "0 0 580 120"}
+      xmlns="http://www.w3.org/2000/svg"
+      height="32"
+      style={{ display: "block" }}
+    >
       <g transform="translate(60, 60) scale(0.43)">
         <g fill="none">
           <circle cx="0" cy="0" r="158" stroke="#252a3a" strokeWidth="20" />
@@ -10,10 +19,12 @@ export default function NestviewLogo() {
         </g>
         <circle cx="0" cy="0" r="22" fill="#6366f1" />
       </g>
-      <text y="84" fontFamily="Helvetica Neue,Helvetica,Arial,sans-serif" fontSize="76" letterSpacing="-2">
-        <tspan x="140" fontWeight="300" fill="#e2e8f0">nest</tspan>
-        <tspan fontWeight="700" fill="#6366f1">view</tspan>
-      </text>
+      {!compact && (
+        <text y="84" fontFamily="Helvetica Neue,Helvetica,Arial,sans-serif" fontSize="76" letterSpacing="-2">
+          <tspan x="140" fontWeight="300" fill="#e2e8f0">nest</tspan>
+          <tspan fontWeight="700" fill="#6366f1">view</tspan>
+        </text>
+      )}
     </svg>
   );
 }

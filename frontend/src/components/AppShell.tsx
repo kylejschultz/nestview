@@ -1,10 +1,12 @@
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Link, NavLink, useLocation } from "../router";
 import { useQuery } from "@tanstack/react-query";
 import {
   FiActivity,
   FiBell,
   FiBox,
+  FiChevronLeft,
+  FiChevronRight,
   FiCpu,
   FiGrid,
   FiLayers,
@@ -23,6 +25,8 @@ interface AppShellProps {
   onLogout?: () => void;
   authMode?: string;
 }
+
+const SIDEBAR_COLLAPSED_KEY = "nestview.sidebarCollapsed";
 
 const NAV_ITEMS = [
   { to: "/dashboard", label: "Dashboard", icon: FiGrid },
@@ -52,6 +56,11 @@ function FleetStatus({ running, total }: { running: number; total: number }) {
 export default function AppShell({ children, onLogout, authMode }: AppShellProps) {
   const location = useLocation();
   const { isAuthenticated } = useAuth();
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "true");
+
+  useEffect(() => {
+    localStorage.setItem(SIDEBAR_COLLAPSED_KEY, String(sidebarCollapsed));
+  }, [sidebarCollapsed]);
 
   const { data: containers = [] } = useQuery<Container[]>({
     queryKey: ["containers"],
@@ -74,37 +83,69 @@ export default function AppShell({ children, onLogout, authMode }: AppShellProps
 
   return (
     <div className="min-h-screen bg-surface-0 text-slate-200 lg:flex">
-      <aside className="border-b border-border bg-surface-1/95 lg:sticky lg:top-0 lg:h-screen lg:w-64 lg:border-b-0 lg:border-r">
+      <aside
+        className={`border-b border-border bg-surface-1/95 transition-[width] duration-200 lg:sticky lg:top-0 lg:h-screen lg:border-b-0 lg:border-r ${
+          sidebarCollapsed ? "lg:w-20" : "lg:w-64"
+        }`}
+      >
         <div className="flex h-full flex-col">
-          <div className="flex h-16 items-center border-b border-border px-4">
-            <Link to="/dashboard" aria-label="Dashboard">
-              <NestviewLogo />
+          <div
+            className={`flex h-16 items-center border-b border-border px-4 ${
+              sidebarCollapsed ? "lg:h-24 lg:flex-col lg:justify-center lg:gap-2 lg:px-3" : "justify-between"
+            }`}
+          >
+            <Link
+              to="/dashboard"
+              aria-label="Dashboard"
+              className={`min-w-0 overflow-hidden transition-[width] duration-200 ${
+                sidebarCollapsed ? "lg:w-8" : "w-36"
+              }`}
+            >
+              <NestviewLogo compact={sidebarCollapsed} />
             </Link>
+            <button
+              type="button"
+              onClick={() => setSidebarCollapsed((collapsed) => !collapsed)}
+              aria-label={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+              title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+              className="hidden rounded-lg border border-border bg-surface-2 p-2 text-slate-400 transition-colors hover:border-slate-600 hover:text-slate-100 lg:inline-flex"
+            >
+              {sidebarCollapsed ? <FiChevronRight className="h-4 w-4" /> : <FiChevronLeft className="h-4 w-4" />}
+            </button>
           </div>
 
-          <nav className="flex gap-1 overflow-x-auto px-3 py-3 lg:flex-col lg:overflow-visible">
+          <nav className={`flex gap-1 overflow-x-auto px-3 py-3 lg:flex-col lg:overflow-visible ${sidebarCollapsed ? "lg:items-center" : ""}`}>
             {NAV_ITEMS.map(({ to, label, icon: Icon }) => (
               <NavLink
                 key={to}
                 to={to}
+                title={sidebarCollapsed ? label : undefined}
+                aria-label={sidebarCollapsed ? label : undefined}
                 className={({ isActive }) =>
                   `flex shrink-0 items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors ${
+                    sidebarCollapsed ? "lg:h-11 lg:w-11 lg:justify-center lg:px-0" : ""
+                  } ${
                     isActive
                       ? "bg-accent text-white"
                       : "text-slate-400 hover:bg-surface-2 hover:text-slate-100"
                   }`
                 }
               >
-                <Icon className="h-4 w-4" />
-                <span>{label}</span>
+                <Icon className="h-4 w-4 shrink-0" />
+                <span className={sidebarCollapsed ? "lg:sr-only" : ""}>{label}</span>
               </NavLink>
             ))}
           </nav>
 
-          <div className="mt-auto hidden border-t border-border p-4 lg:block">
-            <div className="rounded-lg border border-border bg-surface-2 p-3">
+          <div className={`mt-auto hidden border-t border-border p-4 lg:block ${sidebarCollapsed ? "lg:px-3" : ""}`}>
+            <div
+              className={`rounded-lg border border-border bg-surface-2 p-3 ${
+                sidebarCollapsed ? "lg:flex lg:h-11 lg:items-center lg:justify-center lg:p-0" : ""
+              }`}
+              title={versionData ? `Build ${versionData.display_version}` : "Build loading"}
+            >
               <div className="flex items-center justify-between gap-3">
-                <div>
+                <div className={sidebarCollapsed ? "lg:sr-only" : ""}>
                   <p className="text-xs uppercase text-slate-500">Build</p>
                   <p className="mt-1 text-sm text-slate-200">
                     {versionData ? versionData.display_version : "Loading"}
