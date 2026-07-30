@@ -13,16 +13,17 @@ FROM python:3.14-slim
 ARG BUILD_CHANNEL
 ENV BUILD_CHANNEL=${BUILD_CHANNEL}
 
-ARG GIT_SHA=unknown
-ENV BUILD_SHA=${GIT_SHA}
-
-RUN pip install --no-cache-dir --upgrade pip "setuptools>=78.1.1"
-
 WORKDIR /app
 
 # Backend dependencies
 COPY backend/requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir --upgrade "setuptools>=78.1.1" \
+  && pip install --no-cache-dir -r requirements.txt \
+  && python -m pip uninstall -y pip \
+  && find /usr/local/lib/python3.14/site-packages -maxdepth 1 -name "pip*" -exec rm -rf {} +
+
+ARG GIT_SHA=unknown
+ENV BUILD_SHA=${GIT_SHA}
 
 # Backend source
 COPY backend/ .
