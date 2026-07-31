@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import Dashboard from "./pages/Dashboard";
+import Services from "./pages/Services";
 import Containers from "./pages/Containers";
 import ContainerDetail from "./pages/ContainerDetail";
 import PlaceholderPage from "./pages/PlaceholderPage";
@@ -128,7 +129,7 @@ export default function App() {
   function renderRoute() {
     if (location.pathname === "/") return <Redirect to="/dashboard" replace />;
     if (location.pathname === "/dashboard") return <Dashboard />;
-    if (location.pathname === "/services") return <PlaceholderPage page="Services" />;
+    if (location.pathname === "/services") return <Services />;
     if (location.pathname === "/containers") return <Containers />;
     if (location.pathname.startsWith("/containers/")) return <ContainerDetail />;
     if (location.pathname === "/hosts") return <PlaceholderPage page="Hosts" />;
