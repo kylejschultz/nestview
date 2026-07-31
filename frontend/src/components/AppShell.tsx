@@ -80,6 +80,12 @@ export default function AppShell({ children, onLogout, authMode }: AppShellProps
   const total = containers.length;
   const running = containers.filter((container) => container.state === "running").length;
   const activePage = NAV_ITEMS.find((item) => location.pathname === item.to || location.pathname.startsWith(`${item.to}/`));
+  const activeContainerId = location.pathname.match(/^\/containers\/([^/]+)$/)?.[1];
+  const activeContainer = activeContainerId
+    ? containers.find((container) => container.docker_id === decodeURIComponent(activeContainerId))
+    : undefined;
+  const headerEyebrow = activeContainerId ? "Containers" : "Nestview v2";
+  const headerTitle = activeContainerId ? (activeContainer?.name ?? "Container") : (activePage?.label ?? "Nestview");
 
   return (
     <div className="min-h-screen bg-surface-0 text-slate-200 lg:flex">
@@ -162,8 +168,8 @@ export default function AppShell({ children, onLogout, authMode }: AppShellProps
         <header className="sticky top-0 z-20 border-b border-border bg-surface-0/90 backdrop-blur">
           <div className="flex min-h-16 flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6">
             <div>
-              <p className="text-xs uppercase text-slate-500">Nestview v2</p>
-              <h1 className="text-lg font-semibold text-slate-100 sm:text-xl">{activePage?.label ?? "Nestview"}</h1>
+              <p className="text-xs uppercase text-slate-500">{headerEyebrow}</p>
+              <h1 className="max-w-[48vw] truncate text-lg font-semibold text-slate-100 sm:max-w-none sm:text-xl">{headerTitle}</h1>
             </div>
             <div className="flex items-center gap-2">
               <FleetStatus running={running} total={total} />
