@@ -16,9 +16,12 @@ import {
   FiArrowLeft,
   FiArrowUp,
   FiBox,
+  FiChevronDown,
+  FiChevronUp,
   FiClock,
   FiCpu,
   FiDatabase,
+  FiFileText,
   FiHardDrive,
   FiHeart,
   FiRefreshCw,
@@ -1020,6 +1023,42 @@ function StatTile({
   );
 }
 
+function CompactOverview({
+  container,
+  isRunning,
+  memoryPercent,
+  uptimeLabel,
+}: {
+  container: Container;
+  isRunning: boolean;
+  memoryPercent: number;
+  uptimeLabel: string;
+}) {
+  const items = [
+    { label: "CPU", value: `${container.cpu_percent.toFixed(2)}%` },
+    {
+      label: "Memory",
+      value: container.mem_limit > 0 ? `${memoryPercent.toFixed(0)}%` : formatBytes(container.mem_usage),
+    },
+    { label: "Uptime", value: isRunning ? uptimeLabel : "Not running" },
+    { label: "Restarts", value: String(container.restart_count) },
+    { label: "Network", value: latestNetworkTotal(container) },
+  ];
+
+  return (
+    <section className="rounded-lg border border-border bg-surface-1 px-4 py-3">
+      <div className="grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-5">
+        {items.map((item) => (
+          <div key={item.label} className="min-w-0">
+            <div className="text-xs uppercase text-slate-600">{item.label}</div>
+            <div className="mt-1 truncate font-mono font-semibold text-slate-200">{item.value}</div>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 function DetailSection({ title, icon, children }: { title: string; icon: React.ReactNode; children: React.ReactNode }) {
   return (
     <section className="rounded-lg border border-border bg-surface-1 px-4">
@@ -1141,6 +1180,8 @@ export default function ContainerDetail() {
   const tz = useTimezone();
   const { isAuthenticated } = useAuth();
   const [operationModalOpen, setOperationModalOpen] = useState(false);
+  const [overviewCollapsed, setOverviewCollapsed] = useState(false);
+  const logsRef = useRef<HTMLElement | null>(null);
 
   const { data: container, isLoading, isError } = useQuery<Container>({
     queryKey: ["container", id],
@@ -1195,6 +1236,10 @@ export default function ContainerDetail() {
   const uptimeLabel = container.started_at && isRunning ? formatUptime(container.started_at) : "-";
   const memoryPercent = container.mem_limit > 0 ? (container.mem_usage / container.mem_limit) * 100 : 0;
 
+  function scrollToLogs() {
+    logsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
   return (
     <div className="space-y-6">
       <section className="rounded-lg border border-border bg-surface-1">
@@ -1231,149 +1276,181 @@ export default function ContainerDetail() {
 
           <div className="xl:max-w-[38rem]">
             <ActionButtons container={container} onModalOpenChange={setOperationModalOpen} />
+            <div className="mt-3 flex flex-wrap justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setOverviewCollapsed((collapsed) => !collapsed)}
+                className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm text-slate-400 transition-colors hover:border-slate-500 hover:text-slate-200"
+              >
+                {overviewCollapsed ? <FiChevronDown className="h-4 w-4" /> : <FiChevronUp className="h-4 w-4" />}
+                {overviewCollapsed ? "Expand overview" : "Collapse overview"}
+              </button>
+              <button
+                type="button"
+                onClick={scrollToLogs}
+                className="inline-flex items-center gap-2 rounded-lg border border-blue-400/60 px-3 py-2 text-sm text-blue-300 transition-colors hover:border-blue-300 hover:bg-blue-500/10 hover:text-blue-200"
+              >
+                <FiFileText className="h-4 w-4" />
+                Logs
+              </button>
+            </div>
           </div>
         </div>
       </section>
 
-      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-        <StatTile label="CPU" value={`${container.cpu_percent.toFixed(2)}%`} subtext={isRunning ? "current usage" : "not running"} icon={<FiCpu className="h-4 w-4" />} />
-        <StatTile
-          label="Memory"
-          value={
-            container.mem_limit > 0
-              ? `${memoryPercent.toFixed(0)}%`
-              : formatBytes(container.mem_usage)
-          }
-          subtext={
-            container.mem_limit > 0
-              ? `${formatBytes(container.mem_usage)} / ${formatBytes(container.mem_limit)}`
-              : "limit unknown"
-          }
-          icon={<FiDatabase className="h-4 w-4" />}
-        />
-        <StatTile label="Uptime" value={uptimeLabel} subtext={container.started_at ? `Started ${formatDateTime(container.started_at, tz)}` : "not started"} icon={<FiClock className="h-4 w-4" />} />
-        <StatTile label="Restarts" value={container.restart_count} subtext={container.restart_count === 1 ? "recorded restart" : "recorded restarts"} icon={<FiRefreshCw className="h-4 w-4" />} highlight={container.restart_count > 0} />
-        <StatTile label="Network" value={<NetworkStatValue container={container} />} subtext={container.networks.length > 0 ? container.networks.join(", ") : "no networks"} icon={<FiWifi className="h-4 w-4" />} wrapValue />
-      </section>
-
-      <AttentionBand container={container} />
-
-      <section className="grid items-start gap-4 lg:grid-cols-2 2xl:grid-cols-4">
-        <DetailSection title="Runtime" icon={<FiActivity className="h-4 w-4" />}>
-          <InfoRow label="State" value={<StatusBadge state={container.state} />} />
-          <InfoRow label="Status" value={container.status} />
-          <InfoRow label="Created" value={container.created_at ? formatDateTime(container.created_at, tz) : "Unknown"} />
-          <InfoRow label="Started" value={container.started_at ? formatDateTime(container.started_at, tz) : "Not running"} />
-          {container.health_status && <InfoRow label="Health" value={<HealthBadge status={container.health_status} />} />}
-          <InfoRow label="Restart policy" value={restartPolicyLabel(container.restart_policy)} />
-          {!isRunning && container.exit_code !== null && <InfoRow label="Exit code" value={container.exit_code} />}
-          {!isRunning && container.finished_at && <InfoRow label="Finished" value={formatDateTime(container.finished_at, tz)} />}
-          {container.oom_killed && <InfoRow label="OOM killed" value="Yes" />}
-          {container.container_error && <InfoRow label="Error" value={container.container_error} />}
-          <InfoRow label="Last seen" value={formatDateTime(container.last_seen, tz)} />
-          <InfoRow label="Restarts" value={container.restart_count} />
-        </DetailSection>
-
-        <DetailSection title="Source" icon={<FiBox className="h-4 w-4" />}>
-          <InfoRow label="Container ID" value={container.short_id} />
-          <InfoRow label="Source" value={sourceLabel(container)} />
-          {container.compose_project && <InfoRow label="Project" value={container.compose_project} />}
-          {container.compose_service && <InfoRow label="Service" value={container.compose_service} />}
-          <InfoRow label="Image" value={imageInfo.repo} />
-          <InfoRow label="Tag" value={imageInfo.tag} />
-          <InfoRow label="Image size" value={container.image_size !== null ? formatBytes(container.image_size) : "Unknown"} />
-          <InfoRow label="Last pulled" value={container.last_pulled ? formatDateTime(container.last_pulled, tz) : "Unknown"} />
-          <InfoRow
-            label="Update check"
-            value={
-              <span className="flex flex-wrap items-center gap-2">
-                <span>{container.last_digest_check ? formatDateTime(container.last_digest_check, tz) : "Never checked"}</span>
-                {container.update_available && (
-                  <span className="inline-flex items-center gap-1 rounded border border-blue-500/30 bg-blue-500/10 px-1.5 py-0.5 text-xs font-medium text-blue-300">
-                    <FiArrowUp className="h-3 w-3" />
-                    Update available
-                  </span>
-                )}
-              </span>
-            }
+      {overviewCollapsed ? (
+        <>
+          <CompactOverview
+            container={container}
+            isRunning={isRunning}
+            memoryPercent={memoryPercent}
+            uptimeLabel={uptimeLabel}
           />
-        </DetailSection>
+          <AttentionBand container={container} />
+        </>
+      ) : (
+        <>
+          <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+            <StatTile label="CPU" value={`${container.cpu_percent.toFixed(2)}%`} subtext={isRunning ? "current usage" : "not running"} icon={<FiCpu className="h-4 w-4" />} />
+            <StatTile
+              label="Memory"
+              value={
+                container.mem_limit > 0
+                  ? `${memoryPercent.toFixed(0)}%`
+                  : formatBytes(container.mem_usage)
+              }
+              subtext={
+                container.mem_limit > 0
+                  ? `${formatBytes(container.mem_usage)} / ${formatBytes(container.mem_limit)}`
+                  : "limit unknown"
+              }
+              icon={<FiDatabase className="h-4 w-4" />}
+            />
+            <StatTile label="Uptime" value={uptimeLabel} subtext={container.started_at ? `Started ${formatDateTime(container.started_at, tz)}` : "not started"} icon={<FiClock className="h-4 w-4" />} />
+            <StatTile label="Restarts" value={container.restart_count} subtext={container.restart_count === 1 ? "recorded restart" : "recorded restarts"} icon={<FiRefreshCw className="h-4 w-4" />} highlight={container.restart_count > 0} />
+            <StatTile label="Network" value={<NetworkStatValue container={container} />} subtext={container.networks.length > 0 ? container.networks.join(", ") : "no networks"} icon={<FiWifi className="h-4 w-4" />} wrapValue />
+          </section>
 
-        <DetailSection title="Connectivity" icon={<FiWifi className="h-4 w-4" />}>
-          <InfoRow label="Ports" value={<PillList items={container.ports} />} />
-          <InfoRow label="Networks" value={<PillList items={container.networks} />} />
-          <InfoRow label="Traffic" value={latestNetworkTotal(container)} />
-        </DetailSection>
+          <AttentionBand container={container} />
 
-        <DetailSection title="Storage" icon={<FiHardDrive className="h-4 w-4" />}>
-          <InfoRow label="Volumes" value={<PillList items={container.volumes} empty="No volumes reported" />} />
-        </DetailSection>
-      </section>
+          <section className="grid items-start gap-4 lg:grid-cols-2 2xl:grid-cols-4">
+            <DetailSection title="Runtime" icon={<FiActivity className="h-4 w-4" />}>
+              <InfoRow label="State" value={<StatusBadge state={container.state} />} />
+              <InfoRow label="Status" value={container.status} />
+              <InfoRow label="Created" value={container.created_at ? formatDateTime(container.created_at, tz) : "Unknown"} />
+              <InfoRow label="Started" value={container.started_at ? formatDateTime(container.started_at, tz) : "Not running"} />
+              {container.health_status && <InfoRow label="Health" value={<HealthBadge status={container.health_status} />} />}
+              <InfoRow label="Restart policy" value={restartPolicyLabel(container.restart_policy)} />
+              {!isRunning && container.exit_code !== null && <InfoRow label="Exit code" value={container.exit_code} />}
+              {!isRunning && container.finished_at && <InfoRow label="Finished" value={formatDateTime(container.finished_at, tz)} />}
+              {container.oom_killed && <InfoRow label="OOM killed" value="Yes" />}
+              {container.container_error && <InfoRow label="Error" value={container.container_error} />}
+              <InfoRow label="Last seen" value={formatDateTime(container.last_seen, tz)} />
+              <InfoRow label="Restarts" value={container.restart_count} />
+            </DetailSection>
 
-      <section>
-        <EventTimeline dockerId={container.docker_id} showHeader showContainerName={false} />
-      </section>
+            <DetailSection title="Source" icon={<FiBox className="h-4 w-4" />}>
+              <InfoRow label="Container ID" value={container.short_id} />
+              <InfoRow label="Source" value={sourceLabel(container)} />
+              {container.compose_project && <InfoRow label="Project" value={container.compose_project} />}
+              {container.compose_service && <InfoRow label="Service" value={container.compose_service} />}
+              <InfoRow label="Image" value={imageInfo.repo} />
+              <InfoRow label="Tag" value={imageInfo.tag} />
+              <InfoRow label="Image size" value={container.image_size !== null ? formatBytes(container.image_size) : "Unknown"} />
+              <InfoRow label="Last pulled" value={container.last_pulled ? formatDateTime(container.last_pulled, tz) : "Unknown"} />
+              <InfoRow
+                label="Update check"
+                value={
+                  <span className="flex flex-wrap items-center gap-2">
+                    <span>{container.last_digest_check ? formatDateTime(container.last_digest_check, tz) : "Never checked"}</span>
+                    {container.update_available && (
+                      <span className="inline-flex items-center gap-1 rounded border border-blue-500/30 bg-blue-500/10 px-1.5 py-0.5 text-xs font-medium text-blue-300">
+                        <FiArrowUp className="h-3 w-3" />
+                        Update available
+                      </span>
+                    )}
+                  </span>
+                }
+              />
+            </DetailSection>
 
-      <section className="grid grid-cols-1 gap-6 md:grid-cols-3">
-        <div className="card">
-          <div className="space-y-2 px-4 pb-2 pt-3">
-            <h2 className="text-sm font-medium text-slate-300">CPU</h2>
-            <div className="flex gap-4 text-xs text-slate-400">
-              <span className="flex items-center gap-1.5">
-                <svg width="16" height="2" aria-hidden="true">
-                  <line x1="0" y1="1" x2="16" y2="1" stroke="#22d3ee" strokeWidth="2" />
-                </svg>
-                CPU %
-              </span>
+            <DetailSection title="Connectivity" icon={<FiWifi className="h-4 w-4" />}>
+              <InfoRow label="Ports" value={<PillList items={container.ports} />} />
+              <InfoRow label="Networks" value={<PillList items={container.networks} />} />
+              <InfoRow label="Traffic" value={latestNetworkTotal(container)} />
+            </DetailSection>
+
+            <DetailSection title="Storage" icon={<FiHardDrive className="h-4 w-4" />}>
+              <InfoRow label="Volumes" value={<PillList items={container.volumes} empty="No volumes reported" />} />
+            </DetailSection>
+          </section>
+
+          <section>
+            <EventTimeline dockerId={container.docker_id} showHeader showContainerName={false} />
+          </section>
+
+          <section className="grid grid-cols-1 gap-6 md:grid-cols-3">
+            <div className="card">
+              <div className="space-y-2 px-4 pb-2 pt-3">
+                <h2 className="text-sm font-medium text-slate-300">CPU</h2>
+                <div className="flex gap-4 text-xs text-slate-400">
+                  <span className="flex items-center gap-1.5">
+                    <svg width="16" height="2" aria-hidden="true">
+                      <line x1="0" y1="1" x2="16" y2="1" stroke="#22d3ee" strokeWidth="2" />
+                    </svg>
+                    CPU %
+                  </span>
+                </div>
+              </div>
+              <div className="pb-4">
+                <CpuChart data={metricsHistory} />
+              </div>
             </div>
-          </div>
-          <div className="pb-4">
-            <CpuChart data={metricsHistory} />
-          </div>
-        </div>
 
-        <div className="card">
-          <div className="space-y-2 px-4 pb-2 pt-3">
-            <h2 className="text-sm font-medium text-slate-300">Memory</h2>
-            <div className="flex gap-4 text-xs text-slate-400">
-              <span className="flex items-center gap-1.5">
-                <svg width="16" height="2" aria-hidden="true">
-                  <line x1="0" y1="1" x2="16" y2="1" stroke="#a78bfa" strokeWidth="2" />
-                </svg>
-                Memory
-              </span>
+            <div className="card">
+              <div className="space-y-2 px-4 pb-2 pt-3">
+                <h2 className="text-sm font-medium text-slate-300">Memory</h2>
+                <div className="flex gap-4 text-xs text-slate-400">
+                  <span className="flex items-center gap-1.5">
+                    <svg width="16" height="2" aria-hidden="true">
+                      <line x1="0" y1="1" x2="16" y2="1" stroke="#a78bfa" strokeWidth="2" />
+                    </svg>
+                    Memory
+                  </span>
+                </div>
+              </div>
+              <div className="pb-4">
+                <MemChart data={metricsHistory} />
+              </div>
             </div>
-          </div>
-          <div className="pb-4">
-            <MemChart data={metricsHistory} />
-          </div>
-        </div>
 
-        <div className="card">
-          <div className="space-y-2 px-4 pb-2 pt-3">
-            <h2 className="text-sm font-medium text-slate-300">Network I/O</h2>
-            <div className="flex gap-4 text-xs text-slate-400">
-              <span className="flex items-center gap-1.5">
-                <svg width="16" height="2" aria-hidden="true">
-                  <line x1="0" y1="1" x2="16" y2="1" stroke="#22d3ee" strokeWidth="2" />
-                </svg>
-                RX
-              </span>
-              <span className="flex items-center gap-1.5">
-                <svg width="16" height="2" aria-hidden="true">
-                  <line x1="0" y1="1" x2="16" y2="1" stroke="#f97316" strokeWidth="2" />
-                </svg>
-                TX
-              </span>
+            <div className="card">
+              <div className="space-y-2 px-4 pb-2 pt-3">
+                <h2 className="text-sm font-medium text-slate-300">Network I/O</h2>
+                <div className="flex gap-4 text-xs text-slate-400">
+                  <span className="flex items-center gap-1.5">
+                    <svg width="16" height="2" aria-hidden="true">
+                      <line x1="0" y1="1" x2="16" y2="1" stroke="#22d3ee" strokeWidth="2" />
+                    </svg>
+                    RX
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    <svg width="16" height="2" aria-hidden="true">
+                      <line x1="0" y1="1" x2="16" y2="1" stroke="#f97316" strokeWidth="2" />
+                    </svg>
+                    TX
+                  </span>
+                </div>
+              </div>
+              <div className="pb-4">
+                <NetworkIOChart data={networkHistory} />
+              </div>
             </div>
-          </div>
-          <div className="pb-4">
-            <NetworkIOChart data={networkHistory} />
-          </div>
-        </div>
-      </section>
+          </section>
+        </>
+      )}
 
-      <section className="space-y-3">
+      <section ref={logsRef} className="scroll-mt-6 space-y-3">
         <h2 className="text-sm font-medium text-slate-300">Logs</h2>
         <LogViewer dockerId={container.docker_id} />
       </section>
