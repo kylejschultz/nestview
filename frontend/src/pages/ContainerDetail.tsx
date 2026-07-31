@@ -1175,13 +1175,31 @@ function AttentionBand({ container }: { container: Container }) {
 
 // ── Page ──────────────────────────────────────────────────────────────────────
 
+const OVERVIEW_COLLAPSED_KEY = "nestview:container-overview-collapsed";
+
+function loadOverviewCollapsed() {
+  try {
+    return localStorage.getItem(OVERVIEW_COLLAPSED_KEY) === "true";
+  } catch {
+    return false;
+  }
+}
+
 export default function ContainerDetail() {
   const { id } = useParams<{ id: string }>();
   const tz = useTimezone();
   const { isAuthenticated } = useAuth();
   const [operationModalOpen, setOperationModalOpen] = useState(false);
-  const [overviewCollapsed, setOverviewCollapsed] = useState(false);
+  const [overviewCollapsed, setOverviewCollapsed] = useState(loadOverviewCollapsed);
   const logsRef = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(OVERVIEW_COLLAPSED_KEY, String(overviewCollapsed));
+    } catch {
+      // Ignore storage failures; the control still works for the current view.
+    }
+  }, [overviewCollapsed]);
 
   const { data: container, isLoading, isError } = useQuery<Container>({
     queryKey: ["container", id],

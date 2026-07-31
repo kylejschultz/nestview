@@ -251,7 +251,13 @@ function ContainerTable({ containers, checkingId, onCheckUpdates }: { containers
                           <FiChevronDown className={`h-3.5 w-3.5 transition-transform ${isExpanded ? "rotate-180" : ""}`} />
                         </button>
                         <div className="min-w-0">
-                          <p className="truncate font-medium text-slate-100">{container.name}</p>
+                          <Link
+                            to={`/containers/${container.docker_id}`}
+                            onClick={(event) => event.stopPropagation()}
+                            className="block truncate font-medium text-slate-100 transition-colors hover:text-accent"
+                          >
+                            {container.name}
+                          </Link>
                           <p className="mt-1 truncate font-mono text-xs text-slate-600">{container.short_id}</p>
                         </div>
                       </div>
