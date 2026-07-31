@@ -997,20 +997,22 @@ function StatTile({
   subtext,
   icon,
   highlight = false,
+  wrapValue = false,
 }: {
   label: string;
   value: React.ReactNode;
   subtext?: React.ReactNode;
   icon: React.ReactNode;
   highlight?: boolean;
+  wrapValue?: boolean;
 }) {
   return (
-    <div className="rounded-lg border border-border bg-surface-1 px-4 py-3">
+    <div className="min-w-0 rounded-lg border border-border bg-surface-1 px-4 py-3">
       <div className="flex items-center justify-between gap-3">
         <span className="text-xs uppercase text-slate-500">{label}</span>
         <span className={`shrink-0 ${highlight ? "text-yellow-400" : "text-slate-600"}`}>{icon}</span>
       </div>
-      <div className={`mt-2 truncate font-mono text-base font-semibold ${highlight ? "text-yellow-300" : "text-slate-100"}`}>
+      <div className={`mt-2 min-w-0 font-mono text-base font-semibold leading-tight ${wrapValue ? "whitespace-normal break-words" : "truncate"} ${highlight ? "text-yellow-300" : "text-slate-100"}`}>
         {value}
       </div>
       {subtext && <div className="mt-1 truncate text-xs text-slate-500">{subtext}</div>}
@@ -1088,6 +1090,19 @@ function latestNetworkTotal(container: Container) {
   const rx = container.net_rx_bytes ?? 0;
   const tx = container.net_tx_bytes ?? 0;
   return rx > 0 || tx > 0 ? `${formatBytes(rx)} in / ${formatBytes(tx)} out` : "No traffic";
+}
+
+function NetworkStatValue({ container }: { container: Container }) {
+  const rx = container.net_rx_bytes ?? 0;
+  const tx = container.net_tx_bytes ?? 0;
+  if (rx <= 0 && tx <= 0) return <>No traffic</>;
+
+  return (
+    <span className="flex min-w-0 flex-wrap gap-x-2 gap-y-0.5">
+      <span className="whitespace-nowrap">{formatBytes(rx)} in</span>
+      <span className="whitespace-nowrap">{formatBytes(tx)} out</span>
+    </span>
+  );
 }
 
 function AttentionBand({ container }: { container: Container }) {
@@ -1238,7 +1253,7 @@ export default function ContainerDetail() {
         />
         <StatTile label="Uptime" value={uptimeLabel} subtext={container.started_at ? `Started ${formatDateTime(container.started_at, tz)}` : "not started"} icon={<FiClock className="h-4 w-4" />} />
         <StatTile label="Restarts" value={container.restart_count} subtext={container.restart_count === 1 ? "recorded restart" : "recorded restarts"} icon={<FiRefreshCw className="h-4 w-4" />} highlight={container.restart_count > 0} />
-        <StatTile label="Network" value={latestNetworkTotal(container)} subtext={container.networks.length > 0 ? container.networks.join(", ") : "no networks"} icon={<FiWifi className="h-4 w-4" />} />
+        <StatTile label="Network" value={<NetworkStatValue container={container} />} subtext={container.networks.length > 0 ? container.networks.join(", ") : "no networks"} icon={<FiWifi className="h-4 w-4" />} wrapValue />
       </section>
 
       <AttentionBand container={container} />
