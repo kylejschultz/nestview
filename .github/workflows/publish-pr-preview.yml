@@ -1,0 +1,89 @@
+name: Publish PR Preview
+
+on:
+  pull_request:
+    branches: [dev]
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: publish-pr-preview-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    if: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-24.04
+            suffix: amd64
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+            suffix: arm64
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Log in to GHCR
+        uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0 # v4.4.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set preview tags
+        id: preview
+        run: |
+          echo "short=$(echo ${{ github.event.pull_request.head.sha }} | cut -c1-7)" >> $GITHUB_OUTPUT
+          echo "number=${{ github.event.pull_request.number }}" >> $GITHUB_OUTPUT
+
+      - name: Build and push
+        run: |
+          docker build --platform ${{ matrix.platform }} \
+            --build-arg BUILD_CHANNEL=pr \
+            --build-arg BUILD_LABEL="PR #${{ steps.preview.outputs.number }}" \
+            --build-arg GIT_SHA=${{ steps.preview.outputs.short }} \
+            -t ghcr.io/kylejschultz/nestview:pr-${{ steps.preview.outputs.number }}-${{ steps.preview.outputs.short }}-${{ matrix.suffix }} \
+            -f Dockerfile \
+            .
+          docker push ghcr.io/kylejschultz/nestview:pr-${{ steps.preview.outputs.number }}-${{ steps.preview.outputs.short }}-${{ matrix.suffix }}
+
+  merge:
+    if: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
+    runs-on: ubuntu-24.04
+    needs: [build]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Log in to GHCR
+        uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0 # v4.4.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set preview tags
+        id: preview
+        run: |
+          echo "short=$(echo ${{ github.event.pull_request.head.sha }} | cut -c1-7)" >> $GITHUB_OUTPUT
+          echo "number=${{ github.event.pull_request.number }}" >> $GITHUB_OUTPUT
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
+
+      - name: Merge manifest
+        run: |
+          docker buildx imagetools create \
+            -t ghcr.io/kylejschultz/nestview:pr-${{ steps.preview.outputs.number }} \
+            -t ghcr.io/kylejschultz/nestview:pr-${{ steps.preview.outputs.number }}-${{ steps.preview.outputs.short }} \
+            ghcr.io/kylejschultz/nestview:pr-${{ steps.preview.outputs.number }}-${{ steps.preview.outputs.short }}-amd64 \
+            ghcr.io/kylejschultz/nestview:pr-${{ steps.preview.outputs.number }}-${{ steps.preview.outputs.short }}-arm64
