@@ -4,6 +4,7 @@ import {
   FiArrowRight,
   FiBox,
   FiCheck,
+  FiChevronDown,
   FiChevronRight,
   FiLayers,
   FiRefreshCw,
@@ -64,6 +65,46 @@ function serviceTone(service: ServiceGroup) {
   if (unhealthy) return "danger";
   if (updates) return "warn";
   return "good";
+}
+
+function serviceHealth(service: ServiceGroup) {
+  const healthChecks = service.members.filter((container) => container.health_status);
+  if (healthChecks.length === 0) {
+    return {
+      label: "No health checks",
+      className: "border-border bg-surface-2 text-slate-500",
+    };
+  }
+
+  const unhealthy = healthChecks.filter((container) => container.health_status === "unhealthy").length;
+  const starting = healthChecks.filter((container) => container.health_status === "starting").length;
+  const healthy = healthChecks.filter((container) => container.health_status === "healthy").length;
+
+  if (unhealthy > 0) {
+    return {
+      label: `${unhealthy} unhealthy`,
+      className: "border-red-500/30 bg-red-500/10 text-red-300",
+    };
+  }
+
+  if (starting > 0) {
+    return {
+      label: `${starting} starting`,
+      className: "border-yellow-500/30 bg-yellow-500/10 text-yellow-300",
+    };
+  }
+
+  if (healthy === healthChecks.length) {
+    return {
+      label: `${healthy} healthy`,
+      className: "border-emerald-500/30 bg-emerald-500/10 text-emerald-300",
+    };
+  }
+
+  return {
+    label: "Mixed health",
+    className: "border-blue-500/30 bg-blue-500/10 text-blue-300",
+  };
 }
 
 function buildComposeServices(containers: Container[]): ServiceGroup[] {
@@ -160,6 +201,7 @@ function ServiceCard({
   isChecking: boolean;
   onCheckUpdates: (service: ServiceGroup) => void;
 }) {
+  const [membersOpen, setMembersOpen] = useState(false);
   const running = runningCount(service.members);
   const updates = service.members.filter((container) => container.update_available).length;
   const unhealthy = service.members.filter((container) => container.state !== "running" || container.health_status === "unhealthy").length;
@@ -169,6 +211,7 @@ function ServiceCard({
   const totalMemUsage = service.members.reduce((sum, container) => sum + container.mem_usage, 0);
   const totalMemLimit = service.members.reduce((sum, container) => sum + container.mem_limit, 0);
   const tone = serviceTone(service);
+  const health = serviceHealth(service);
   const dotColor = tone === "danger" ? "bg-red-400" : tone === "warn" ? "bg-blue-300" : "bg-emerald-400";
   const borderColor = tone === "danger" ? "border-red-500/35" : tone === "warn" ? "border-blue-500/30" : "border-border";
 
@@ -181,7 +224,12 @@ function ServiceCard({
               <span className={`h-2 w-2 shrink-0 rounded-full ${dotColor}`} />
               <h3 className="truncate text-base font-semibold text-slate-100">{service.name}</h3>
             </div>
-            <p className="mt-1 text-xs text-slate-500">Compose stack · {running}/{service.members.length} running</p>
+            <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+              <span>Compose stack · {running}/{service.members.length} running</span>
+              <span className={`inline-flex items-center rounded border px-1.5 py-0.5 ${health.className}`}>
+                {health.label}
+              </span>
+            </div>
           </div>
           <button
             type="button"
@@ -215,26 +263,48 @@ function ServiceCard({
         </div>
       </div>
 
-      <div className="space-y-1.5 px-4 pb-4">
-        {service.members.map((container) => (
-          <Link
-            key={container.docker_id}
-            to={`/containers/${container.docker_id}`}
-            className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-lg border border-border bg-surface-2 px-3 py-2 text-sm transition-colors hover:border-accent/50"
-          >
-            <span className="min-w-0">
-              <span className="block truncate font-medium text-slate-200">{container.compose_service ?? container.name}</span>
-              <span className="mt-0.5 block truncate text-xs text-slate-600">
-                {container.started_at && container.state === "running" ? formatUptime(container.started_at) : container.status}
-              </span>
-            </span>
-            <span className="inline-flex items-center gap-2">
-              {container.update_available && <span className="text-xs text-blue-300">Update</span>}
-              <StatusBadge state={container.state} />
-              <FiChevronRight className="h-3.5 w-3.5 text-slate-600" />
-            </span>
-          </Link>
-        ))}
+      <div className="border-t border-border px-4 py-3">
+        <button
+          type="button"
+          onClick={() => setMembersOpen((open) => !open)}
+          className="flex w-full items-center justify-between gap-3 text-left text-sm text-slate-300 transition-colors hover:text-slate-100"
+          aria-expanded={membersOpen}
+        >
+          <span className="font-medium">Containers</span>
+          <span className="inline-flex items-center gap-2 text-xs text-slate-500">
+            {service.members.length} member{service.members.length === 1 ? "" : "s"}
+            <FiChevronDown className={`h-4 w-4 transition-transform ${membersOpen ? "rotate-180" : ""}`} />
+          </span>
+        </button>
+
+        {membersOpen && (
+          <div className="mt-3 space-y-1.5">
+            {service.members.map((container) => (
+              <Link
+                key={container.docker_id}
+                to={`/containers/${container.docker_id}`}
+                className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-lg border border-border bg-surface-2 px-3 py-2 text-sm transition-colors hover:border-accent/50"
+              >
+                <span className="min-w-0">
+                  <span className="block truncate font-medium text-slate-200">{container.compose_service ?? container.name}</span>
+                  <span className="mt-0.5 block truncate text-xs text-slate-600">
+                    {container.started_at && container.state === "running" ? formatUptime(container.started_at) : container.status}
+                  </span>
+                </span>
+                <span className="inline-flex items-center gap-2">
+                  {container.health_status && (
+                    <span className="rounded border border-border bg-surface-3 px-1.5 py-0.5 text-xs text-slate-400">
+                      {container.health_status}
+                    </span>
+                  )}
+                  {container.update_available && <span className="text-xs text-blue-300">Update</span>}
+                  <StatusBadge state={container.state} />
+                  <FiChevronRight className="h-3.5 w-3.5 text-slate-600" />
+                </span>
+              </Link>
+            ))}
+          </div>
+        )}
       </div>
     </article>
   );

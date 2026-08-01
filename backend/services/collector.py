@@ -54,7 +54,54 @@ def _safe_name(name: str) -> str:
 # ── Stats helpers ──────────────────────────────────────────────────────────────
 
 
-def _cpu_percent(stats: dict) -> float:
+def _cpuset_cpu_count(cpuset: Optional[str]) -> Optional[float]:
+    if not cpuset:
+        return None
+
+    count = 0
+    try:
+        for part in cpuset.split(","):
+            part = part.strip()
+            if not part:
+                continue
+            if "-" in part:
+                start, end = (int(value) for value in part.split("-", 1))
+                count += max(0, end - start + 1)
+            else:
+                int(part)
+                count += 1
+    except ValueError:
+        return None
+
+    return float(count) if count > 0 else None
+
+
+def _cpu_allocation_cpus(stats: dict, attrs: dict) -> float:
+    host_cpus = (
+        stats.get("cpu_stats", {}).get("online_cpus")
+        or len(stats.get("cpu_stats", {}).get("cpu_usage", {}).get("percpu_usage") or [])
+        or 1
+    )
+    host_cpus = float(host_cpus)
+
+    host_config = attrs.get("HostConfig", {}) or {}
+    nano_cpus = host_config.get("NanoCpus") or 0
+    if nano_cpus > 0:
+        return max(float(nano_cpus) / 1_000_000_000, 0.01)
+
+    cpu_quota = host_config.get("CpuQuota") or 0
+    cpu_period = host_config.get("CpuPeriod") or 0
+    if cpu_quota > 0 and cpu_period > 0:
+        return max(float(cpu_quota) / float(cpu_period), 0.01)
+
+    cpuset_cpus = _cpuset_cpu_count(host_config.get("CpusetCpus"))
+    if cpuset_cpus:
+        return cpuset_cpus
+
+    return host_cpus
+
+
+def _cpu_percent(stats: dict, attrs: Optional[dict] = None) -> float:
     try:
         cpu_delta = (
             stats["cpu_stats"]["cpu_usage"]["total_usage"]
@@ -67,7 +114,9 @@ def _cpu_percent(stats: dict) -> float:
             stats["cpu_stats"]["cpu_usage"].get("percpu_usage", [1])
         )
         if system_delta > 0:
-            return round((cpu_delta / system_delta) * num_cpus * 100.0, 2)
+            raw_percent = (cpu_delta / system_delta) * num_cpus * 100.0
+            allocation_cpus = _cpu_allocation_cpus(stats, attrs or {})
+            return round(raw_percent / allocation_cpus, 2)
     except (KeyError, ZeroDivisionError):
         pass
     return 0.0
@@ -110,7 +159,7 @@ def _collect_one(container) -> Optional[dict]:
         attrs = container.attrs
         state = attrs.get("State", {})
 
-        cpu = _cpu_percent(raw_stats)
+        cpu = _cpu_percent(raw_stats, attrs)
         mem_usage, mem_limit = _mem_bytes(raw_stats)
         net_rx, net_tx = _net_bytes(raw_stats)
 
