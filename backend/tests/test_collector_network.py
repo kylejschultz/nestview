@@ -74,6 +74,47 @@ def _container_data(started_at: str, rx: int, tx: int) -> dict:
     }
 
 
+def _stats(cpu_delta: int = 1_875, system_delta: int = 10_000, online_cpus: int = 8) -> dict:
+    return {
+        "cpu_stats": {
+            "cpu_usage": {
+                "total_usage": cpu_delta,
+                "percpu_usage": [0] * online_cpus,
+            },
+            "system_cpu_usage": system_delta,
+            "online_cpus": online_cpus,
+        },
+        "precpu_stats": {
+            "cpu_usage": {
+                "total_usage": 0,
+            },
+            "system_cpu_usage": 0,
+        },
+    }
+
+
+def test_cpu_percent_normalizes_against_host_cpus_without_container_limit():
+    assert collector._cpu_percent(_stats(), {"HostConfig": {}}) == 18.75
+
+
+def test_cpu_percent_normalizes_against_cpu_quota_when_configured():
+    attrs = {"HostConfig": {"CpuQuota": 200_000, "CpuPeriod": 100_000}}
+
+    assert collector._cpu_percent(_stats(), attrs) == 75.0
+
+
+def test_cpu_percent_normalizes_against_nano_cpus_when_configured():
+    attrs = {"HostConfig": {"NanoCpus": 4_000_000_000}}
+
+    assert collector._cpu_percent(_stats(), attrs) == 37.5
+
+
+def test_cpu_percent_normalizes_against_cpuset_when_configured():
+    attrs = {"HostConfig": {"CpusetCpus": "0-1,4"}}
+
+    assert collector._cpu_percent(_stats(), attrs) == 50.0
+
+
 def test_network_history_uses_persisted_counters_after_restart(collector_engine):
     started_at = "2026-06-28T10:00:00Z"
     with Session(collector_engine) as session:
