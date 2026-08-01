@@ -140,6 +140,80 @@ function StatTile({ label, value, subtext }: { label: string; value: string | nu
   );
 }
 
+function NetworkUsage({ container }: { container: Container }) {
+  const rx = container.net_rx_bytes ?? 0;
+  const tx = container.net_tx_bytes ?? 0;
+  if (rx <= 0 && tx <= 0) return <>No traffic</>;
+  return <>{formatBytes(rx)} in / {formatBytes(tx)} out</>;
+}
+
+function ContainerMemberRow({ container }: { container: Container }) {
+  const [resourcesOpen, setResourcesOpen] = useState(false);
+  const memPct = container.mem_limit > 0 ? Math.round((container.mem_usage / container.mem_limit) * 100) : null;
+
+  return (
+    <div className="rounded-lg border border-border bg-surface-2 text-sm">
+      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-3 py-2">
+        <button
+          type="button"
+          onClick={() => setResourcesOpen((open) => !open)}
+          className="min-w-0 text-left"
+          aria-expanded={resourcesOpen}
+        >
+          <span className="flex min-w-0 items-center gap-2">
+            <FiChevronDown className={`h-3.5 w-3.5 shrink-0 text-slate-600 transition-transform ${resourcesOpen ? "rotate-180" : ""}`} />
+            <span className="min-w-0 truncate font-medium text-slate-200">{container.compose_service ?? container.name}</span>
+          </span>
+          <span className="mt-0.5 block truncate pl-5 text-xs text-slate-600">
+            {container.started_at && container.state === "running" ? formatUptime(container.started_at) : container.status}
+          </span>
+        </button>
+        <span className="inline-flex items-center gap-2">
+          {container.health_status && (
+            <span className="rounded border border-border bg-surface-3 px-1.5 py-0.5 text-xs text-slate-400">
+              {container.health_status}
+            </span>
+          )}
+          {container.update_available && <span className="text-xs text-blue-300">Update</span>}
+          <StatusBadge state={container.state} />
+          <Link
+            to={`/containers/${container.docker_id}`}
+            className="rounded p-1 text-slate-600 transition-colors hover:bg-surface-3 hover:text-accent"
+            aria-label={`Open ${container.name} details`}
+            title="Open container details"
+          >
+            <FiChevronRight className="h-3.5 w-3.5" />
+          </Link>
+        </span>
+      </div>
+
+      {resourcesOpen && (
+        <div className="grid gap-2 border-t border-border px-3 py-3 text-xs sm:grid-cols-3">
+          <div>
+            <p className="uppercase text-slate-600">CPU</p>
+            <p className="mt-1 font-mono text-slate-200">{container.cpu_percent.toFixed(1)}%</p>
+          </div>
+          <div>
+            <p className="uppercase text-slate-600">Memory</p>
+            <p className="mt-1 font-mono text-slate-200">
+              {memPct !== null ? `${memPct}%` : formatBytes(container.mem_usage)}
+            </p>
+            <p className="mt-0.5 truncate text-slate-600">
+              {container.mem_limit > 0 ? `${formatBytes(container.mem_usage)} / ${formatBytes(container.mem_limit)}` : "limit unknown"}
+            </p>
+          </div>
+          <div>
+            <p className="uppercase text-slate-600">Network</p>
+            <p className="mt-1 truncate font-mono text-slate-200">
+              <NetworkUsage container={container} />
+            </p>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function SetupChoice({
   composeCount,
   standaloneCount,
@@ -280,28 +354,7 @@ function ServiceCard({
         {membersOpen && (
           <div className="mt-3 space-y-1.5">
             {service.members.map((container) => (
-              <Link
-                key={container.docker_id}
-                to={`/containers/${container.docker_id}`}
-                className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-lg border border-border bg-surface-2 px-3 py-2 text-sm transition-colors hover:border-accent/50"
-              >
-                <span className="min-w-0">
-                  <span className="block truncate font-medium text-slate-200">{container.compose_service ?? container.name}</span>
-                  <span className="mt-0.5 block truncate text-xs text-slate-600">
-                    {container.started_at && container.state === "running" ? formatUptime(container.started_at) : container.status}
-                  </span>
-                </span>
-                <span className="inline-flex items-center gap-2">
-                  {container.health_status && (
-                    <span className="rounded border border-border bg-surface-3 px-1.5 py-0.5 text-xs text-slate-400">
-                      {container.health_status}
-                    </span>
-                  )}
-                  {container.update_available && <span className="text-xs text-blue-300">Update</span>}
-                  <StatusBadge state={container.state} />
-                  <FiChevronRight className="h-3.5 w-3.5 text-slate-600" />
-                </span>
-              </Link>
+              <ContainerMemberRow key={container.docker_id} container={container} />
             ))}
           </div>
         )}
