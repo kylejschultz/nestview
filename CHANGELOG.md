@@ -3,6 +3,9 @@
 ---
 ## [1.5.1](https://github.com/kylejschultz/nestview/compare/v1.5.0...v1.5.1) (2026-08-14)
 
+### Maintenance
+
+* Updated FastAPI, Uvicorn, Starlette, Vite, React type packages, and the Docker login Action.
 
 ### Bug Fixes
 
