@@ -1,6 +1,13 @@
 # Changelog
 
 ---
+## [1.5.1](https://github.com/kylejschultz/nestview/compare/v1.5.0...v1.5.1) (2026-08-14)
+
+
+### Bug Fixes
+
+* Patch high-severity dependency findings ([#170](https://github.com/kylejschultz/nestview/issues/170)) ([e9a8ab1](https://github.com/kylejschultz/nestview/commit/e9a8ab1ddddccd8335c3c37da97767efa660eb60))
+
 ## [1.5.0](https://github.com/kylejschultz/nestview/compare/v1.4.1...v1.5.0) (2026-07-23)
 
 
