@@ -16,7 +16,7 @@ ENV BUILD_CHANNEL=${BUILD_CHANNEL}
 ARG GIT_SHA=unknown
 ENV BUILD_SHA=${GIT_SHA}
 
-RUN pip install --no-cache-dir --upgrade pip
+RUN pip install --no-cache-dir --upgrade pip "setuptools>=78.1.1"
 
 WORKDIR /app
 
