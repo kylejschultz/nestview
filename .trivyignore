@@ -1,0 +1,5 @@
+# False positives in the embedded SBOM of python:3.14-slim. The runtime image
+# does not contain either package; verified against the upstream base image on
+# 2026-08-13. Reassess after the upstream SBOM refreshes.
+GHSA-6v7p-g79w-8964 exp:2026-09-13
+CVE-2025-47273 exp:2026-09-13
