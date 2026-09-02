@@ -1,4 +1,4 @@
-import { Fragment, useMemo, useState, type KeyboardEvent } from "react";
+import { Fragment, useMemo, useState, type KeyboardEvent, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   FiArrowUp,
@@ -17,7 +17,7 @@ import StatusBadge from "../components/StatusBadge";
 import Toast from "../components/Toast";
 import { useToast } from "../hooks/useToast";
 import type { Container } from "../types";
-import { formatBytes, formatUptime } from "../utils";
+import { formatBytes, formatDateTime, formatUptime } from "../utils";
 
 type StatusFilter = "all" | "running" | "attention" | "updates" | "stopped";
 type GroupFilter = "all" | "standalone" | string;
@@ -51,17 +51,112 @@ function normalizedDateValue(value: string | null) {
   return Number.isFinite(timestamp) ? timestamp : 0;
 }
 
-function sourceLabel(container: Container) {
-  if (!container.compose_project) return "Standalone";
-  return container.compose_service
-    ? `${container.compose_project} / ${container.compose_service}`
-    : container.compose_project;
-}
-
 function portSummary(ports: string[]) {
   if (ports.length === 0) return "None";
   if (ports.length <= 2) return ports.join(", ");
   return `${ports.slice(0, 2).join(", ")} +${ports.length - 2}`;
+}
+
+function NetworkUsage({ container }: { container: Container }) {
+  const rx = container.net_rx_bytes ?? 0;
+  const tx = container.net_tx_bytes ?? 0;
+  if (rx <= 0 && tx <= 0) return <>No traffic</>;
+  return <>{formatBytes(rx)} in / {formatBytes(tx)} out</>;
+}
+
+function DetailRow({ label, value }: { label: string; value: ReactNode }) {
+  return (
+    <div className="grid grid-cols-[5.5rem_minmax(0,1fr)] gap-2 border-b border-border py-1.5 last:border-0">
+      <span className="text-slate-600">{label}</span>
+      <span className="min-w-0 break-words font-mono text-slate-300">{value}</span>
+    </div>
+  );
+}
+
+function DetailList({ items, empty = "None" }: { items: string[]; empty?: string }) {
+  if (items.length === 0) return <span className="text-slate-600">{empty}</span>;
+  return <span className="break-all">{items.join(", ")}</span>;
+}
+
+function imageParts(image: string) {
+  const slashIndex = image.lastIndexOf("/");
+  const tagIndex = image.lastIndexOf(":");
+  return tagIndex > slashIndex
+    ? { repo: image.slice(0, tagIndex), tag: image.slice(tagIndex + 1) }
+    : { repo: image, tag: "latest" };
+}
+
+function localDateTime(value: string | null) {
+  return value ? formatDateTime(value, Intl.DateTimeFormat().resolvedOptions().timeZone) : "Unknown";
+}
+
+function ContainerDetails({ container }: { container: Container }) {
+  const memPct = container.mem_limit > 0 ? Math.round(memoryPercent(container)) : null;
+  const image = imageParts(container.image);
+
+  return (
+    <div className="text-xs">
+      <div className="grid gap-2 sm:grid-cols-3">
+        <div>
+          <p className="uppercase text-slate-600">CPU</p>
+          <p className="mt-1 font-mono text-slate-200">{container.cpu_percent.toFixed(1)}%</p>
+        </div>
+        <div>
+          <p className="uppercase text-slate-600">Memory</p>
+          <p className="mt-1 font-mono text-slate-200">{memPct !== null ? `${memPct}%` : formatBytes(container.mem_usage)}</p>
+          <p className="mt-0.5 truncate text-slate-600">
+            {container.mem_limit > 0 ? `${formatBytes(container.mem_usage)} / ${formatBytes(container.mem_limit)}` : "limit unknown"}
+          </p>
+        </div>
+        <div>
+          <p className="uppercase text-slate-600">Network</p>
+          <p className="mt-1 truncate font-mono text-slate-200"><NetworkUsage container={container} /></p>
+        </div>
+      </div>
+
+      <div className="mt-3 grid gap-3 border-t border-border pt-3 lg:grid-cols-2">
+        <section className="rounded-md border border-border bg-surface-1 px-3">
+          <p className="border-b border-border py-2 text-xs font-medium text-slate-400">Runtime</p>
+          <DetailRow label="State" value={container.state} />
+          <DetailRow label="Status" value={container.status} />
+          <DetailRow label="Created" value={localDateTime(container.created_at)} />
+          <DetailRow label="Started" value={container.started_at ? localDateTime(container.started_at) : "Not running"} />
+          {container.health_status && <DetailRow label="Health" value={container.health_status} />}
+          <DetailRow label="Restart policy" value={container.restart_policy && container.restart_policy !== "no" ? container.restart_policy : "No auto-restart"} />
+          <DetailRow label="Restarts" value={container.restart_count} />
+          {container.exit_code !== null && <DetailRow label="Exit code" value={container.exit_code} />}
+          {container.finished_at && <DetailRow label="Finished" value={localDateTime(container.finished_at)} />}
+          {container.oom_killed && <DetailRow label="OOM killed" value="Yes" />}
+          {container.container_error && <DetailRow label="Error" value={container.container_error} />}
+        </section>
+
+        <section className="rounded-md border border-border bg-surface-1 px-3">
+          <p className="border-b border-border py-2 text-xs font-medium text-slate-400">Source</p>
+          <DetailRow label="Container ID" value={container.short_id} />
+          <DetailRow label="Project" value={container.compose_project ?? "Standalone"} />
+          {container.compose_service && <DetailRow label="Service" value={container.compose_service} />}
+          <DetailRow label="Image" value={image.repo} />
+          <DetailRow label="Tag" value={image.tag} />
+          <DetailRow label="Image size" value={container.image_size !== null ? formatBytes(container.image_size) : "Unknown"} />
+          <DetailRow label="Last pulled" value={localDateTime(container.last_pulled)} />
+          <DetailRow label="Update check" value={container.last_digest_check ? localDateTime(container.last_digest_check) : "Never checked"} />
+        </section>
+
+        <section className="rounded-md border border-border bg-surface-1 px-3">
+          <p className="border-b border-border py-2 text-xs font-medium text-slate-400">Connectivity</p>
+          <DetailRow label="Ports" value={<DetailList items={container.ports} />} />
+          <DetailRow label="Networks" value={<DetailList items={container.networks} />} />
+          <DetailRow label="Traffic" value={<NetworkUsage container={container} />} />
+        </section>
+
+        <section className="rounded-md border border-border bg-surface-1 px-3">
+          <p className="border-b border-border py-2 text-xs font-medium text-slate-400">Storage</p>
+          <DetailRow label="Volumes" value={<DetailList items={container.volumes} empty="No volumes reported" />} />
+          <DetailRow label="Last seen" value={localDateTime(container.last_seen)} />
+        </section>
+      </div>
+    </div>
+  );
 }
 
 function sortContainers(containers: Container[], sort: SortKey) {
@@ -121,51 +216,70 @@ function EmptyState({ search }: { search: string }) {
 }
 
 function ContainerMobileRow({ container }: { container: Container }) {
+  const [isExpanded, setIsExpanded] = useState(false);
   const memPct = memoryPercent(container);
   const isStopped = container.state !== "running";
 
   return (
-    <Link
-      to={`/containers/${container.docker_id}`}
-      className={`block rounded-lg border border-border bg-surface-1 p-4 transition-[border-color,background-color,opacity] hover:border-accent/50 hover:bg-surface-2 ${
+    <article
+      className={`rounded-lg border border-border bg-surface-1 transition-[border-color,background-color,opacity] ${
         isStopped ? "opacity-60 hover:opacity-80" : ""
       }`}
     >
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="truncate text-sm font-medium text-slate-100">{container.name}</p>
-          <p className="mt-1 truncate font-mono text-xs text-slate-500">{container.short_id}</p>
+      <div className="p-4">
+        <div className="flex items-start justify-between gap-3">
+          <button type="button" onClick={() => setIsExpanded((expanded) => !expanded)} className="min-w-0 text-left" aria-expanded={isExpanded}>
+            <span className="flex items-center gap-2">
+              <FiChevronDown className={`h-4 w-4 shrink-0 text-slate-600 transition-transform ${isExpanded ? "rotate-180" : ""}`} />
+              <span className="truncate text-sm font-medium text-slate-100">{container.name}</span>
+            </span>
+            <span className="mt-1 block truncate pl-6 font-mono text-xs text-slate-500">{container.short_id}</span>
+          </button>
+          <div className="flex shrink-0 items-center gap-2">
+            <StatusBadge state={container.state} />
+            <Link
+              to={`/containers/${container.docker_id}`}
+              className="rounded p-1 text-slate-600 transition-colors hover:bg-surface-3 hover:text-accent"
+              aria-label={`Open ${container.name} detail`}
+              title="Open full detail"
+            >
+              <FiChevronRight className="h-4 w-4" />
+            </Link>
+          </div>
         </div>
-        <StatusBadge state={container.state} className="shrink-0" />
+
+        <div className="mt-4 grid grid-cols-2 gap-3 text-xs">
+          <div>
+            <p className="text-slate-500">CPU</p>
+            <p className="mt-1 font-mono text-slate-200">{container.cpu_percent.toFixed(1)}%</p>
+          </div>
+          <div>
+            <p className="text-slate-500">Memory</p>
+            <p className="mt-1 font-mono text-slate-200">{memPct.toFixed(0)}%</p>
+          </div>
+          <div>
+            <p className="text-slate-500">Uptime</p>
+            <p className="mt-1 truncate text-slate-200">{container.started_at && container.state === "running" ? formatUptime(container.started_at) : "-"}</p>
+          </div>
+          <div>
+            <p className="text-slate-500">Ports</p>
+            <p className="mt-1 truncate text-slate-200" title={container.ports.join(", ")}>{portSummary(container.ports)}</p>
+          </div>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => setIsExpanded((expanded) => !expanded)}
+          className="mt-4 flex w-full items-center justify-between gap-3 border-t border-border pt-3 text-left text-xs text-slate-500"
+          aria-expanded={isExpanded}
+        >
+          <span className="truncate">{container.status}</span>
+          <span className="inline-flex items-center gap-1 text-accent">{isExpanded ? "Hide details" : "Details"}</span>
+        </button>
       </div>
 
-      <div className="mt-4 grid grid-cols-2 gap-3 text-xs">
-        <div>
-          <p className="text-slate-500">CPU</p>
-          <p className="mt-1 font-mono text-slate-200">{container.cpu_percent.toFixed(1)}%</p>
-        </div>
-        <div>
-          <p className="text-slate-500">Memory</p>
-          <p className="mt-1 font-mono text-slate-200">{memPct.toFixed(0)}%</p>
-        </div>
-        <div>
-          <p className="text-slate-500">Uptime</p>
-          <p className="mt-1 truncate text-slate-200">{container.started_at && container.state === "running" ? formatUptime(container.started_at) : "-"}</p>
-        </div>
-        <div>
-          <p className="text-slate-500">Ports</p>
-          <p className="mt-1 truncate text-slate-200" title={container.ports.join(", ")}>{portSummary(container.ports)}</p>
-        </div>
-      </div>
-
-      <div className="mt-4 flex items-center justify-between gap-3 border-t border-border pt-3 text-xs text-slate-500">
-        <span className="truncate">{container.status}</span>
-        <span className="inline-flex items-center gap-1 text-accent">
-          Detail
-          <FiChevronRight className="h-3.5 w-3.5" />
-        </span>
-      </div>
-    </Link>
+      {isExpanded && <div className="border-t border-border px-4 py-3"><ContainerDetails container={container} /></div>}
+    </article>
   );
 }
 
@@ -321,43 +435,8 @@ function ContainerTable({ containers, checkingId, onCheckUpdates }: { containers
                   {isExpanded && (
                     <tr className={isStopped ? "bg-surface-0/25 opacity-70" : "bg-surface-0/45"}>
                       <td colSpan={5} className="px-5 pb-5 pt-3">
-                        <div className="grid gap-x-6 gap-y-4 rounded-lg border border-border bg-surface-1/70 p-4 text-xs sm:grid-cols-2 xl:grid-cols-4">
-                          <div className="min-w-0">
-                            <p className="uppercase text-slate-600">Ports</p>
-                            <p className="mt-1 truncate text-slate-300" title={container.ports.join(", ")}>{portSummary(container.ports)}</p>
-                          </div>
-                          <div className="min-w-0">
-                            <p className="uppercase text-slate-600">Networks</p>
-                            <p className="mt-1 truncate text-slate-300" title={container.networks.join(", ")}>{container.networks.length > 0 ? container.networks.join(", ") : "None"}</p>
-                          </div>
-                          <div className="min-w-0">
-                            <p className="uppercase text-slate-600">Memory</p>
-                            <p className="mt-1 truncate font-mono text-slate-300">
-                              {container.mem_limit > 0
-                                ? `${formatBytes(container.mem_usage)} / ${formatBytes(container.mem_limit)}`
-                                : formatBytes(container.mem_usage)}
-                            </p>
-                          </div>
-                          <div className="min-w-0">
-                            <p className="uppercase text-slate-600">Source</p>
-                            <p className="mt-1 line-clamp-2 break-words text-slate-300" title={sourceLabel(container)}>{sourceLabel(container)}</p>
-                          </div>
-                          <div className="min-w-0">
-                            <p className="uppercase text-slate-600">Image</p>
-                            <p className="mt-1 line-clamp-2 break-words font-mono leading-5 text-slate-300" title={container.image}>{container.image}</p>
-                          </div>
-                          <div className="min-w-0">
-                            <p className="uppercase text-slate-600">Restarts</p>
-                            <p className="mt-1 text-slate-300">{container.restart_count}</p>
-                          </div>
-                          <div className="min-w-0">
-                            <p className="uppercase text-slate-600">Image Size</p>
-                            <p className="mt-1 text-slate-300">{container.image_size !== null ? formatBytes(container.image_size) : "Unknown"}</p>
-                          </div>
-                          <div className="min-w-0">
-                            <p className="uppercase text-slate-600">Status</p>
-                            <p className="mt-1 line-clamp-2 break-words text-slate-300" title={container.status}>{container.status}</p>
-                          </div>
+                        <div className="rounded-lg border border-border bg-surface-1/70 p-4">
+                          <ContainerDetails container={container} />
                         </div>
                       </td>
                     </tr>

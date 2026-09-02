@@ -1023,42 +1023,6 @@ function StatTile({
   );
 }
 
-function CompactOverview({
-  container,
-  isRunning,
-  memoryPercent,
-  uptimeLabel,
-}: {
-  container: Container;
-  isRunning: boolean;
-  memoryPercent: number;
-  uptimeLabel: string;
-}) {
-  const items = [
-    { label: "CPU", value: `${container.cpu_percent.toFixed(2)}%` },
-    {
-      label: "Memory",
-      value: container.mem_limit > 0 ? `${memoryPercent.toFixed(0)}%` : formatBytes(container.mem_usage),
-    },
-    { label: "Uptime", value: isRunning ? uptimeLabel : "Not running" },
-    { label: "Restarts", value: String(container.restart_count) },
-    { label: "Network", value: latestNetworkTotal(container) },
-  ];
-
-  return (
-    <section className="rounded-lg border border-border bg-surface-1 px-4 py-3">
-      <div className="grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-5">
-        {items.map((item) => (
-          <div key={item.label} className="min-w-0">
-            <div className="text-xs uppercase text-slate-600">{item.label}</div>
-            <div className="mt-1 truncate font-mono font-semibold text-slate-200">{item.value}</div>
-          </div>
-        ))}
-      </div>
-    </section>
-  );
-}
-
 function DetailSection({ title, icon, children }: { title: string; icon: React.ReactNode; children: React.ReactNode }) {
   return (
     <section className="rounded-lg border border-border bg-surface-1 px-4">
@@ -1146,13 +1110,12 @@ function NetworkStatValue({ container }: { container: Container }) {
 
 function AttentionBand({ container }: { container: Container }) {
   const items = [
-    container.state !== "running" ? `Container is currently ${container.state}.` : null,
     container.health_status === "unhealthy" ? "Healthcheck is failing." : null,
     container.oom_killed ? "Last stop was OOM-killed." : null,
     container.container_error ? `Docker reported: ${container.container_error}` : null,
     container.update_available ? "A newer image is available." : null,
-    container.restart_count > 0
-      ? `${container.restart_count} restart${container.restart_count === 1 ? "" : "s"} recorded.`
+    container.state === "restarting" && container.restart_count > 1
+      ? `${container.restart_count} restarts recorded while the container is still restarting.`
       : null,
   ].filter(Boolean);
 
@@ -1175,11 +1138,11 @@ function AttentionBand({ container }: { container: Container }) {
 
 // ── Page ──────────────────────────────────────────────────────────────────────
 
-const OVERVIEW_COLLAPSED_KEY = "nestview:container-overview-collapsed";
+const DETAILS_COLLAPSED_KEY = "nestview:container-details-collapsed";
 
-function loadOverviewCollapsed() {
+function loadDetailsCollapsed() {
   try {
-    return localStorage.getItem(OVERVIEW_COLLAPSED_KEY) === "true";
+    return localStorage.getItem(DETAILS_COLLAPSED_KEY) === "true";
   } catch {
     return false;
   }
@@ -1190,16 +1153,16 @@ export default function ContainerDetail() {
   const tz = useTimezone();
   const { isAuthenticated } = useAuth();
   const [operationModalOpen, setOperationModalOpen] = useState(false);
-  const [overviewCollapsed, setOverviewCollapsed] = useState(loadOverviewCollapsed);
+  const [detailsCollapsed, setDetailsCollapsed] = useState(loadDetailsCollapsed);
   const logsRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     try {
-      localStorage.setItem(OVERVIEW_COLLAPSED_KEY, String(overviewCollapsed));
+      localStorage.setItem(DETAILS_COLLAPSED_KEY, String(detailsCollapsed));
     } catch {
       // Ignore storage failures; the control still works for the current view.
     }
-  }, [overviewCollapsed]);
+  }, [detailsCollapsed]);
 
   const { data: container, isLoading, isError } = useQuery<Container>({
     queryKey: ["container", id],
@@ -1297,11 +1260,11 @@ export default function ContainerDetail() {
             <div className="mt-3 flex flex-wrap justify-end gap-2">
               <button
                 type="button"
-                onClick={() => setOverviewCollapsed((collapsed) => !collapsed)}
+                onClick={() => setDetailsCollapsed((collapsed) => !collapsed)}
                 className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm text-slate-400 transition-colors hover:border-slate-500 hover:text-slate-200"
               >
-                {overviewCollapsed ? <FiChevronDown className="h-4 w-4" /> : <FiChevronUp className="h-4 w-4" />}
-                {overviewCollapsed ? "Expand overview" : "Collapse overview"}
+                {detailsCollapsed ? <FiChevronDown className="h-4 w-4" /> : <FiChevronUp className="h-4 w-4" />}
+                {detailsCollapsed ? "Expand details" : "Collapse details"}
               </button>
               <button
                 type="button"
@@ -1316,41 +1279,31 @@ export default function ContainerDetail() {
         </div>
       </section>
 
-      {overviewCollapsed ? (
-        <>
-          <CompactOverview
-            container={container}
-            isRunning={isRunning}
-            memoryPercent={memoryPercent}
-            uptimeLabel={uptimeLabel}
-          />
-          <AttentionBand container={container} />
-        </>
-      ) : (
-        <>
-          <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-            <StatTile label="CPU" value={`${container.cpu_percent.toFixed(2)}%`} subtext={isRunning ? "current usage" : "not running"} icon={<FiCpu className="h-4 w-4" />} />
-            <StatTile
-              label="Memory"
-              value={
-                container.mem_limit > 0
-                  ? `${memoryPercent.toFixed(0)}%`
-                  : formatBytes(container.mem_usage)
-              }
-              subtext={
-                container.mem_limit > 0
-                  ? `${formatBytes(container.mem_usage)} / ${formatBytes(container.mem_limit)}`
-                  : "limit unknown"
-              }
-              icon={<FiDatabase className="h-4 w-4" />}
-            />
-            <StatTile label="Uptime" value={uptimeLabel} subtext={container.started_at ? `Started ${formatDateTime(container.started_at, tz)}` : "not started"} icon={<FiClock className="h-4 w-4" />} />
-            <StatTile label="Restarts" value={container.restart_count} subtext={container.restart_count === 1 ? "recorded restart" : "recorded restarts"} icon={<FiRefreshCw className="h-4 w-4" />} highlight={container.restart_count > 0} />
-            <StatTile label="Network" value={<NetworkStatValue container={container} />} subtext={container.networks.length > 0 ? container.networks.join(", ") : "no networks"} icon={<FiWifi className="h-4 w-4" />} wrapValue />
-          </section>
+      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+        <StatTile label="CPU" value={`${container.cpu_percent.toFixed(2)}%`} subtext={isRunning ? "current usage" : "not running"} icon={<FiCpu className="h-4 w-4" />} />
+        <StatTile
+          label="Memory"
+          value={
+            container.mem_limit > 0
+              ? `${memoryPercent.toFixed(0)}%`
+              : formatBytes(container.mem_usage)
+          }
+          subtext={
+            container.mem_limit > 0
+              ? `${formatBytes(container.mem_usage)} / ${formatBytes(container.mem_limit)}`
+              : "limit unknown"
+          }
+          icon={<FiDatabase className="h-4 w-4" />}
+        />
+        <StatTile label="Uptime" value={uptimeLabel} subtext={container.started_at ? `Started ${formatDateTime(container.started_at, tz)}` : "not started"} icon={<FiClock className="h-4 w-4" />} />
+        <StatTile label="Restarts" value={container.restart_count} subtext={container.restart_count === 1 ? "recorded restart" : "recorded restarts"} icon={<FiRefreshCw className="h-4 w-4" />} highlight={container.restart_count > 0} />
+        <StatTile label="Network" value={<NetworkStatValue container={container} />} subtext={container.networks.length > 0 ? container.networks.join(", ") : "no networks"} icon={<FiWifi className="h-4 w-4" />} wrapValue />
+      </section>
 
-          <AttentionBand container={container} />
+      <AttentionBand container={container} />
 
+      {!detailsCollapsed && (
+        <>
           <section className="grid items-start gap-4 lg:grid-cols-2 2xl:grid-cols-4">
             <DetailSection title="Runtime" icon={<FiActivity className="h-4 w-4" />}>
               <InfoRow label="State" value={<StatusBadge state={container.state} />} />
