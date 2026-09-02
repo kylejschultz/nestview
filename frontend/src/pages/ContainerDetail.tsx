@@ -1110,13 +1110,12 @@ function NetworkStatValue({ container }: { container: Container }) {
 
 function AttentionBand({ container }: { container: Container }) {
   const items = [
-    container.state !== "running" ? `Container is currently ${container.state}.` : null,
     container.health_status === "unhealthy" ? "Healthcheck is failing." : null,
     container.oom_killed ? "Last stop was OOM-killed." : null,
     container.container_error ? `Docker reported: ${container.container_error}` : null,
     container.update_available ? "A newer image is available." : null,
-    container.restart_count > 0
-      ? `${container.restart_count} restart${container.restart_count === 1 ? "" : "s"} recorded.`
+    container.state === "restarting" && container.restart_count > 1
+      ? `${container.restart_count} restarts recorded while the container is still restarting.`
       : null,
   ].filter(Boolean);
 

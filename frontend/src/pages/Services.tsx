@@ -1,4 +1,4 @@
-import { Fragment, useMemo, useState } from "react";
+import { Fragment, type ReactNode, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   FiArrowRight,
@@ -20,7 +20,7 @@ import StatusBadge from "../components/StatusBadge";
 import Toast from "../components/Toast";
 import { useToast } from "../hooks/useToast";
 import type { Container } from "../types";
-import { formatBytes, formatUptime } from "../utils";
+import { formatBytes, formatDateTime, formatUptime } from "../utils";
 
 type ServicesMode = "compose" | "blank";
 type ServiceStatusFilter = "all" | "running" | "attention" | "updates" | "stopped";
@@ -77,9 +77,17 @@ function memoryPercent(container: Container) {
   return container.mem_limit > 0 ? (container.mem_usage / container.mem_limit) * 100 : 0;
 }
 
+function hasRepeatedRestart(container: Container) {
+  return container.state === "restarting" && container.restart_count > 1;
+}
+
+function needsAttention(container: Container) {
+  return container.update_available || container.health_status === "unhealthy" || hasRepeatedRestart(container);
+}
+
 function serviceTone(service: ServiceGroup) {
   const updates = service.members.some((container) => container.update_available);
-  const unhealthy = service.members.some((container) => container.state !== "running" || container.health_status === "unhealthy");
+  const unhealthy = service.members.some((container) => container.health_status === "unhealthy" || hasRepeatedRestart(container));
   if (unhealthy) return "danger";
   if (updates) return "warn";
   return "good";
@@ -108,7 +116,7 @@ function serviceHealth(service: ServiceGroup) {
   if (starting > 0) {
     return {
       label: `${starting} starting`,
-      className: "border-yellow-500/30 bg-yellow-500/10 text-yellow-300",
+      className: "border-blue-500/30 bg-blue-500/10 text-blue-300",
     };
   }
 
@@ -159,12 +167,14 @@ function serviceMetrics(service: ServiceGroup) {
     .reduce((sum, container) => sum + container.cpu_percent, 0);
   const totalMemUsage = service.members.reduce((sum, container) => sum + container.mem_usage, 0);
   const totalMemLimit = service.members.reduce((sum, container) => sum + container.mem_limit, 0);
-  const attention = updates + stopped + unhealthy + starting;
+  const restarting = service.members.filter(hasRepeatedRestart).length;
+  const attention = service.members.filter(needsAttention).length;
 
   return {
     attention,
     running,
     restartCount,
+    restarting,
     starting,
     stopped,
     totalCpu,
@@ -251,9 +261,36 @@ function NetworkUsage({ container }: { container: Container }) {
   return <>{formatBytes(rx)} in / {formatBytes(tx)} out</>;
 }
 
+function DetailRow({ label, value }: { label: string; value: ReactNode }) {
+  return (
+    <div className="grid grid-cols-[5.5rem_minmax(0,1fr)] gap-2 border-b border-border py-1.5 last:border-0">
+      <span className="text-slate-600">{label}</span>
+      <span className="min-w-0 break-words font-mono text-slate-300">{value}</span>
+    </div>
+  );
+}
+
+function DetailList({ items, empty = "None" }: { items: string[]; empty?: string }) {
+  if (items.length === 0) return <span className="text-slate-600">{empty}</span>;
+  return <span className="break-all">{items.join(", ")}</span>;
+}
+
+function imageParts(image: string) {
+  const slashIndex = image.lastIndexOf("/");
+  const tagIndex = image.lastIndexOf(":");
+  return tagIndex > slashIndex
+    ? { repo: image.slice(0, tagIndex), tag: image.slice(tagIndex + 1) }
+    : { repo: image, tag: "latest" };
+}
+
+function localDateTime(value: string | null) {
+  return value ? formatDateTime(value, Intl.DateTimeFormat().resolvedOptions().timeZone) : "Unknown";
+}
+
 function ContainerMemberRow({ container }: { container: Container }) {
   const [resourcesOpen, setResourcesOpen] = useState(false);
   const memPct = container.mem_limit > 0 ? Math.round(memoryPercent(container)) : null;
+  const image = imageParts(container.image);
 
   return (
     <div className="rounded-lg border border-border bg-surface-2 text-sm">
@@ -292,7 +329,8 @@ function ContainerMemberRow({ container }: { container: Container }) {
       </div>
 
       {resourcesOpen && (
-        <div className="grid gap-2 border-t border-border px-3 py-3 text-xs sm:grid-cols-3">
+        <div className="border-t border-border px-3 py-3 text-xs">
+          <div className="grid gap-2 sm:grid-cols-3">
           <div>
             <p className="uppercase text-slate-600">CPU</p>
             <p className="mt-1 font-mono text-slate-200">{container.cpu_percent.toFixed(1)}%</p>
@@ -311,6 +349,49 @@ function ContainerMemberRow({ container }: { container: Container }) {
             <p className="mt-1 truncate font-mono text-slate-200">
               <NetworkUsage container={container} />
             </p>
+          </div>
+          </div>
+
+          <div className="mt-3 grid gap-3 border-t border-border pt-3 lg:grid-cols-2">
+            <section className="rounded-md border border-border bg-surface-1 px-3">
+              <p className="border-b border-border py-2 text-xs font-medium text-slate-400">Runtime</p>
+              <DetailRow label="State" value={container.state} />
+              <DetailRow label="Status" value={container.status} />
+              <DetailRow label="Created" value={localDateTime(container.created_at)} />
+              <DetailRow label="Started" value={container.started_at ? localDateTime(container.started_at) : "Not running"} />
+              {container.health_status && <DetailRow label="Health" value={container.health_status} />}
+              <DetailRow label="Restart policy" value={container.restart_policy && container.restart_policy !== "no" ? container.restart_policy : "No auto-restart"} />
+              <DetailRow label="Restarts" value={container.restart_count} />
+              {container.exit_code !== null && <DetailRow label="Exit code" value={container.exit_code} />}
+              {container.finished_at && <DetailRow label="Finished" value={localDateTime(container.finished_at)} />}
+              {container.oom_killed && <DetailRow label="OOM killed" value="Yes" />}
+              {container.container_error && <DetailRow label="Error" value={container.container_error} />}
+            </section>
+
+            <section className="rounded-md border border-border bg-surface-1 px-3">
+              <p className="border-b border-border py-2 text-xs font-medium text-slate-400">Source</p>
+              <DetailRow label="Container ID" value={container.short_id} />
+              <DetailRow label="Project" value={container.compose_project ?? "Standalone"} />
+              {container.compose_service && <DetailRow label="Service" value={container.compose_service} />}
+              <DetailRow label="Image" value={image.repo} />
+              <DetailRow label="Tag" value={image.tag} />
+              <DetailRow label="Image size" value={container.image_size !== null ? formatBytes(container.image_size) : "Unknown"} />
+              <DetailRow label="Last pulled" value={localDateTime(container.last_pulled)} />
+              <DetailRow label="Update check" value={container.last_digest_check ? localDateTime(container.last_digest_check) : "Never checked"} />
+            </section>
+
+            <section className="rounded-md border border-border bg-surface-1 px-3">
+              <p className="border-b border-border py-2 text-xs font-medium text-slate-400">Connectivity</p>
+              <DetailRow label="Ports" value={<DetailList items={container.ports} />} />
+              <DetailRow label="Networks" value={<DetailList items={container.networks} />} />
+              <DetailRow label="Traffic" value={<NetworkUsage container={container} />} />
+            </section>
+
+            <section className="rounded-md border border-border bg-surface-1 px-3">
+              <p className="border-b border-border py-2 text-xs font-medium text-slate-400">Storage</p>
+              <DetailRow label="Volumes" value={<DetailList items={container.volumes} empty="No volumes reported" />} />
+              <DetailRow label="Last seen" value={localDateTime(container.last_seen)} />
+            </section>
           </div>
         </div>
       )}
@@ -447,7 +528,9 @@ function ServiceCard({
             {metrics.attention}
           </p>
           <p className="mt-1 text-xs text-slate-600">
-            {metrics.restartCount} restart{metrics.restartCount === 1 ? "" : "s"}
+            {metrics.restarting > 0
+              ? `${metrics.restarting} repeated restart${metrics.restarting === 1 ? "" : "s"}`
+              : `${metrics.restartCount} recorded restart${metrics.restartCount === 1 ? "" : "s"}`}
           </p>
         </div>
       </div>
@@ -804,7 +887,7 @@ export default function Services() {
             <StatTile
               label="Attention"
               value={setupMode === "compose" ? serviceStats.servicesWithAttention : 0}
-              subtext="stopped, starting, unhealthy, or update pending"
+              subtext="unhealthy, repeated restart, or update pending"
               tone={serviceStats.servicesWithAttention > 0 ? "danger" : "good"}
             />
             <StatTile
