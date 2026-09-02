@@ -81,20 +81,28 @@ function hasRepeatedRestart(container: Container) {
   return container.state === "restarting" && container.restart_count > 1;
 }
 
+function isUnhealthy(container: Container) {
+  return container.state === "running" && container.health_status === "unhealthy";
+}
+
+function hasActiveHealthCheck(container: Container) {
+  return container.state === "running" && Boolean(container.health_status);
+}
+
 function needsAttention(container: Container) {
-  return container.update_available || container.health_status === "unhealthy" || hasRepeatedRestart(container);
+  return container.update_available || isUnhealthy(container) || hasRepeatedRestart(container);
 }
 
 function serviceTone(service: ServiceGroup) {
   const updates = service.members.some((container) => container.update_available);
-  const unhealthy = service.members.some((container) => container.health_status === "unhealthy" || hasRepeatedRestart(container));
+  const unhealthy = service.members.some((container) => isUnhealthy(container) || hasRepeatedRestart(container));
   if (unhealthy) return "danger";
   if (updates) return "warn";
   return "good";
 }
 
 function serviceHealth(service: ServiceGroup) {
-  const healthChecks = service.members.filter((container) => container.health_status);
+  const healthChecks = service.members.filter(hasActiveHealthCheck);
   if (healthChecks.length === 0) {
     return {
       label: "No health checks",
@@ -159,8 +167,8 @@ function serviceMetrics(service: ServiceGroup) {
   const running = runningCount(service.members);
   const updates = service.members.filter((container) => container.update_available).length;
   const stopped = service.members.filter((container) => container.state !== "running").length;
-  const unhealthy = service.members.filter((container) => container.health_status === "unhealthy").length;
-  const starting = service.members.filter((container) => container.health_status === "starting").length;
+  const unhealthy = service.members.filter(isUnhealthy).length;
+  const starting = service.members.filter((container) => container.state === "running" && container.health_status === "starting").length;
   const restartCount = service.members.reduce((sum, container) => sum + container.restart_count, 0);
   const totalCpu = service.members
     .filter((container) => container.state === "running")
@@ -310,12 +318,17 @@ function ContainerMemberRow({ container }: { container: Container }) {
           </span>
         </button>
         <span className="inline-flex items-center gap-2">
-          {container.health_status && (
+          {hasActiveHealthCheck(container) && (
             <span className="rounded border border-border bg-surface-3 px-1.5 py-0.5 text-xs text-slate-400">
               {container.health_status}
             </span>
           )}
-          {container.update_available && <span className="text-xs text-blue-300">Update</span>}
+          {container.update_available && (
+            <span className="inline-flex items-center gap-1 rounded border border-blue-500/30 bg-blue-500/10 px-1.5 py-0.5 text-xs text-blue-300">
+              <FiArrowUp className="h-3 w-3" />
+              Update pending
+            </span>
+          )}
           <StatusBadge state={container.state} />
           <Link
             to={`/containers/${container.docker_id}`}
