@@ -89,13 +89,33 @@ function hasActiveHealthCheck(container: Container) {
   return container.state === "running" && Boolean(container.health_status);
 }
 
+function hasStoppedContainerProblem(container: Container) {
+  if (container.state === "running") return false;
+
+  return (
+    container.state === "dead" ||
+    container.oom_killed ||
+    (container.exit_code !== null && container.exit_code !== 0) ||
+    Boolean(container.container_error)
+  );
+}
+
+function stoppedContainerProblemLabel(container: Container) {
+  if (container.oom_killed) return "OOM killed";
+  if (container.exit_code !== null && container.exit_code !== 0) return `Exit ${container.exit_code}`;
+  if (container.container_error) return "Runtime error";
+  return "Runtime issue";
+}
+
 function needsAttention(container: Container) {
-  return container.update_available || isUnhealthy(container) || hasRepeatedRestart(container);
+  return container.update_available || isUnhealthy(container) || hasRepeatedRestart(container) || hasStoppedContainerProblem(container);
 }
 
 function serviceTone(service: ServiceGroup) {
   const updates = service.members.some((container) => container.update_available);
-  const unhealthy = service.members.some((container) => isUnhealthy(container) || hasRepeatedRestart(container));
+  const unhealthy = service.members.some(
+    (container) => isUnhealthy(container) || hasRepeatedRestart(container) || hasStoppedContainerProblem(container)
+  );
   if (unhealthy) return "danger";
   if (updates) return "warn";
   return "good";
@@ -321,6 +341,11 @@ function ContainerMemberRow({ container }: { container: Container }) {
           {hasActiveHealthCheck(container) && (
             <span className="rounded border border-border bg-surface-3 px-1.5 py-0.5 text-xs text-slate-400">
               {container.health_status}
+            </span>
+          )}
+          {hasStoppedContainerProblem(container) && (
+            <span className="rounded border border-red-500/30 bg-red-500/10 px-1.5 py-0.5 text-xs text-red-300">
+              {stoppedContainerProblemLabel(container)}
             </span>
           )}
           {container.update_available && (
@@ -677,9 +702,9 @@ function ServiceTable({
                     </div>
                   </td>
                   <td className="px-4 py-3">
-                    <p className="text-xs text-slate-300">{service.members.length} member{service.members.length === 1 ? "" : "s"}</p>
-                    <p className={`mt-1 text-xs ${metrics.attention > 0 ? "text-blue-300" : "text-slate-600"}`}>
-                      {metrics.attention} attention
+                    <p className="text-xs text-slate-300">{service.members.length} container{service.members.length === 1 ? "" : "s"}</p>
+                    <p className={`mt-1 text-xs ${metrics.updates > 0 ? "text-blue-300" : "text-slate-600"}`}>
+                      {metrics.updates > 0 ? `${metrics.updates} update${metrics.updates === 1 ? "" : "s"} pending` : "No updates pending"}
                     </p>
                   </td>
                   <td className="px-4 py-3">
