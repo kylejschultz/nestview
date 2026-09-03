@@ -22,7 +22,7 @@ function hasStoppedContainerProblem(container: Container) {
   return (
     container.state === "dead" ||
     container.oom_killed ||
-    (container.exit_code !== null && container.exit_code !== 0) ||
+    (container.exit_code !== null && ![0, 143].includes(container.exit_code)) ||
     Boolean(container.container_error)
   );
 }
@@ -34,7 +34,7 @@ function needsAttention(container: Container) {
 function attentionReason(container: Container) {
   if (container.oom_killed) return "OOM killed";
   if (container.container_error) return "Runtime error";
-  if (container.exit_code !== null && container.exit_code !== 0) return `Exited with code ${container.exit_code}`;
+  if (container.exit_code !== null && ![0, 143].includes(container.exit_code)) return `Exited with code ${container.exit_code}`;
   if (container.state === "dead") return "Container is dead";
   if (isUnhealthy(container)) return "Health check failing";
   if (hasRepeatedRestart(container)) return "Repeated restart";
@@ -138,11 +138,7 @@ export default function Dashboard() {
         <section className="rounded-xl border border-border bg-surface-1 p-5 lg:p-6">
           <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_32rem] xl:items-start">
             <div>
-              <p className="text-xs uppercase text-slate-500">Dashboard</p>
-              <h1 className="mt-1 text-2xl font-semibold text-slate-100">Fleet overview</h1>
-              <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-400">
-                A high-level read of what needs action now. Dive into Services or Containers when you need operational detail.
-              </p>
+              <h2 className="text-2xl font-semibold text-slate-100">Fleet overview</h2>
               <div className="mt-5 flex flex-wrap gap-2">
                 <Link to="/services" className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface-2 px-3 py-2 text-sm text-slate-300 transition-colors hover:border-accent/40 hover:text-accent">
                   Open Services <FiArrowRight className="h-3.5 w-3.5" />
@@ -169,10 +165,7 @@ export default function Dashboard() {
           <div className="grid gap-6 xl:grid-cols-[minmax(0,1.3fr)_minmax(20rem,0.7fr)]">
             <section className="rounded-xl border border-border bg-surface-1 p-5">
               <div className="flex items-start justify-between gap-4">
-                <div>
-                  <p className="text-xs uppercase text-slate-500">Needs attention</p>
-                  <h2 className="mt-1 text-lg font-semibold text-slate-100">Actionable exceptions</h2>
-                </div>
+                <h2 className="text-lg font-semibold text-slate-100">Needs attention</h2>
                 <Link to="/containers" className="text-sm text-accent transition-colors hover:text-blue-300">View all</Link>
               </div>
 
@@ -201,10 +194,7 @@ export default function Dashboard() {
             <div className="space-y-6">
               <section className="rounded-xl border border-border bg-surface-1 p-5">
                 <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <p className="text-xs uppercase text-slate-500">Services</p>
-                    <h2 className="mt-1 text-lg font-semibold text-slate-100">Service health</h2>
-                  </div>
+                  <h2 className="text-lg font-semibold text-slate-100">Services</h2>
                   <FiLayers className="h-5 w-5 text-slate-600" />
                 </div>
                 <p className="mt-4 text-3xl font-semibold text-slate-100">{summary.services}</p>
@@ -217,10 +207,7 @@ export default function Dashboard() {
 
               <section className="rounded-xl border border-border bg-surface-1 p-5">
                 <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <p className="text-xs uppercase text-slate-500">Attention events</p>
-                    <h2 className="mt-1 text-lg font-semibold text-slate-100">Worth a look</h2>
-                  </div>
+                  <h2 className="text-lg font-semibold text-slate-100">Events to review</h2>
                   <FiAlertTriangle className="h-5 w-5 text-slate-600" />
                 </div>
                 <div className="mt-4 space-y-3">

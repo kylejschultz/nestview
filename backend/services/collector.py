@@ -755,6 +755,18 @@ def _alert_suppressed(container_name: str, event_type: str, session: Session) ->
     return False
 
 
+def _event_type(action: str, exit_code: str, signal: str) -> str:
+    """Normalize Docker lifecycle events for the activity and alert streams."""
+    # Docker reports a normal `docker stop` as SIGTERM (exit 143).
+    # Keep it out of the crash/attention stream while preserving the event as
+    # an ordinary stop for the container timeline.
+    if action == "die" and exit_code and exit_code not in {"0", "143"}:
+        return "crash"
+    if action == "kill" and signal == "15":
+        return "stop"
+    return action
+
+
 def _watch_events() -> None:
     """Background thread: watch Docker event stream and write directly to DB."""
     TRACKED = {"start", "stop", "die", "kill", "restart", "oom"}
@@ -772,10 +784,9 @@ def _watch_events() -> None:
                 attrs = actor.get("Attributes", {})
                 container_name = attrs.get("name", "unknown").lstrip("/")
                 exit_code = attrs.get("exitCode", "")
+                signal = attrs.get("signal", "")
 
-                event_type = action
-                if action == "die" and exit_code and exit_code != "0":
-                    event_type = "crash"
+                event_type = _event_type(action, exit_code, signal)
 
                 details = f"Exit code: {exit_code}" if exit_code else None
 

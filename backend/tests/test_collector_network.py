@@ -115,6 +115,15 @@ def test_cpu_percent_normalizes_against_cpuset_when_configured():
     assert collector._cpu_percent(_stats(), attrs) == 50.0
 
 
+def test_event_type_keeps_sigterm_exit_and_stop_events_neutral():
+    assert collector._event_type("die", "143", "") == "die"
+    assert collector._event_type("kill", "", "15") == "stop"
+
+
+def test_event_type_marks_unexpected_nonzero_exit_as_crash():
+    assert collector._event_type("die", "137", "") == "crash"
+
+
 def test_network_history_uses_persisted_counters_after_restart(collector_engine):
     started_at = "2026-06-28T10:00:00Z"
     with Session(collector_engine) as session:
