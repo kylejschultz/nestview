@@ -14,6 +14,8 @@ Nestview is an open-source Docker visibility tool built for people running perso
 ## Key features
 - Zero-config container autodiscovery via Docker socket
 - Health dashboard with container status, uptime, CPU%, memory, and network I/O
+- Service groups that surface Compose health, resource use, and update status
+- Filterable container inventory with runtime, image, network, storage, metric, and log detail
 - Searchable log history persisted in SQLite; log severity coloring; log export
 - Network I/O stats with per-container history
 - Image update checker — detects when newer images are available on Docker Hub or GHCR
