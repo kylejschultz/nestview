@@ -7,6 +7,12 @@ on:
       - "landing/**"
       - ".github/workflows/pages.yml"
   workflow_dispatch:
+    inputs:
+      deploy_branch:
+        description: "Cloudflare Pages branch to deploy"
+        required: true
+        default: "main"
+        type: string
 
 permissions:
   contents: read
@@ -28,7 +34,7 @@ jobs:
           commit_message="$(git log -1 --pretty=%s)"
           npx wrangler@4.107.0 pages deploy landing \
             --project-name nestview \
-            --branch main \
+            --branch "${{ inputs.deploy_branch || 'main' }}" \
             --commit-hash "${{ github.sha }}" \
             --commit-message "$commit_message" \
             --commit-dirty=false
