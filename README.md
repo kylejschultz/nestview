@@ -11,7 +11,7 @@
 
 **Lightweight, self-hosted Docker visibility for homelabbers.**
 
-Nestview gives you a live health dashboard with per-container CPU and memory history charts, searchable log history, and Discord alerts for all your containers - no manual configuration, no Grafana stack required. Point it at your Docker socket and it discovers everything automatically. Container metrics and logs are re-associated when containers are recreated, so your history survives updates.
+Nestview gives you a live health dashboard with per-container CPU and memory history charts, searchable log history, and configurable notifications for all your containers - no manual configuration, no Grafana stack required. Point it at your Docker socket and it discovers everything automatically. Container metrics and logs are re-associated when containers are recreated, so your history survives updates.
 
 > **Need help?** [Join the Discord](https://discord.gg/aDEBQq3XtN) - it's the fastest way to get support, ask questions, or report a bug. GitHub Issues is available too, but Discord is where the conversation happens.
 
@@ -99,13 +99,15 @@ On first launch, you'll be prompted to create an admin username and password bef
 
 Log retention is configured in the Settings UI.
 
-## Discord alerts
+## Notifications
 1. In your Discord server, Create a new channel for notifications.
 2. Select the channel and go to **Edit Channel > Integrations > Create Webhook**
 3. Copy the webhook URL
 4. Open Nestview and paste the URL into the setup wizard (shown on first launch) or **Settings > General**
 
 Nestview sends a formatted embed when a container crashes (non-zero exit), is OOM-killed, or restarts unexpectedly.
+
+In **Settings > Notifications**, you can also add Slack incoming webhooks, SMTP email destinations, and generic webhooks. Configure each destination independently and choose which container events it receives.
 
 ## Telemetry
 
