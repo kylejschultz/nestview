@@ -7,7 +7,7 @@
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="icon" href="/favicon.ico" sizes="any">
   <link rel="apple-touch-icon" href="/assets/nestview-icon-192.png">
-  <meta name="description" content="A lightweight, self-hosted Docker health dashboard with log history, container actions, built-in auth, and Discord alerts. One command to deploy." />
+  <meta name="description" content="A lightweight, self-hosted Docker health dashboard with log history, container actions, built-in auth, and flexible notifications. One command to deploy." />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
@@ -559,8 +559,8 @@
         </svg>
       </div>
       <div>
-        <h3>Discord alerting</h3>
-        <p>Get notified on crash, OOM kill, and unexpected restart. Alerts are configurable per-container from the Settings page.</p>
+        <h3>Flexible notifications</h3>
+        <p>Get notified on crashes, OOM kills, unexpected restarts, and image updates through Discord, Slack, email, or a custom webhook. Alerts are configurable per-container from Settings.</p>
       </div>
     </div>
 
@@ -572,7 +572,7 @@
       </div>
       <div>
         <h3>Image update detection</h3>
-        <p>Checks Docker Hub and GHCR for newer image digests on a configurable schedule. Dashboard badges and Discord alerts when updates are found.</p>
+        <p>Checks Docker Hub and GHCR for newer image digests on a configurable schedule. See updates in the dashboard and send alerts to any configured notification destination.</p>
       </div>
     </div>
 
@@ -645,8 +645,8 @@
         <td class="chk">✓ (Loki)</td>
       </tr>
       <tr>
-        <td>Discord alerts</td>
-        <td class="chk nestview-col">✓ built-in</td>
+        <td>Notification destinations</td>
+        <td class="chk nestview-col">✓ Discord, Slack, email &amp; webhooks</td>
         <td class="nope">✗</td>
         <td class="nope">✗ needs plugin</td>
       </tr>
