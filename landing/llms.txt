@@ -3,7 +3,7 @@
 > Lightweight, self-hosted Docker container monitoring for homelabbers. Deploy with a single `docker compose up` — no Grafana, no manual config.
 
 ## What it is
-Nestview is an open-source Docker visibility tool built for people running personal homelab servers (Mac mini, NUC, Raspberry Pi, etc.). It provides a health dashboard, searchable log history, container status, image update detection, and Discord alerting — all from a single compose file with SQLite storage and no external dependencies.
+Nestview is an open-source Docker visibility tool built for people running personal homelab servers (Mac mini, NUC, Raspberry Pi, etc.). It provides a health dashboard, searchable log history, container status, image update detection, and configurable notifications through Discord, Slack, email, or custom webhooks — all from a single compose file with SQLite storage and no external dependencies.
 
 ## Who it's for
 - Homelabbers who want Docker visibility without deploying a full observability stack
@@ -17,7 +17,7 @@ Nestview is an open-source Docker visibility tool built for people running perso
 - Searchable log history persisted in SQLite; log severity coloring; log export
 - Network I/O stats with per-container history
 - Image update checker — detects when newer images are available on Docker Hub or GHCR
-- Discord alerts for image updates and container health changes
+- Notifications for image updates and container health changes via Discord, Slack, email, or custom webhooks
 - Container and stack-level actions — start, stop, restart, pull & restart from the UI
 - Mandatory authentication with setup wizard — bcrypt-hashed credentials, signed httpOnly session cookies
 - Multi-arch support: amd64 and arm64 (runs on Apple Silicon, Raspberry Pi, NUC)
