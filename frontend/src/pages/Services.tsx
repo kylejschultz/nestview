@@ -95,14 +95,14 @@ function hasStoppedContainerProblem(container: Container) {
   return (
     container.state === "dead" ||
     container.oom_killed ||
-    (container.exit_code !== null && container.exit_code !== 0) ||
+    (container.exit_code !== null && ![0, 143].includes(container.exit_code)) ||
     Boolean(container.container_error)
   );
 }
 
 function stoppedContainerProblemLabel(container: Container) {
   if (container.oom_killed) return "OOM killed";
-  if (container.exit_code !== null && container.exit_code !== 0) return `Exit ${container.exit_code}`;
+  if (container.exit_code !== null && ![0, 143].includes(container.exit_code)) return `Exit ${container.exit_code}`;
   if (container.container_error) return "Runtime error";
   return "Runtime issue";
 }
