@@ -14,4 +14,4 @@ docker==7.2.0
 # Explicit requests pin to fix CVE GHSA-gc5v-m9x4-r6x2 (transitive via docker SDK).
 requests>=2.34.2
 # Explicit msgpack pin to fix GHSA-6v7p-g79w-8964 (transitive via uvicorn[standard]).
-msgpack>=1.2.1
+msgpack>=1.2.2
